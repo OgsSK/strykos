@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck } from "lucide-react";
+import { OrderTimeline } from "@/components/OrderTimeline";
 
 export default function Account() {
   const { t, lang, user, logout, settings } = useStore();
@@ -14,6 +15,7 @@ export default function Account() {
   const [tab, setTab] = useState("dashboard");
   const [orders, setOrders] = useState([]);
   const [addresses, setAddresses] = useState([]);
+  const [expanded, setExpanded] = useState(null);
   const [profile, setProfile] = useState({ first_name: user.first_name, last_name: user.last_name, phone: user.phone });
   const [newAddr, setNewAddr] = useState({ label: "", address_line: "", city: "", country: "ML", postal_code: "", first_name: user.first_name, last_name: user.last_name, phone: user.phone });
 
@@ -76,7 +78,7 @@ export default function Account() {
           {tab === "orders" && (
             <div className="space-y-3" data-testid="orders-list">
               {orders.length === 0 ? <p className="text-ink-muted">{t("noOrders")}</p> : orders.map((o) => (
-                <div key={o.id} className="border border-border p-4">
+                <div key={o.id} className="border border-border p-4" data-testid={`account-order-${o.order_number}`}>
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="font-bold">{o.order_number}</div>
@@ -84,12 +86,17 @@ export default function Account() {
                     </div>
                     <div className="text-right">
                       <div className="font-semibold">{money(o.total, o.currency)}</div>
-                      <span className={`text-xs uppercase ${o.payment_status === "paid" ? "text-green-600" : "text-amber-600"}`}>{o.status}</span>
+                      <span className={`text-xs uppercase ${o.payment_status === "paid" ? "text-green-600" : "text-amber-600"}`}>{t(`st_${o.status}`)}</span>
                     </div>
                   </div>
                   <div className="mt-2 text-sm text-ink-soft">
                     {(o.items || []).map((it, i) => <span key={i}>{(lang === "fr" ? it.name_fr : it.name_en)} ({it.size}) x{it.quantity}{i < o.items.length - 1 ? ", " : ""}</span>)}
                   </div>
+                  {o.tracking_number && <div className="mt-2 text-xs inline-flex items-center gap-1 text-cyan-700"><Truck className="w-3 h-3" /> {o.tracking_carrier} {o.tracking_number}</div>}
+                  <button onClick={() => setExpanded(expanded === o.id ? null : o.id)} className="mt-2 text-xs font-semibold text-brand hover:underline block" data-testid={`toggle-order-${o.order_number}`}>
+                    {expanded === o.id ? t("hideDetails") : t("viewDetails")}
+                  </button>
+                  {expanded === o.id && <div className="mt-3"><OrderTimeline order={o} /></div>}
                 </div>
               ))}
             </div>

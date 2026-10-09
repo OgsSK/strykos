@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
-from utils import get_settings, SUPPORTED_CURRENCIES
+from utils import get_settings, SUPPORTED_CURRENCIES, resolve_media
 
 router = APIRouter(tags=["settings"])
 
@@ -13,11 +13,13 @@ async def public_settings(db: AsyncSession = Depends(get_db)):
     enabled_providers = {k: {"enabled": v.get("enabled", False), "currencies": v.get("currencies", []),
                              "countries": v.get("countries", [])}
                          for k, v in providers.items()}
+    hero = dict(s.get("hero") or {})
+    hero["image_url"] = resolve_media(hero.get("image_url", ""))
     return {
         "currency": s.get("currency"),
         "currencies": SUPPORTED_CURRENCIES,
         "info_bar": s.get("info_bar"),
-        "hero": s.get("hero"),
+        "hero": hero,
         "shipping": s.get("shipping"),
         "site": s.get("site"),
         "payment_providers": enabled_providers,

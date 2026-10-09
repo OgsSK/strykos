@@ -1,3 +1,4 @@
+import os
 import random
 import string
 from datetime import datetime, timezone
@@ -8,6 +9,25 @@ SUPPORTED_CURRENCIES = ["EUR", "USD", "XOF"]
 STRIPE_SUPPORTED = {"EUR", "USD"}  # XOF settled in EUR for Stripe in v1
 
 DEFAULT_RATES = {"EUR": 1.0, "USD": 1.08, "XOF": 655.957}
+PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("FRONTEND_URL", "")).rstrip("/")
+
+
+def resolve_media(url):
+    """Relative /api/media/... paths -> absolute URL for the storefront."""
+    if url and url.startswith("/api/media/"):
+        return f"{PUBLIC_BASE_URL}{url}"
+    return url or ""
+
+
+def normalize_media(url):
+    """Absolute media URL on our own domain -> relative path (domain-independent storage)."""
+    if not url:
+        return ""
+    url = url.strip()
+    marker = "/api/media/"
+    if marker in url and (url.startswith(PUBLIC_BASE_URL) or url.startswith("http")) and "strykos/" in url:
+        return url[url.index(marker):]
+    return url
 
 DEFAULT_SETTINGS = {
     "currency": {
@@ -44,10 +64,13 @@ DEFAULT_SETTINGS = {
     },
     "site": {
         "name": "STRYKOS",
-        "email": "contact@strykos.com",
-        "phone": "+223 00 00 00 00",
+        "email": "contact@actoos.com",
+        "phone": "+32 465743001",
+        "whatsapp": "+32465743001",
         "address_fr": "Bamako, Mali",
         "address_en": "Bamako, Mali",
+        "hours_fr": "Lun-Sam 9h-19h",
+        "hours_en": "Mon-Sat 9am-7pm",
         "socials": {"instagram": "", "facebook": "", "tiktok": ""},
     },
     "payment_providers": {
@@ -115,13 +138,20 @@ def serialize_product(product, rates, brand=None, category=None, full=False):
         "colors": product.colors or [],
         "customizable": product.customizable,
         "customization_price_eur": float(product.customization_price_eur or 0),
-        "images": [img.url for img in product.images] if product.images else [],
+        "images": [resolve_media(img.url) for img in product.images] if product.images else [],
+        "video_url": resolve_media(product.video_url),
         "published": product.published,
     }
     if full:
         data["description_fr"] = product.description_fr
         data["description_en"] = product.description_en
         data["variants"] = [v.to_dict() for v in product.variants]
+        data["price_eur"] = float(product.price_eur or 0)
+        data["price_usd"] = float(product.price_usd) if product.price_usd is not None else None
+        data["price_xof"] = float(product.price_xof) if product.price_xof is not None else None
+        data["sale_price_eur"] = float(product.sale_price_eur) if product.sale_price_eur is not None else None
+        data["sales_count"] = product.sales_count or 0
+        data["created_at"] = product.created_at.isoformat() if product.created_at else None
         total_stock = sum(v.stock for v in product.variants) if product.variants else 0
         data["in_stock"] = total_stock > 0
     else:

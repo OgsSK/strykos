@@ -83,6 +83,9 @@ export default function ProductDetail() {
               ))}
             </div>
           )}
+          {product.video_url && (
+            <video src={product.video_url} controls playsInline className="w-full mt-4 bg-black" data-testid="product-video" />
+          )}
         </div>
 
         {/* Info */}

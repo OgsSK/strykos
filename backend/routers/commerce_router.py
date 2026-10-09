@@ -1,22 +1,64 @@
 import os
 import stripe
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, AsyncSessionLocal
-from models import Product, ProductVariant, Order, Payment, WishlistItem
+from models import Product, ProductVariant, Order, Payment, WishlistItem, PromoCode
 from auth import get_current_user, get_optional_user
 from utils import (
     get_rates, get_settings, product_prices, convert_from_eur, round_currency,
-    serialize_product, gen_order_number, STRIPE_SUPPORTED,
+    serialize_product, gen_order_number, STRIPE_SUPPORTED, resolve_media,
 )
+from emails import send_order_email, notify_admin_new_order
 
 router = APIRouter(tags=["commerce"])
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+
+# ---------- Promo codes ----------
+async def resolve_promo(db, code: str | None, subtotal_eur: float, email: str | None, user):
+    """Returns (promo, error_key). error_key None when valid."""
+    if not code:
+        return None, None
+    res = await db.execute(select(PromoCode).where(func.upper(PromoCode.code) == code.strip().upper()))
+    promo = res.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if not promo or not promo.active:
+        return None, "promo_invalid"
+    if promo.starts_at and promo.starts_at > now:
+        return None, "promo_not_started"
+    if promo.expires_at and promo.expires_at < now:
+        return None, "promo_expired"
+    if promo.usage_limit is not None and (promo.used_count or 0) >= promo.usage_limit:
+        return None, "promo_exhausted"
+    if float(promo.min_subtotal_eur or 0) > subtotal_eur + 1e-9:
+        return None, "promo_min_subtotal"
+    if promo.first_order_only:
+        conds = [Order.payment_status == "paid"]
+        if user:
+            conds.append(Order.user_id == user.id)
+        elif email:
+            conds.append(Order.email == email.lower().strip())
+        else:
+            return None, "promo_first_order_only"
+        prev = await db.execute(select(func.count(Order.id)).where(*conds))
+        if (prev.scalar() or 0) > 0:
+            return None, "promo_first_order_only"
+    return promo, None
+
+
+def promo_discount_eur(promo, subtotal_eur: float) -> float:
+    if not promo:
+        return 0.0
+    if promo.discount_type == "percent":
+        return round(subtotal_eur * float(promo.value or 0) / 100.0, 2)
+    return round(min(float(promo.value or 0), subtotal_eur), 2)
 
 
 # ---------- Wishlist ----------
@@ -87,15 +129,18 @@ class CheckoutInput(BaseModel):
     shipping: ShippingInfo
     shipping_method_index: int = 0
     origin_url: str
+    promo_code: Optional[str] = None
+    lang: str = "fr"
 
 
-async def _compute_order(db, items, currency, shipping_country, shipping_method_index):
+async def _compute_order(db, items, currency, shipping_country, shipping_method_index, promo_code=None, email=None, user=None):
     rates = await get_rates(db)
     settings = await get_settings(db)
     charge_currency = currency if currency in STRIPE_SUPPORTED else "EUR"
     order_items, issues = [], []
     subtotal_display = 0.0
     subtotal_charge = 0.0
+    subtotal_eur = 0.0
     stripe_line_items = []
     variant_map = {}
 
@@ -131,11 +176,13 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
         custom_chg = convert_from_eur(product.customization_price_eur, charge_currency, rates) if has_custom else 0
         unit_charge = round_currency(pp[charge_currency]["price"] + extra_chg + (custom_chg or 0), charge_currency)
         subtotal_charge += round_currency(unit_charge * line.quantity, charge_currency)
+        subtotal_eur += (pp["EUR"]["price"] + float(variant.extra_price_eur or 0)
+                         + (float(product.customization_price_eur or 0) if has_custom else 0)) * line.quantity
 
         img = product.images[0].url if product.images else ""
         order_items.append({
             "product_id": product.id, "slug": product.slug,
-            "name_fr": product.name_fr, "name_en": product.name_en, "image": img,
+            "name_fr": product.name_fr, "name_en": product.name_en, "image": resolve_media(img),
             "variant_id": variant.id, "size": variant.size, "color": variant.color,
             "quantity": line.quantity, "unit_price": unit_display, "line_total": line_display,
             "customization": line.customization if has_custom else None,
@@ -150,15 +197,23 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
             "quantity": line.quantity,
         })
 
+    # promo
+    promo, promo_error = await resolve_promo(db, promo_code, subtotal_eur, email, user)
+    discount_eur = promo_discount_eur(promo, subtotal_eur)
+    discount_display = convert_from_eur(discount_eur, currency, rates) or 0
+    discount_charge = convert_from_eur(discount_eur, charge_currency, rates) or 0
+
     # shipping
     methods = [m for m in settings["shipping"]["methods"] if m["country"] == shipping_country]
     if not methods:
         methods = [{"country": shipping_country, "country_name": shipping_country,
                     "name_fr": "Livraison internationale", "name_en": "International shipping",
                     "cost_eur": 15.0, "delay_fr": "7-14 jours", "delay_en": "7-14 days"}]
-    method = methods[min(shipping_method_index, len(methods) - 1)]
-    ship_display = convert_from_eur(method["cost_eur"], currency, rates)
-    ship_charge = convert_from_eur(method["cost_eur"], charge_currency, rates)
+    method = dict(methods[min(shipping_method_index, len(methods) - 1)])
+    free_ship = bool(promo and promo.free_shipping)
+    ship_cost_eur = 0.0 if free_ship else float(method["cost_eur"])
+    ship_display = convert_from_eur(ship_cost_eur, currency, rates)
+    ship_charge = convert_from_eur(ship_cost_eur, charge_currency, rates)
     if ship_charge and ship_charge > 0:
         stripe_line_items.append({
             "price_data": {"currency": charge_currency.lower(),
@@ -169,79 +224,120 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
 
     subtotal_display = round_currency(subtotal_display, currency)
     subtotal_charge = round_currency(subtotal_charge, charge_currency)
-    total_display = round_currency(subtotal_display + (ship_display or 0), currency)
-    total_charge = round_currency(subtotal_charge + (ship_charge or 0), charge_currency)
+    discount_display = min(discount_display, subtotal_display)
+    discount_charge = min(discount_charge, subtotal_charge)
+    total_display = round_currency(subtotal_display - discount_display + (ship_display or 0), currency)
+    total_charge = round_currency(subtotal_charge - discount_charge + (ship_charge or 0), charge_currency)
 
     return {
         "items": order_items, "issues": issues, "currency": currency,
         "charge_currency": charge_currency, "subtotal": subtotal_display,
         "shipping_cost": ship_display or 0, "total": total_display,
+        "discount": discount_display, "discount_charge": discount_charge,
+        "promo": promo, "promo_error": promo_error, "free_shipping": free_ship,
         "charge_total": total_charge, "shipping_method": method,
         "stripe_line_items": stripe_line_items, "variant_map": variant_map,
     }
 
 
-@router.post("/checkout/validate")
-async def checkout_validate(data: CheckoutInput, db: AsyncSession = Depends(get_db)):
-    calc = await _compute_order(db, data.items, data.currency.upper(), data.shipping.country, data.shipping_method_index)
-    notice = ""
-    if calc["currency"] != calc["charge_currency"]:
-        notice = (f"Le paiement sera traite en {calc['charge_currency']} pour un montant de "
-                  f"{calc['charge_total']} {calc['charge_currency']} (equivalent affiche: "
-                  f"{calc['total']} {calc['currency']}).")
+def _public_calc(calc, notice):
     return {
         "items": calc["items"], "issues": calc["issues"], "currency": calc["currency"],
         "charge_currency": calc["charge_currency"], "subtotal": calc["subtotal"],
-        "shipping_cost": calc["shipping_cost"], "total": calc["total"],
+        "shipping_cost": calc["shipping_cost"], "discount": calc["discount"], "total": calc["total"],
         "charge_total": calc["charge_total"], "shipping_method": calc["shipping_method"],
+        "promo": calc["promo"].to_dict() if calc["promo"] else None,
+        "promo_error": calc["promo_error"], "free_shipping": calc["free_shipping"],
         "payment_notice": notice,
     }
+
+
+def _notice(calc):
+    if calc["currency"] == calc["charge_currency"]:
+        return ""
+    return (f"Le paiement sera traite en {calc['charge_currency']} pour un montant de "
+            f"{calc['charge_total']} {calc['charge_currency']} (equivalent affiche: "
+            f"{calc['total']} {calc['currency']}).")
+
+
+@router.post("/checkout/validate")
+async def checkout_validate(data: CheckoutInput, db: AsyncSession = Depends(get_db), user=Depends(get_optional_user)):
+    calc = await _compute_order(db, data.items, data.currency.upper(), data.shipping.country,
+                                data.shipping_method_index, data.promo_code, data.shipping.email, user)
+    return _public_calc(calc, _notice(calc))
+
+
+class PromoCheck(BaseModel):
+    code: str
+    subtotal_eur: float = 0
+    email: Optional[str] = None
+
+
+@router.post("/promo/check")
+async def promo_check(data: PromoCheck, db: AsyncSession = Depends(get_db), user=Depends(get_optional_user)):
+    promo, err = await resolve_promo(db, data.code, data.subtotal_eur, data.email, user)
+    if err:
+        return {"valid": False, "error": err}
+    return {"valid": True, "promo": promo.to_dict(), "discount_eur": promo_discount_eur(promo, data.subtotal_eur)}
 
 
 @router.post("/checkout/create")
 async def checkout_create(data: CheckoutInput, request: Request,
                           db: AsyncSession = Depends(get_db), user=Depends(get_optional_user)):
-    calc = await _compute_order(db, data.items, data.currency.upper(), data.shipping.country, data.shipping_method_index)
+    calc = await _compute_order(db, data.items, data.currency.upper(), data.shipping.country,
+                                data.shipping_method_index, data.promo_code, data.shipping.email, user)
     if calc["issues"]:
         raise HTTPException(status_code=409, detail={"message": "Certains articles sont indisponibles", "issues": calc["issues"]})
     if not calc["items"]:
         raise HTTPException(status_code=400, detail="Panier vide")
+    if data.promo_code and calc["promo_error"]:
+        raise HTTPException(status_code=400, detail={"message": "Code promo invalide", "promo_error": calc["promo_error"]})
 
-    notice = ""
-    if calc["currency"] != calc["charge_currency"]:
-        notice = (f"Paiement traite en {calc['charge_currency']}: {calc['charge_total']} {calc['charge_currency']} "
-                  f"(equivalent {calc['total']} {calc['currency']}).")
-
+    notice = _notice(calc)
     order = Order(
         order_number=gen_order_number(), user_id=user.id if user else None,
         email=data.shipping.email.lower().strip(), first_name=data.shipping.first_name,
         last_name=data.shipping.last_name, phone=data.shipping.phone,
         status="pending_payment", payment_status="pending",
         currency=calc["currency"], charge_currency=calc["charge_currency"],
-        subtotal=calc["subtotal"], shipping_cost=calc["shipping_cost"], discount=0,
+        subtotal=calc["subtotal"], shipping_cost=calc["shipping_cost"], discount=calc["discount"],
         total=calc["total"], charge_total=calc["charge_total"], payment_notice=notice,
         shipping_address=data.shipping.model_dump(), shipping_method=calc["shipping_method"],
-        items=calc["items"],
+        items=calc["items"], lang=data.lang if data.lang in ("fr", "en") else "fr",
+        promo_code=calc["promo"].code if calc["promo"] else "",
+        status_history=[{"status": "pending_payment", "at": datetime.now(timezone.utc).isoformat(), "by": "system"}],
     )
     db.add(order)
     await db.commit()
     await db.refresh(order)
 
     origin = data.origin_url.rstrip("/")
-    session = stripe.checkout.Session.create(
+    session_kwargs = dict(
         line_items=calc["stripe_line_items"],
         mode="payment",
         success_url=f"{origin}/order/confirmation?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{origin}/checkout?cancelled=1",
         customer_email=order.email,
-        metadata={"order_id": order.id, "order_number": order.order_number},
+        metadata={"order_id": order.id, "order_number": order.order_number, "promo_code": order.promo_code},
     )
+    if calc["discount_charge"] > 0:
+        coupon = stripe.Coupon.create(amount_off=int(round(calc["discount_charge"] * 100)),
+                                      currency=calc["charge_currency"].lower(), duration="once",
+                                      name=f"Code {calc['promo'].code}")
+        session_kwargs["discounts"] = [{"coupon": coupon.id}]
+    session = stripe.checkout.Session.create(**session_kwargs)
     order.stripe_session_id = session.id
     db.add(Payment(order_id=order.id, provider="stripe", session_id=session.id,
                    amount=calc["charge_total"], currency=calc["charge_currency"], status="pending"))
     await db.commit()
     return {"checkout_url": session.url, "session_id": session.id,
             "order_number": order.order_number, "payment_notice": notice}
+
+
+def push_history(order, status, by="system", note=""):
+    hist = list(order.status_history or [])
+    hist.append({"status": status, "at": datetime.now(timezone.utc).isoformat(), "by": by, "note": note})
+    order.status_history = hist
 
 
 async def _finalize_paid(db, order_id, payment_intent=None):
@@ -258,8 +354,14 @@ async def _finalize_paid(db, order_id, payment_intent=None):
         prod = pr.scalar_one_or_none()
         if prod:
             prod.sales_count = (prod.sales_count or 0) + item["quantity"]
+    if order.promo_code:
+        pres = await db.execute(select(PromoCode).where(PromoCode.code == order.promo_code))
+        promo = pres.scalar_one_or_none()
+        if promo:
+            promo.used_count = (promo.used_count or 0) + 1
     order.payment_status = "paid"
     order.status = "paid"
+    push_history(order, "paid")
     payres = await db.execute(select(Payment).where(Payment.session_id == order.stripe_session_id))
     pay = payres.scalar_one_or_none()
     if pay:
@@ -267,6 +369,8 @@ async def _finalize_paid(db, order_id, payment_intent=None):
         if payment_intent:
             pay.payment_intent = payment_intent
     await db.commit()
+    await send_order_email(db, order, "order_confirmed")
+    await notify_admin_new_order(db, order)
 
 
 @router.get("/payments/status/{session_id}")
@@ -330,3 +434,19 @@ async def order_detail(order_number: str, user=Depends(get_current_user), db: As
     if not order or (order.user_id != user.id and user.role != "admin"):
         raise HTTPException(status_code=404, detail="Commande introuvable")
     return order.to_dict()
+
+
+class TrackIn(BaseModel):
+    order_number: str
+    email: str
+
+
+@router.post("/orders/track")
+async def track_order(data: TrackIn, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Order).where(
+        func.upper(Order.order_number) == data.order_number.strip().upper(),
+        Order.email == data.email.strip().lower()))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande introuvable. Verifiez le numero et l'e-mail.")
+    return order.to_dict(public=True)

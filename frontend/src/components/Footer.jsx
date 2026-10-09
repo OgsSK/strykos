@@ -28,6 +28,7 @@ export default function Footer() {
             <li><Link to="/page/returns" className="hover:text-brand">{t("returnsPolicy")}</Link></li>
             <li><Link to="/page/faq" className="hover:text-brand">{t("faq")}</Link></li>
             <li><Link to="/page/contact" className="hover:text-brand">{t("contact")}</Link></li>
+            <li><Link to="/suivi" className="hover:text-brand" data-testid="footer-track-link">{t("trackTitle")}</Link></li>
           </ul>
         </div>
         <div>
@@ -44,7 +45,10 @@ export default function Footer() {
         <div className="max-w-7xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/50">
           <span>© {new Date().getFullYear()} STRYKOS. {t("allRightsReserved")}.</span>
           <span>{t("independentStore")}</span>
-          {site?.email && <span>{site.email}</span>}
+          <span className="flex gap-3">
+            {site?.email && <a href={`mailto:${site.email}`} className="hover:text-white" data-testid="footer-email">{site.email}</a>}
+            {site?.phone && <a href={`tel:${site.phone.replace(/ /g, "")}`} className="hover:text-white" data-testid="footer-phone">{site.phone}</a>}
+          </span>
         </div>
       </div>
     </footer>

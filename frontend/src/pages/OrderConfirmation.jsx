@@ -12,6 +12,7 @@ export default function OrderConfirmation() {
   const [state, setState] = useState("processing"); // processing | paid | pending
   const [order, setOrder] = useState(null);
   const cleared = useRef(false);
+  const clearCartRef = useRef(clearCart);
 
   useEffect(() => {
     if (!sessionId) { setState("pending"); return; }
@@ -23,7 +24,7 @@ export default function OrderConfirmation() {
         setOrder(data.order);
         if (data.payment_status === "paid") {
           setState("paid");
-          if (!cleared.current) { clearCart(); cleared.current = true; }
+          if (!cleared.current) { clearCartRef.current(); cleared.current = true; }
           return;
         }
       } catch (e) {}
@@ -33,7 +34,7 @@ export default function OrderConfirmation() {
     };
     poll();
     return () => clearTimeout(timer);
-  }, [sessionId]);
+  }, [sessionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const money = (v, cur) => {
     if (v == null) return "";
@@ -53,8 +54,10 @@ export default function OrderConfirmation() {
           <CheckCircle2 className="w-16 h-16 mx-auto text-green-600 mb-4" />
           <h1 className="font-heading text-3xl font-bold uppercase" data-testid="confirmation-title">{t("orderConfirmed")}</h1>
           <p className="text-ink-soft mt-2">{t("thankYou")}</p>
+          <p className="text-xs text-ink-muted mt-1">{lang === "fr" ? `Un e-mail de confirmation a ete envoye a ${order.email}` : `A confirmation email has been sent to ${order.email}`}</p>
           <div className="mt-6 border border-border p-6 text-left">
             <div className="flex justify-between text-sm py-1"><span className="text-ink-muted">{t("orderNumber")}</span><span className="font-bold" data-testid="confirmation-order-number">{order.order_number}</span></div>
+            {order.discount > 0 && <div className="flex justify-between text-sm py-1 text-green-700"><span>{t("discount")} {order.promo_code && `(${order.promo_code})`}</span><span>-{money(order.discount, order.currency)}</span></div>}
             <div className="flex justify-between text-sm py-1"><span className="text-ink-muted">{t("total")}</span><span className="font-semibold">{money(order.total, order.currency)}</span></div>
             {order.charge_currency !== order.currency && <div className="text-xs text-ink-muted py-1">{lang === "fr" ? "Facture" : "Charged"}: {money(order.charge_total, order.charge_currency)}</div>}
             <div className="flex justify-between text-sm py-1"><span className="text-ink-muted">{t("status")}</span><span className="uppercase text-green-600 font-semibold">{order.payment_status}</span></div>
@@ -68,7 +71,7 @@ export default function OrderConfirmation() {
             </div>
           </div>
           <div className="flex gap-3 justify-center mt-6">
-            <Link to="/account"><Button className="bg-ink hover:bg-ink/90 rounded-none uppercase">{t("trackOrder")}</Button></Link>
+            <Link to={`/suivi?order=${order.order_number}&email=${encodeURIComponent(order.email || "")}`} data-testid="confirmation-track-link"><Button className="bg-ink hover:bg-ink/90 rounded-none uppercase">{t("trackOrder")}</Button></Link>
             <Link to="/catalog"><Button variant="outline" className="rounded-none uppercase">{t("continueShopping")}</Button></Link>
           </div>
         </div>

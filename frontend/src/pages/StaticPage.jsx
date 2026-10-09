@@ -40,7 +40,7 @@ const PAGES = {
 
 export default function StaticPage() {
   const { slug } = useParams();
-  const { lang, t } = useStore();
+  const { lang, t, settings } = useStore();
   const page = PAGES[slug];
   if (!page) return (
     <div className="max-w-2xl mx-auto px-4 py-20 text-center">
@@ -49,10 +49,27 @@ export default function StaticPage() {
     </div>
   );
   const content = page[lang] || page.fr;
+  const site = settings?.site || {};
   return (
     <div className="max-w-3xl mx-auto px-4 py-12" data-testid={`static-page-${slug}`}>
       <h1 className="font-heading text-3xl sm:text-4xl font-bold uppercase tracking-tight mb-6">{content.title}</h1>
-      <div className="prose text-ink-soft whitespace-pre-line leading-relaxed">{content.body}</div>
+      {slug === "contact" ? (
+        <div className="grid sm:grid-cols-2 gap-6" data-testid="contact-details">
+          <div className="border border-border p-5 space-y-3 text-sm">
+            <div><div className="text-xs uppercase tracking-wider text-ink-muted">{t("email")}</div><a href={`mailto:${site.email}`} className="font-semibold text-brand" data-testid="contact-email">{site.email}</a></div>
+            <div><div className="text-xs uppercase tracking-wider text-ink-muted">{t("phone")} / WhatsApp</div><a href={`tel:${(site.phone || "").replace(/ /g, "")}`} className="font-semibold" data-testid="contact-phone">{site.phone}</a></div>
+            {site.whatsapp && <a href={`https://wa.me/${site.whatsapp.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer" className="inline-block bg-[#25D366] text-white px-4 py-2 text-xs font-bold uppercase">WhatsApp</a>}
+            <div><div className="text-xs uppercase tracking-wider text-ink-muted">{t("hours")}</div><div>{lang === "fr" ? site.hours_fr : site.hours_en}</div></div>
+            <div><div className="text-xs uppercase tracking-wider text-ink-muted">{t("address")}</div><div>{lang === "fr" ? site.address_fr : site.address_en}</div></div>
+          </div>
+          <div className="text-ink-soft leading-relaxed text-sm">
+            <p>{lang === "fr" ? "Nous repondons sous 24-48h ouvrees. Pour une question sur une commande, indiquez votre numero de commande." : "We reply within 24-48 business hours. For an order question, include your order number."}</p>
+            <Link to="/suivi" className="inline-block mt-4 border border-ink px-4 py-2 text-xs font-bold uppercase hover:bg-ink hover:text-white transition-colors">{t("trackTitle")}</Link>
+          </div>
+        </div>
+      ) : (
+        <div className="prose text-ink-soft whitespace-pre-line leading-relaxed">{content.body}</div>
+      )}
     </div>
   );
 }

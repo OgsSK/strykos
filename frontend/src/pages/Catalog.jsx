@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
@@ -70,7 +70,7 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  const filters = {
+  const filters = useMemo(() => ({
     category: params.get("category") || "",
     brand: params.get("brand") || "",
     min_price: params.get("min_price") || "",
@@ -81,7 +81,7 @@ export default function Catalog() {
     is_new: params.get("is_new") || "",
     sort: params.get("sort") || "relevance",
     q: params.get("q") || "",
-  };
+  }), [params]);
 
   const setFilter = (key, val) => {
     const next = new URLSearchParams(params);
@@ -102,7 +102,7 @@ export default function Catalog() {
       setProducts(data.products); setTotal(data.total);
     } catch { setProducts([]); setTotal(0); }
     setLoading(false);
-  }, [params]);
+  }, [filters, isSearch]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 

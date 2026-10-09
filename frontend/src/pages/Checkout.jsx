@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Check } from "lucide-react";
+import { Check, Tag, X } from "lucide-react";
 
 const COUNTRIES = [
   { code: "ML", fr: "Mali", en: "Mali" },
@@ -33,8 +33,24 @@ export default function Checkout() {
     [settings, form.country]
   );
   const selectedMethod = shippingMethods[methodIndex] || { cost_eur: 15 };
-  const shippingDisplay = convertEur(selectedMethod.cost_eur);
-  const total = cartSubtotal + shippingDisplay;
+  const [promoInput, setPromoInput] = useState("");
+  const [promo, setPromo] = useState(null); // {code, discount_type, value, free_shipping}
+  const [promoError, setPromoError] = useState("");
+  const subtotalEur = cart.reduce((s, i) => s + ((i.prices?.EUR?.price ?? 0) + (i.extra_price_eur || 0) + (i.customization ? (i.customization_price_eur || 0) : 0)) * i.quantity, 0);
+  const discountEur = promo ? (promo.discount_type === "percent" ? Math.round(subtotalEur * promo.value) / 100 : Math.min(promo.value, subtotalEur)) : 0;
+  const discountDisplay = Math.min(convertEur(discountEur), cartSubtotal);
+  const shippingDisplay = promo?.free_shipping ? 0 : convertEur(selectedMethod.cost_eur);
+  const total = cartSubtotal - discountDisplay + shippingDisplay;
+
+  const applyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setPromoError("");
+    try {
+      const { data } = await api.post("/promo/check", { code: promoInput.trim(), subtotal_eur: subtotalEur, email: form.email || null });
+      if (data.valid) { setPromo(data.promo); toast.success(`${t("promoApplied")}: ${data.promo.code}`); }
+      else { setPromo(null); setPromoError(t(data.error) || t("promo_invalid")); }
+    } catch (e) { setPromoError(apiError(e)); }
+  };
   const chargeDifferent = !["EUR", "USD"].includes(currency);
 
   if (cart.length === 0) { nav("/cart"); return null; }
@@ -58,6 +74,7 @@ export default function Checkout() {
       const { data } = await api.post("/checkout/create", {
         items: itemsPayload, currency, shipping: shippingPayload,
         shipping_method_index: methodIndex, origin_url: window.location.origin,
+        promo_code: promo?.code || null, lang,
       });
       window.location.href = data.checkout_url;
     } catch (e) {
@@ -172,7 +189,23 @@ export default function Checkout() {
         <div className="border border-border p-5 h-fit" data-testid="checkout-summary">
           <h3 className="font-heading font-bold uppercase mb-4">{t("orderSummary")}</h3>
           <div className="flex justify-between text-sm py-1"><span>{t("subtotal")}</span><span>{fmt(cartSubtotal)}</span></div>
-          <div className="flex justify-between text-sm py-1"><span>{t("shipping")}</span><span>{fmt(shippingDisplay)}</span></div>
+          {promo && <div className="flex justify-between text-sm py-1 text-green-700" data-testid="checkout-discount"><span>{t("discount")} ({promo.code})</span><span>-{fmt(discountDisplay)}</span></div>}
+          <div className="flex justify-between text-sm py-1"><span>{t("shipping")}</span><span>{promo?.free_shipping ? <span className="text-green-700">{t("freeShipping")}</span> : fmt(shippingDisplay)}</span></div>
+          <div className="mt-3 pt-3 border-t border-border" data-testid="promo-box">
+            <Label className="text-xs uppercase tracking-wider">{t("promoCode")}</Label>
+            {promo ? (
+              <div className="flex items-center justify-between mt-1 bg-green-50 border border-green-200 px-3 py-2 text-sm">
+                <span className="inline-flex items-center gap-1 font-mono font-semibold text-green-800"><Tag className="w-3 h-3" /> {promo.code}</span>
+                <button onClick={() => { setPromo(null); setPromoInput(""); }} className="text-ink-muted hover:text-ink" data-testid="remove-promo-btn"><X className="w-4 h-4" /></button>
+              </div>
+            ) : (
+              <div className="flex gap-2 mt-1">
+                <Input value={promoInput} onChange={(e) => setPromoInput(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === "Enter" && applyPromo()} placeholder="CODE" className="font-mono h-9" data-testid="promo-input" />
+                <Button type="button" variant="outline" onClick={applyPromo} className="rounded-none h-9" data-testid="apply-promo-btn">{t("applyPromo")}</Button>
+              </div>
+            )}
+            {promoError && <p className="text-xs text-brand mt-1" data-testid="promo-error">{promoError}</p>}
+          </div>
           <div className="flex justify-between font-bold py-3 border-t border-border mt-2"><span>{t("total")}</span><span data-testid="checkout-total">{fmt(total)}</span></div>
           <div className="text-xs text-ink-muted mt-2">{currency !== "EUR" && currency !== "USD" ? (lang === "fr" ? "Facture en EUR" : "Billed in EUR") : ""}</div>
         </div>

@@ -20,6 +20,13 @@ import AdminDashboard from "@/pages/admin/AdminDashboard";
 import AdminProducts from "@/pages/admin/AdminProducts";
 import AdminOrders from "@/pages/admin/AdminOrders";
 import AdminSettings from "@/pages/admin/AdminSettings";
+import AdminOrderDetail from "@/pages/admin/AdminOrderDetail";
+import AdminBrands from "@/pages/admin/AdminBrands";
+import AdminCategories from "@/pages/admin/AdminCategories";
+import AdminCustomers, { AdminCustomerDetail } from "@/pages/admin/AdminCustomers";
+import AdminPromos from "@/pages/admin/AdminPromos";
+import AdminEmails from "@/pages/admin/AdminEmails";
+import TrackOrder from "@/pages/TrackOrder";
 
 function Protected({ children, admin }) {
   const { user, authChecked } = useStore();
@@ -50,12 +57,21 @@ function App() {
               <Route path="/register" element={<Auth mode="register" />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
               <Route path="/page/:slug" element={<StaticPage />} />
+              <Route path="/suivi" element={<TrackOrder />} />
+              <Route path="/track" element={<TrackOrder />} />
               <Route path="*" element={<NotFound />} />
             </Route>
             <Route path="/admin" element={<Protected admin><AdminLayout /></Protected>}>
               <Route index element={<AdminDashboard />} />
               <Route path="products" element={<AdminProducts />} />
               <Route path="orders" element={<AdminOrders />} />
+              <Route path="orders/:id" element={<AdminOrderDetail />} />
+              <Route path="brands" element={<AdminBrands />} />
+              <Route path="categories" element={<AdminCategories />} />
+              <Route path="customers" element={<AdminCustomers />} />
+              <Route path="customers/:id" element={<AdminCustomerDetail />} />
+              <Route path="promos" element={<AdminPromos />} />
+              <Route path="emails" element={<AdminEmails />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
           </Routes>
