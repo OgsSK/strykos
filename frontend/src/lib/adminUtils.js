@@ -59,3 +59,11 @@ export async function uploadMedia(file, onProgress = () => {}) {
   onProgress(100);
   return data;
 }
+
+export async function downloadCsv(path, filename) {
+  const { data } = await api.get(path, { responseType: "blob" });
+  const url = URL.createObjectURL(data);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

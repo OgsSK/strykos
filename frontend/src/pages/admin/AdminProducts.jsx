@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ImageGalleryUploader, SingleMediaUploader } from "@/components/admin/MediaUploader";
-import { mediaSrc } from "@/lib/adminUtils";
+import { mediaSrc, downloadCsv } from "@/lib/adminUtils";
 import { toast } from "sonner";
-import { Plus, Trash2, Pencil, Copy, Eye, EyeOff, Search } from "lucide-react";
+import { Plus, Trash2, Pencil, Copy, Eye, EyeOff, Search, Download } from "lucide-react";
 
 const EMPTY = {
   slug: "", sku: "", brand_id: "", category_id: "", name_fr: "", name_en: "",
@@ -110,7 +110,10 @@ export default function AdminProducts() {
     <div data-testid="admin-products">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <h1 className="font-heading text-2xl font-bold uppercase">Produits <span className="text-ink-muted text-base font-normal">({filtered.length})</span></h1>
-        <Button onClick={openNew} data-testid="new-product-btn" className="bg-brand hover:bg-brand-dark rounded-none"><Plus className="w-4 h-4 mr-1" /> Nouveau produit</Button>
+        <div className="flex gap-2">
+          <button onClick={() => downloadCsv("/admin/export/stock.csv", "strykos-stock.csv").catch(() => toast.error("Export impossible"))} className="inline-flex items-center gap-1 border border-ink px-3 py-2 text-sm font-semibold hover:bg-ink hover:text-white transition-colors" data-testid="export-stock-csv"><Download className="w-4 h-4" /> Export stock CSV</button>
+          <Button onClick={openNew} data-testid="new-product-btn" className="bg-brand hover:bg-brand-dark rounded-none"><Plus className="w-4 h-4 mr-1" /> Nouveau produit</Button>
+        </div>
       </div>
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[200px]">

@@ -19,6 +19,7 @@ from routers.commerce_router import router as commerce_router
 from routers.admin_router import router as admin_router
 from routers.settings_router import router as settings_router
 from routers.media_router import router as media_router
+from routers.reviews_router import router as reviews_router
 from storage import init_storage
 
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +40,7 @@ api_router.include_router(commerce_router)
 api_router.include_router(admin_router)
 api_router.include_router(settings_router)
 api_router.include_router(media_router)
+api_router.include_router(reviews_router)
 app.include_router(api_router)
 
 app.add_middleware(
@@ -67,14 +69,25 @@ async def startup():
                     db.add(Setting(key=key, value=value))
                 elif key == "site" and row.value.get("email") == "contact@strykos.com":
                     row.value = {**value, **{k: v for k, v in row.value.items() if k not in ("email", "phone")}}
+                elif key == "hero" and "slides" not in (row.value or {}):
+                    old = row.value or {}
+                    first = {**value["slides"][0], **{k: old[k] for k in ("title_fr", "title_en", "subtitle_fr", "subtitle_en", "cta_fr", "cta_en", "cta_link") if old.get(k)}}
+                    row.value = {"interval_ms": 7000, "slides": [first] + value["slides"][1:]}
             # admin seed (idempotent: only creates the admin when missing)
             admin_email = os.environ.get("ADMIN_EMAIL", "admin@strykos.com").lower()
             admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
             res = await db.execute(select(Profile).where(Profile.email == admin_email))
             admin = res.scalar_one_or_none()
             if not admin:
-                db.add(Profile(email=admin_email, password_hash=hash_password(admin_password),
-                               first_name="Admin", last_name="STRYKOS", role="admin"))
+                legacy = (await db.execute(select(Profile).where(Profile.role == "admin").order_by(Profile.created_at))).scalars().first()
+                if legacy and legacy.email != admin_email:
+                    legacy.email = admin_email
+                    legacy.password_hash = hash_password(admin_password)
+                else:
+                    db.add(Profile(email=admin_email, password_hash=hash_password(admin_password),
+                                   first_name="Admin", last_name="STRYKOS", role="admin"))
+            elif not verify_password(admin_password, admin.password_hash):
+                admin.password_hash = hash_password(admin_password)
             await db.commit()
         logger.info("Startup seeding complete")
     except Exception as e:

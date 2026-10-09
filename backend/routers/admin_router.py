@@ -703,7 +703,7 @@ class SettingIn(BaseModel):
     value: Any
 
 
-ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "shipping", "site", "payment_providers"}
+ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "shipping", "site", "payment_providers"}
 
 
 @router.put("/settings")
@@ -712,12 +712,106 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=400, detail="Cle de parametre inconnue")
     value = data.value
     if data.key == "hero" and isinstance(value, dict):
-        value = {**value, "image_url": normalize_media(value.get("image_url", ""))}
+        value = {**value, "slides": [{**sl, "video_url": normalize_media(sl.get("video_url", "")), "image_url": normalize_media(sl.get("image_url", ""))}
+                                     for sl in (value.get("slides") or [])]}
+    if data.key == "sections" and isinstance(value, dict):
+        value = {k: {**v, "video_url": normalize_media(v.get("video_url", "")), "image_url": normalize_media(v.get("image_url", ""))}
+                 for k, v in value.items()}
     res = await db.execute(select(Setting).where(Setting.key == data.key))
     s = res.scalar_one_or_none()
     if s:
         s.value = value
     else:
         db.add(Setting(key=data.key, value=value))
+    await db.commit()
+    return {"ok": True}
+
+
+# ---------------- CSV exports ----------------
+import csv
+import io
+from fastapi.responses import StreamingResponse
+
+
+def _csv_response(rows, header, filename):
+    buf = io.StringIO()
+    w = csv.writer(buf, delimiter=";")
+    w.writerow(header)
+    w.writerows(rows)
+    buf.seek(0)
+    return StreamingResponse(iter(["\ufeff" + buf.getvalue()]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/export/orders.csv")
+async def export_orders(status: Optional[str] = None, payment_status: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    q = select(Order).order_by(Order.created_at.desc())
+    if status:
+        q = q.where(Order.status == status)
+    if payment_status:
+        q = q.where(Order.payment_status == payment_status)
+    orders = (await db.execute(q)).scalars().all()
+    rows = []
+    for o in orders:
+        a = o.shipping_address or {}
+        items = " | ".join(f"{it.get('name_fr')} ({it.get('size')}) x{it.get('quantity')}" for it in (o.items or []))
+        rows.append([o.order_number, o.created_at.strftime("%Y-%m-%d %H:%M") if o.created_at else "", o.status, o.payment_status,
+                     f"{o.first_name} {o.last_name}", o.email, o.phone, a.get("address_line", ""), a.get("postal_code", ""), a.get("city", ""), a.get("country", ""),
+                     o.currency, float(o.subtotal or 0), float(o.discount or 0), o.promo_code, float(o.shipping_cost or 0), float(o.total or 0),
+                     o.charge_currency, float(o.charge_total or 0), (o.shipping_method or {}).get("name_fr", ""),
+                     o.tracking_carrier, o.tracking_number, items])
+    header = ["Numero", "Date", "Statut", "Paiement", "Client", "Email", "Telephone", "Adresse", "CP", "Ville", "Pays",
+              "Devise", "Sous-total", "Remise", "Code promo", "Livraison", "Total", "Devise facturee", "Total facture",
+              "Mode livraison", "Transporteur", "N suivi", "Articles"]
+    return _csv_response(rows, header, f"strykos-commandes-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+
+
+@router.get("/export/stock.csv")
+async def export_stock(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(Product).options(selectinload(Product.brand), selectinload(Product.category), selectinload(Product.variants)).order_by(Product.name_fr))
+    rows = []
+    for p in res.scalars().unique().all():
+        for v in p.variants:
+            rows.append([p.sku, p.name_fr, p.name_en, p.brand.name if p.brand else "", p.category.name_fr if p.category else "",
+                         v.sku, v.size, v.color, v.stock, float(p.price_eur or 0), float(p.sale_price_eur) if p.sale_price_eur is not None else "",
+                         float(v.extra_price_eur or 0), "oui" if p.published else "non", p.sales_count or 0, p.slug])
+    header = ["SKU produit", "Nom FR", "Nom EN", "Marque", "Categorie", "SKU variante", "Taille", "Couleur", "Stock", "Prix EUR", "Prix promo EUR", "Supplement variante", "Publie", "Ventes", "Slug"]
+    return _csv_response(rows, header, f"strykos-stock-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
+
+
+# ---------------- Reviews moderation ----------------
+from models import Review
+
+
+@router.get("/reviews")
+async def admin_reviews(approved: Optional[bool] = None, db: AsyncSession = Depends(get_db)):
+    q = select(Review).order_by(Review.created_at.desc()).limit(500)
+    if approved is not None:
+        q = q.where(Review.approved == approved)
+    reviews = (await db.execute(q)).scalars().all()
+    pids = {r.product_id for r in reviews}
+    names = {}
+    if pids:
+        pres = await db.execute(select(Product.id, Product.name_fr, Product.slug).where(Product.id.in_(pids)))
+        names = {pid: {"name": n, "slug": sl} for pid, n, sl in pres.all()}
+    return [{**r.to_dict(admin=True), "product": names.get(r.product_id)} for r in reviews]
+
+
+@router.put("/reviews/{review_id}/approve")
+async def approve_review(review_id: str, data: dict, db: AsyncSession = Depends(get_db)):
+    r = (await db.execute(select(Review).where(Review.id == review_id))).scalar_one_or_none()
+    if not r:
+        raise HTTPException(status_code=404, detail="Avis introuvable")
+    r.approved = bool(data.get("approved", True))
+    await db.commit()
+    return {"ok": True, "approved": r.approved}
+
+
+@router.delete("/reviews/{review_id}")
+async def delete_review(review_id: str, db: AsyncSession = Depends(get_db)):
+    r = (await db.execute(select(Review).where(Review.id == review_id))).scalar_one_or_none()
+    if not r:
+        raise HTTPException(status_code=404, detail="Avis introuvable")
+    await db.delete(r)
     await db.commit()
     return {"ok": True}

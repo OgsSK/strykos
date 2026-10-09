@@ -1,3 +1,4 @@
+import { Stars } from "@/components/Stars";
 import React from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
@@ -44,6 +45,7 @@ export default function ProductCard({ product }) {
       <div className="pt-3">
         {product.brand && <div className="text-xs text-ink-muted uppercase tracking-wider">{product.brand.name}</div>}
         <div className="text-sm font-medium text-ink line-clamp-1 mt-0.5">{name}</div>
+        {product.review_count > 0 && <div className="mt-0.5"><Stars value={product.rating_avg} size="xs" count={product.review_count} /></div>}
         <div className="flex items-center gap-2 mt-1">
           <span className={`text-sm font-semibold ${product.on_sale ? "text-brand" : "text-ink"}`} data-testid={`price-${product.slug}`}>{fmt(p.price)}</span>
           {p.compare_at && <span className="text-xs text-ink-muted line-through">{fmt(p.compare_at)}</span>}

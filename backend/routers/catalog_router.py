@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Product, Brand, Category
 from utils import get_rates, serialize_product
+from routers.reviews_router import attach_ratings
 
 router = APIRouter(tags=["catalog"])
 
@@ -126,7 +127,7 @@ async def list_products(
     page_items = products[start:start + limit]
     return {
         "total": total, "page": page, "limit": limit,
-        "products": [serialize_product(p, rates) for p in page_items],
+        "products": await attach_ratings(db, [serialize_product(p, rates) for p in page_items]),
     }
 
 
@@ -151,7 +152,7 @@ async def product_detail(slug: str, db: AsyncSession = Depends(get_db)):
     product = result.scalars().unique().one_or_none()
     if not product:
         raise HTTPException(status_code=404, detail="Produit introuvable")
-    data = serialize_product(product, rates, full=True)
+    data = (await attach_ratings(db, [serialize_product(product, rates, full=True)]))[0]
     # related: same category, different product
     rel_q = (await _base_product_query()).where(
         Product.category_id == product.category_id, Product.id != product.id
@@ -171,7 +172,7 @@ async def homepage(db: AsyncSession = Depends(get_db)):
             q = q.where(getattr(Product, attr) == val)
         q = q.order_by(Product.created_at.desc()).limit(8)
         res = await db.execute(q)
-        return [serialize_product(p, rates) for p in res.scalars().unique().all()]
+        return await attach_ratings(db, [serialize_product(p, rates) for p in res.scalars().unique().all()])
 
     async def sale_section():
         q = (await _base_product_query()).where(Product.sale_price_eur.isnot(None)).limit(8)

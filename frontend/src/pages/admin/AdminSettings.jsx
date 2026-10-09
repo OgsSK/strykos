@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { SingleMediaUploader } from "@/components/admin/MediaUploader";
+import { HeroSlidesEditor, SectionsEditor } from "@/components/admin/HomeMediaEditors";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -30,7 +30,7 @@ export default function AdminSettings() {
   };
   const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], providers = s.payment_providers || {};
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
-  const tabs = [["site", "Coordonnees"], ["hero", "Accueil"], ["shipping", "Livraison"], ["currency", "Devises"], ["payments", "Paiements"]];
+  const tabs = [["site", "Coordonnees"], ["hero", "Accueil & videos"], ["shipping", "Livraison"], ["currency", "Devises"], ["payments", "Paiements"]];
 
   return (
     <div data-testid="admin-settings" className="max-w-4xl">
@@ -59,19 +59,11 @@ export default function AdminSettings() {
 
       {tab === "hero" && (
         <div className="space-y-4">
-          <Card title="Banniere d'accueil (hero)" onSave={() => save("hero")} testid="settings-hero">
-            <div className="space-y-3">
-              <div><Label>Image</Label><SingleMediaUploader value={hero.image_url || ""} onChange={(v) => upd("hero", { image_url: v })} label="une image" testid="hero-image" /></div>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div><Label>Titre FR</Label><Input value={hero.title_fr || ""} onChange={(e) => upd("hero", { title_fr: e.target.value })} /></div>
-                <div><Label>Titre EN</Label><Input value={hero.title_en || ""} onChange={(e) => upd("hero", { title_en: e.target.value })} /></div>
-                <div><Label>Sous-titre FR</Label><Textarea rows={2} value={hero.subtitle_fr || ""} onChange={(e) => upd("hero", { subtitle_fr: e.target.value })} /></div>
-                <div><Label>Sous-titre EN</Label><Textarea rows={2} value={hero.subtitle_en || ""} onChange={(e) => upd("hero", { subtitle_en: e.target.value })} /></div>
-                <div><Label>Bouton FR</Label><Input value={hero.cta_fr || ""} onChange={(e) => upd("hero", { cta_fr: e.target.value })} /></div>
-                <div><Label>Bouton EN</Label><Input value={hero.cta_en || ""} onChange={(e) => upd("hero", { cta_en: e.target.value })} /></div>
-                <div><Label>Lien du bouton</Label><Input value={hero.cta_link || ""} onChange={(e) => upd("hero", { cta_link: e.target.value })} placeholder="/catalog" /></div>
-              </div>
-            </div>
+          <Card title="Banniere d'accueil - carrousel video (style Nike)" onSave={() => save("hero")} testid="settings-hero">
+            <HeroSlidesEditor hero={hero} onChange={(v) => setS({ ...s, hero: v })} />
+          </Card>
+          <Card title="Bannieres video des sections" onSave={() => save("sections")} testid="settings-sections">
+            <SectionsEditor sections={s.sections || {}} onChange={(v) => setS({ ...s, sections: v })} />
           </Card>
           <Card title="Barre d'information" onSave={() => save("info_bar")} testid="settings-infobar">
             <label className="flex items-center gap-2 text-sm mb-3"><input type="checkbox" checked={!!info.enabled} onChange={(e) => upd("info_bar", { enabled: e.target.checked })} /> Activee</label>

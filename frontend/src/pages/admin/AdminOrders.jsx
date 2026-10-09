@@ -2,9 +2,9 @@ import React, { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, apiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
-import { money, fmtDate, STATUSES, STATUS_LABELS, STATUS_COLORS } from "@/lib/adminUtils";
+import { money, fmtDate, STATUSES, STATUS_LABELS, STATUS_COLORS, downloadCsv } from "@/lib/adminUtils";
 import { toast } from "sonner";
-import { Search, Truck, Trash2, Eye } from "lucide-react";
+import { Search, Truck, Trash2, Eye, Download } from "lucide-react";
 
 export default function AdminOrders() {
   const [params, setParams] = useSearchParams();
@@ -37,7 +37,11 @@ export default function AdminOrders() {
 
   return (
     <div data-testid="admin-orders">
-      <h1 className="font-heading text-2xl font-bold uppercase mb-5">Commandes <span className="text-ink-muted text-base font-normal">({orders.length})</span></h1>
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <h1 className="font-heading text-2xl font-bold uppercase">Commandes <span className="text-ink-muted text-base font-normal">({orders.length})</span></h1>
+        <button onClick={() => { const sp = new URLSearchParams(); if (status) sp.set("status", status); if (paymentStatus) sp.set("payment_status", paymentStatus); downloadCsv(`/admin/export/orders.csv?${sp}`, "strykos-commandes.csv").catch(() => toast.error("Export impossible")); }}
+          className="inline-flex items-center gap-1 border border-ink px-3 py-2 text-sm font-semibold hover:bg-ink hover:text-white transition-colors" data-testid="export-orders-csv"><Download className="w-4 h-4" /> Export CSV</button>
+      </div>
       <div className="flex flex-wrap gap-2 mb-4">
         <form onSubmit={(e) => { e.preventDefault(); load(); }} className="relative flex-1 min-w-[220px]">
           <Search className="w-4 h-4 absolute left-2 top-3 text-ink-muted" />

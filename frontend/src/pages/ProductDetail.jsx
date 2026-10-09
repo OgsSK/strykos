@@ -3,6 +3,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
 import ProductCard from "@/components/ProductCard";
+import ProductReviews from "@/components/ProductReviews";
+import { Stars } from "@/components/Stars";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Heart, Minus, Plus, ShieldCheck, Truck } from "lucide-react";
@@ -91,6 +93,7 @@ export default function ProductDetail() {
         {/* Info */}
         <div>
           {product.brand && <div className="text-sm text-ink-muted uppercase tracking-wider">{product.brand.name}</div>}
+          {product.review_count > 0 && <a href="#product-reviews" className="inline-block mt-1"><Stars value={product.rating_avg} count={product.review_count} testid="product-stars" /></a>}
           <h1 className="font-heading text-2xl sm:text-3xl font-bold mt-1">{name}</h1>
           <div className="flex items-center gap-3 mt-3">
             <span className={`text-2xl font-bold ${product.on_sale ? "text-brand" : "text-ink"}`} data-testid="product-price">{fmt(p.price)}</span>
@@ -168,6 +171,8 @@ export default function ProductDetail() {
           </div>}
         </div>
       </div>
+
+      <ProductReviews slug={product.slug} />
 
       {product.related?.length > 0 && (
         <section className="mt-16">

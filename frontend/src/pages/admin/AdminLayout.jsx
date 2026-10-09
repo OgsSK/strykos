@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { LayoutDashboard, Package, ShoppingCart, Settings, ArrowLeft, Tag, Users, Mail, Layers, Award, Menu, X } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Settings, ArrowLeft, Tag, Users, Mail, Layers, Award, Menu, X, Star } from "lucide-react";
 
 export const ADMIN_NAV = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -11,6 +11,7 @@ export const ADMIN_NAV = [
   { to: "/admin/categories", label: "Categories", icon: Layers },
   { to: "/admin/customers", label: "Clients", icon: Users },
   { to: "/admin/promos", label: "Codes promo", icon: Tag },
+  { to: "/admin/reviews", label: "Avis", icon: Star },
   { to: "/admin/emails", label: "E-mails", icon: Mail },
   { to: "/admin/settings", label: "Parametres", icon: Settings },
 ];

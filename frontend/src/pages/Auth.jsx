@@ -42,7 +42,8 @@ export default function Auth({ mode }) {
         )}
         <div><Label>{t("email")}</Label><Input type="email" required value={form.email} onChange={(e) => setF("email", e.target.value)} data-testid="auth-email" className="mt-1" /></div>
         {!isLogin && <div><Label>{t("phone")}</Label><Input value={form.phone} onChange={(e) => setF("phone", e.target.value)} className="mt-1" /></div>}
-        <div><Label>{t("passwordLabel")}</Label><Input type="password" required value={form.password} onChange={(e) => setF("password", e.target.value)} data-testid="auth-password" className="mt-1" /></div>
+        <div><Label>{t("passwordLabel")}</Label><Input type="password" required value={form.password} onChange={(e) => setF("password", e.target.value)} data-testid="auth-password" className="mt-1" />
+          {isLogin && <Link to="/forgot-password" className="block text-right text-xs text-ink-muted hover:text-brand mt-1" data-testid="forgot-password-link">{t("forgotPassword")}</Link>}</div>
         <Button type="submit" disabled={loading} data-testid="auth-submit"
           className="w-full bg-brand hover:bg-brand-dark text-white rounded-none h-12 uppercase font-bold tracking-wide">
           {loading ? t("loading") : isLogin ? t("signIn") : t("signUp")}

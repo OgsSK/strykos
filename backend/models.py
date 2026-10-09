@@ -336,3 +336,40 @@ class EmailLog(Base):
             "order_id": self.order_id, "status": self.status, "provider_id": self.provider_id,
             "error": self.error, "created_at": self.created_at.isoformat() if self.created_at else None,
         }
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    user_id = Column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    token_hash = Column(String(128), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+    __table_args__ = (UniqueConstraint("user_id", "product_id", name="uq_review_user_product"),)
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    product_id = Column(String(36), ForeignKey("products.id", ondelete="CASCADE"), index=True)
+    user_id = Column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    author_name = Column(String(120), default="")
+    rating = Column(Integer, default=5)
+    title = Column(String(160), default="")
+    body = Column(Text, default="")
+    images = Column(JSON, default=list)
+    verified_purchase = Column(Boolean, default=False)
+    approved = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self, admin=False):
+        d = {
+            "id": self.id, "product_id": self.product_id, "author_name": self.author_name,
+            "rating": self.rating, "title": self.title, "body": self.body,
+            "images": self.images or [], "verified_purchase": self.verified_purchase,
+            "approved": self.approved, "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+        if admin:
+            d["user_id"] = self.user_id
+        return d

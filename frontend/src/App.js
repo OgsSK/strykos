@@ -27,6 +27,8 @@ import AdminCustomers, { AdminCustomerDetail } from "@/pages/admin/AdminCustomer
 import AdminPromos from "@/pages/admin/AdminPromos";
 import AdminEmails from "@/pages/admin/AdminEmails";
 import TrackOrder from "@/pages/TrackOrder";
+import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
+import AdminReviews from "@/pages/admin/AdminReviews";
 
 function Protected({ children, admin }) {
   const { user, authChecked } = useStore();
@@ -55,6 +57,8 @@ function App() {
               <Route path="/wishlist" element={<Wishlist />} />
               <Route path="/login" element={<Auth mode="login" />} />
               <Route path="/register" element={<Auth mode="register" />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
               <Route path="/page/:slug" element={<StaticPage />} />
               <Route path="/suivi" element={<TrackOrder />} />
@@ -72,6 +76,7 @@ function App() {
               <Route path="customers/:id" element={<AdminCustomerDetail />} />
               <Route path="promos" element={<AdminPromos />} />
               <Route path="emails" element={<AdminEmails />} />
+              <Route path="reviews" element={<AdminReviews />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
           </Routes>
