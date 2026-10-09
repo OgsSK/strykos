@@ -6,15 +6,9 @@ import ProductCard from "@/components/ProductCard";
 import HeroCarousel from "@/components/HeroCarousel";
 import SectionBanner from "@/components/SectionBanner";
 import StoryCards from "@/components/StoryCards";
+import IconicGrid from "@/components/IconicGrid";
 import { ArrowRight } from "lucide-react";
 
-const CATEGORIES = [
-  { cat: "maillots", key: "jerseys", img: "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=85&w=600" },
-  { cat: "chaussures", key: "boots", img: "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=85&w=600" },
-  { cat: "equipements", key: "equipment", img: "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?crop=entropy&cs=srgb&fm=jpg&q=85&w=600" },
-  { cat: "vetements", key: "clothing", img: "https://images.unsplash.com/photo-1540254597053-3901b858d40f?crop=entropy&cs=srgb&fm=jpg&q=85&w=600" },
-  { cat: "accessoires", key: "accessories", img: "https://images.unsplash.com/photo-1692506530242-c12d6c3ae2e2?crop=entropy&cs=srgb&fm=jpg&q=85&w=600" },
-];
 
 function Section({ id, title, link, products, media, allLabel }) {
   if (!products || products.length === 0) return null;
@@ -45,18 +39,7 @@ export default function Home() {
 
       <section data-testid="home-section-categories">
         <SectionBanner media={sec.categories} title={t("shopByCategory")} testid="section-banner-categories" />
-        <div className="max-w-7xl mx-auto px-4 py-10">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            {CATEGORIES.map((c) => (
-              <Link key={c.cat} to={`/catalog?category=${c.cat}`} data-testid={`category-tile-${c.cat}`} className="relative aspect-square overflow-hidden group">
-                <img src={c.img} alt={t(c.key)} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                <div className="absolute inset-0 bg-ink/40 group-hover:bg-ink/30 transition-colors flex items-end p-3">
-                  <span className="text-white font-heading font-bold uppercase text-sm tracking-wide">{t(c.key)}</span>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
+        <IconicGrid icons={settings?.icons} />
       </section>
 
       <Section id="new_arrivals" title={t("newArrivals")} link="/catalog?is_new=true" products={data?.new_arrivals} media={sec.new_arrivals} allLabel={t("all")} />

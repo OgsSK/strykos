@@ -703,7 +703,7 @@ class SettingIn(BaseModel):
     value: Any
 
 
-ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "shipping", "site", "payment_providers"}
+ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "icons", "shipping", "site", "payment_providers"}
 
 
 @router.put("/settings")
@@ -714,6 +714,8 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
     if data.key == "hero" and isinstance(value, dict):
         value = {**value, "slides": [{**sl, "video_url": normalize_media(sl.get("video_url", "")), "image_url": normalize_media(sl.get("image_url", ""))}
                                      for sl in (value.get("slides") or [])]}
+    if data.key == "icons" and isinstance(value, dict):
+        value = {**value, "items": [{**it, "image_url": normalize_media(it.get("image_url", ""))} for it in (value.get("items") or [])]}
     if data.key == "sections" and isinstance(value, dict):
         value = {k: {**v, "video_url": normalize_media(v.get("video_url", "")), "image_url": normalize_media(v.get("image_url", "")),
                      "cards": [{**c, "video_url": normalize_media(c.get("video_url", "")), "image_url": normalize_media(c.get("image_url", ""))} for c in (v.get("cards") or [])]}

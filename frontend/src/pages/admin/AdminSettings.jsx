@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { HeroSlidesEditor, SectionsEditor } from "@/components/admin/HomeMediaEditors";
+import { HeroSlidesEditor, SectionsEditor, IconsEditor } from "@/components/admin/HomeMediaEditors";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -62,7 +62,10 @@ export default function AdminSettings() {
           <Card title="Banniere d'accueil - carrousel video (style Nike)" onSave={() => save("hero")} testid="settings-hero">
             <HeroSlidesEditor hero={hero} onChange={(v) => setS({ ...s, hero: v })} />
           </Card>
-          <Card title="Bannieres video des sections" onSave={() => save("sections")} testid="settings-sections">
+          <Card title="Section « Nos essentiels » (vignettes + liens, style Nike)" onSave={() => save("icons")} testid="settings-icons">
+            <IconsEditor icons={s.icons} onChange={(v) => setS({ ...s, icons: v })} />
+          </Card>
+          <Card title="Cartes editoriales des sections" onSave={() => save("sections")} testid="settings-sections">
             <SectionsEditor sections={s.sections || {}} onChange={(v) => setS({ ...s, sections: v })} />
           </Card>
           <Card title="Barre d'information" onSave={() => save("info_bar")} testid="settings-infobar">

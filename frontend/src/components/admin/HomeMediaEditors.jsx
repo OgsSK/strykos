@@ -103,3 +103,60 @@ export function SectionsEditor({ sections, onChange }) {
     </div>
   );
 }
+
+
+const EMPTY_ITEM = { image_url: "", label_fr: "", label_en: "", link: "/catalog" };
+const EMPTY_COL = { title_fr: "", title_en: "", links: [{ label_fr: "", label_en: "", link: "/catalog" }] };
+
+export function IconsEditor({ icons, onChange }) {
+  const v = icons || { title_fr: "", title_en: "", items: [], columns: [] };
+  const set = (patch) => onChange({ ...v, ...patch });
+  const items = v.items || [], columns = v.columns || [];
+  const updItem = (i, patch) => set({ items: items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  const moveItem = (i, d) => { const arr = [...items]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ items: arr }); };
+  const updCol = (i, patch) => set({ columns: columns.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  return (
+    <div className="space-y-5" data-testid="icons-editor">
+      <p className="text-xs text-ink-muted">Section « essentiels » façon Nike : grand titre centré, vignettes rondes (jusqu'à 16, 8 par ligne) puis 4 colonnes de liens.</p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><Label>Titre FR</Label><Input value={v.title_fr || ""} onChange={(e) => set({ title_fr: e.target.value })} data-testid="icons-title-fr" /></div>
+        <div><Label>Titre EN</Label><Input value={v.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} /></div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-2"><Label>Vignettes ({items.length}/16)</Label>{items.length < 16 && <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ items: [...items, { ...EMPTY_ITEM }] })} data-testid="add-icon-item"><Plus className="w-4 h-4 mr-1" /> Vignette</Button>}</div>
+        <div className="grid md:grid-cols-2 gap-2">
+          {items.map((it, i) => (
+            <div key={i} className="border border-border bg-white p-2 flex gap-2 items-start" data-testid={`icon-item-${i}`}>
+              <div className="w-24 shrink-0"><SingleMediaUploader value={it.image_url || ""} onChange={(u) => updItem(i, { image_url: u })} label="image" testid={`icon-image-${i}`} /></div>
+              <div className="flex-1 grid grid-cols-2 gap-1">
+                <Input value={it.label_fr || ""} onChange={(e) => updItem(i, { label_fr: e.target.value })} placeholder="Libelle FR" className="h-8 text-xs" />
+                <Input value={it.label_en || ""} onChange={(e) => updItem(i, { label_en: e.target.value })} placeholder="Label EN" className="h-8 text-xs" />
+                <Input value={it.link || ""} onChange={(e) => updItem(i, { link: e.target.value })} placeholder="/catalog?category=..." className="h-8 text-xs col-span-2" />
+              </div>
+              <div className="flex flex-col"><button onClick={() => moveItem(i, -1)} className="p-0.5"><ArrowUp className="w-3.5 h-3.5" /></button><button onClick={() => moveItem(i, 1)} className="p-0.5"><ArrowDown className="w-3.5 h-3.5" /></button><button onClick={() => set({ items: items.filter((_, idx) => idx !== i) })} className="p-0.5 text-red-600"><Trash2 className="w-3.5 h-3.5" /></button></div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-2"><Label>Colonnes de liens ({columns.length}/4)</Label>{columns.length < 4 && <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ columns: [...columns, { ...EMPTY_COL }] })}><Plus className="w-4 h-4 mr-1" /> Colonne</Button>}</div>
+        <div className="grid md:grid-cols-2 gap-3">
+          {columns.map((col, i) => (
+            <div key={i} className="border border-border bg-white p-3 space-y-2" data-testid={`icon-column-${i}`}>
+              <div className="flex gap-1"><Input value={col.title_fr || ""} onChange={(e) => updCol(i, { title_fr: e.target.value })} placeholder="Titre FR" className="h-8 text-xs" /><Input value={col.title_en || ""} onChange={(e) => updCol(i, { title_en: e.target.value })} placeholder="Title EN" className="h-8 text-xs" /><button onClick={() => set({ columns: columns.filter((_, idx) => idx !== i) })} className="text-red-600 px-1"><Trash2 className="w-4 h-4" /></button></div>
+              {(col.links || []).map((lk, j) => (
+                <div key={j} className="flex gap-1">
+                  <Input value={lk.label_fr || ""} onChange={(e) => updCol(i, { links: col.links.map((x, idx) => (idx === j ? { ...x, label_fr: e.target.value } : x)) })} placeholder="Lien FR" className="h-8 text-xs" />
+                  <Input value={lk.label_en || ""} onChange={(e) => updCol(i, { links: col.links.map((x, idx) => (idx === j ? { ...x, label_en: e.target.value } : x)) })} placeholder="Link EN" className="h-8 text-xs" />
+                  <Input value={lk.link || ""} onChange={(e) => updCol(i, { links: col.links.map((x, idx) => (idx === j ? { ...x, link: e.target.value } : x)) })} placeholder="/catalog" className="h-8 text-xs" />
+                  <button onClick={() => updCol(i, { links: col.links.filter((_, idx) => idx !== j) })} className="text-red-600 px-1"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+              {(col.links || []).length < 6 && <button onClick={() => updCol(i, { links: [...(col.links || []), { label_fr: "", label_en: "", link: "/catalog" }] })} className="text-xs text-brand font-semibold">+ lien</button>}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

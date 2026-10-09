@@ -19,8 +19,11 @@ async def public_settings(db: AsyncSession = Depends(get_db)):
     sections = {k: {**v, "video_url": resolve_media(v.get("video_url", "")), "image_url": resolve_media(v.get("image_url", "")),
                     "cards": [{**c, "video_url": resolve_media(c.get("video_url", "")), "image_url": resolve_media(c.get("image_url", ""))} for c in (v.get("cards") or [])]}
                 for k, v in (s.get("sections") or {}).items()}
+    icons = dict(s.get("icons") or {})
+    icons["items"] = [{**it, "image_url": resolve_media(it.get("image_url", ""))} for it in (icons.get("items") or [])]
     return {
         "sections": sections,
+        "icons": icons,
         "currency": s.get("currency"),
         "currencies": SUPPORTED_CURRENCIES,
         "info_bar": s.get("info_bar"),

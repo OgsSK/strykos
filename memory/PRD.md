@@ -51,6 +51,9 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 - **Messages universels** : sous-titre hero « Performance et style, sans compromis », barre info et footer sans mention « livré au Mali » (livraison internationale suivie).
 - **Responsive** : vérifié à 390 px (mobile), 820 px (tablette), 1920 px : aucun débordement horizontal ; barre info mobile = un message à la fois en rotation ; cartes empilées sur mobile ; tableaux admin défilent horizontalement.
 
+### Itération 6 (2026-06) — vérifiée (screenshot + API)
+- **Section « Nos essentiels » façon Nike** remplace la rangée de tuiles catégories : grand titre centré, 16 vignettes rondes (8 par ligne, 4 sur mobile) avec libellé et lien (catégories, surfaces, marques, nouveautés, promos, personnalisation), puis 4 colonnes de liens (Chaussures, Maillots, Équipements, À la une). Clé de réglages `icons`, éditeur complet dans Paramètres → Accueil & videos (vignettes avec upload, ordre, libellés FR/EN, liens ; colonnes et liens).
+
 ## Non implémenté / à activer (clairement désactivé)
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
 - URLs préfixées /fr /en (langue gérée par contexte + localStorage).
