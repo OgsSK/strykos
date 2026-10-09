@@ -6,7 +6,7 @@ export default function Footer() {
   const { t, settings } = useStore();
   const site = settings?.site;
   return (
-    <footer className="bg-ink text-white mt-20" data-testid="footer">
+    <footer className="bg-ink text-white" data-testid="footer">
       <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2 md:col-span-1">
           <div className="font-heading font-extrabold text-2xl mb-3">STRY<span className="text-brand">KOS</span></div>

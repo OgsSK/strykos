@@ -815,3 +815,18 @@ async def delete_review(review_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(r)
     await db.commit()
     return {"ok": True}
+
+
+class ReplyIn(BaseModel):
+    reply: str = ""
+
+
+@router.put("/reviews/{review_id}/reply")
+async def reply_review(review_id: str, data: ReplyIn, db: AsyncSession = Depends(get_db)):
+    r = (await db.execute(select(Review).where(Review.id == review_id))).scalar_one_or_none()
+    if not r:
+        raise HTTPException(status_code=404, detail="Avis introuvable")
+    r.admin_reply = data.reply.strip()[:2000]
+    r.admin_reply_at = datetime.now(timezone.utc) if r.admin_reply else None
+    await db.commit()
+    return {"ok": True, "review": r.to_dict(admin=True)}

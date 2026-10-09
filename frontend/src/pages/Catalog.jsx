@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { api } from "@/lib/api";
+import { swrGet, swrGetShared } from "@/lib/cache";
 import ProductCard from "@/components/ProductCard";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -89,7 +89,7 @@ export default function Catalog() {
     setParams(next);
   };
 
-  useEffect(() => { api.get("/brands").then((r) => setBrands(r.data)).catch(() => {}); }, []);
+  useEffect(() => { swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {}); }, []);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -98,8 +98,7 @@ export default function Catalog() {
     if (isSearch && filters.q) qp.set("search", filters.q);
     qp.set("limit", "48");
     try {
-      const { data } = await api.get(`/products?${qp.toString()}`);
-      setProducts(data.products); setTotal(data.total);
+      await swrGet(`/products?${qp.toString()}`, (data, stale) => { setProducts(data.products); setTotal(data.total); if (stale) setLoading(false); }, { ttl: 2 * 60 * 1000 });
     } catch { setProducts([]); setTotal(0); }
     setLoading(false);
   }, [filters, isSearch]);

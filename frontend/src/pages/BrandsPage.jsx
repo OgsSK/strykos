@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { api } from "@/lib/api";
+import { swrGetShared } from "@/lib/cache";
 
 export default function BrandsPage() {
   const { t, lang } = useStore();
   const [brands, setBrands] = useState([]);
-  useEffect(() => { api.get("/brands").then((r) => setBrands(r.data)).catch(() => {}); }, []);
+  useEffect(() => { swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {}); }, []);
   const intl = brands.filter((b) => !b.is_local);
   const local = brands.filter((b) => b.is_local);
 

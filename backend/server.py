@@ -20,6 +20,8 @@ from routers.admin_router import router as admin_router
 from routers.settings_router import router as settings_router
 from routers.media_router import router as media_router
 from routers.reviews_router import router as reviews_router
+from routers.newsletter_router import router as newsletter_router
+from fastapi import Request
 from storage import init_storage
 
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +43,21 @@ api_router.include_router(admin_router)
 api_router.include_router(settings_router)
 api_router.include_router(media_router)
 api_router.include_router(reviews_router)
+api_router.include_router(newsletter_router)
 app.include_router(api_router)
+
+PUBLIC_CACHE_PREFIXES = ("/api/settings", "/api/home", "/api/products", "/api/categories", "/api/brands", "/api/search")
+
+
+@app.middleware("http")
+async def public_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if (request.method == "GET" and request.url.path.startswith(PUBLIC_CACHE_PREFIXES)
+            and "authorization" not in request.headers and response.status_code == 200
+            and "/reviews" not in request.url.path):
+        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
+    return response
+
 
 app.add_middleware(
     CORSMiddleware,

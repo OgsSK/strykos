@@ -70,6 +70,13 @@ export const translations = {
     reviews: "Avis clients", reviewsCount: "avis", writeReview: "Donner mon avis", loginToReview: "Connectez-vous pour laisser un avis",
     yourRating: "Votre note", reviewTitle: "Titre (optionnel)", reviewBody: "Votre avis : qualite, taille, confort...", publishReview: "Publier",
     reviewThanks: "Merci pour votre avis !", verifiedPurchase: "Achat verifie", noReviews: "Aucun avis pour le moment. Soyez le premier !",
+    storeReply: "Reponse de STRYKOS",
+    newsletterTitle: "Soyez le premier sur les nouveaux maillots", newsletterText: "Nouveautes, editions limitees et codes promo reserves aux abonnes. Pas de spam, desabonnement en un clic.",
+    newsletterBtn: "Je m'abonne", newsletterOk: "Merci ! Verifiez votre boite mail.", newsletterAlready: "Vous etes deja abonne.",
+    newsletterPref: "Newsletter STRYKOS", newsletterOn: "Abonne : vous recevez les nouveautes et offres.", newsletterOff: "Non abonne.",
+    subscribe: "S'abonner", unsubscribe: "Se desabonner", unsubTitle: "Desabonnement", unsubDone: "Vous etes desabonne. Vous ne recevrez plus nos e-mails.",
+    unsubError: "Lien invalide ou deja utilise.", cookieText: "Nous utilisons le stockage local de votre navigateur pour accelerer la boutique (panier, langue, devise, cache). Aucun traceur publicitaire.",
+    cookieOk: "J'ai compris",
   },
   en: {
     jerseys: "Jerseys", boots: "Boots", clothing: "Clothing", equipment: "Equipment",
@@ -131,6 +138,13 @@ export const translations = {
     reviews: "Customer reviews", reviewsCount: "reviews", writeReview: "Write a review", loginToReview: "Sign in to leave a review",
     yourRating: "Your rating", reviewTitle: "Title (optional)", reviewBody: "Your review: quality, sizing, comfort...", publishReview: "Publish",
     reviewThanks: "Thanks for your review!", verifiedPurchase: "Verified purchase", noReviews: "No reviews yet. Be the first!",
+    storeReply: "Reply from STRYKOS",
+    newsletterTitle: "Be first on new jersey drops", newsletterText: "New arrivals, limited editions and subscriber-only promo codes. No spam, one-click unsubscribe.",
+    newsletterBtn: "Subscribe", newsletterOk: "Thanks! Check your inbox.", newsletterAlready: "You are already subscribed.",
+    newsletterPref: "STRYKOS newsletter", newsletterOn: "Subscribed: you receive new drops and offers.", newsletterOff: "Not subscribed.",
+    subscribe: "Subscribe", unsubscribe: "Unsubscribe", unsubTitle: "Unsubscribe", unsubDone: "You have been unsubscribed. You will no longer receive our emails.",
+    unsubError: "Invalid or already used link.", cookieText: "We use your browser's local storage to speed up the store (cart, language, currency, cache). No advertising trackers.",
+    cookieOk: "Got it",
   },
 };
 

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
+import { swrGet } from "@/lib/cache";
 import ProductCard from "@/components/ProductCard";
 import ProductReviews from "@/components/ProductReviews";
 import { Stars } from "@/components/Stars";
@@ -23,10 +24,11 @@ export default function ProductDetail() {
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    api.get(`/products/${slug}`).then((r) => {
-      setProduct(r.data); setVariant(null); setActiveImg(0); setQty(1);
-      setUseCustom(false); setCustom({ name: "", number: "" });
-    }).catch(() => setProduct(false));
+    let first = true;
+    swrGet(`/products/${slug}`, (data) => {
+      setProduct(data);
+      if (first) { setVariant(null); setActiveImg(0); setQty(1); setUseCustom(false); setCustom({ name: "", number: "" }); first = false; }
+    }, { ttl: 3 * 60 * 1000 }).catch(() => setProduct(false));
   }, [slug]);
 
   if (product === false) return <div className="py-20 text-center">{t("noResults")}</div>;

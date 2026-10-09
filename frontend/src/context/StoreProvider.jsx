@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, setAuthToken } from "@/lib/api";
+import { swrGetShared, invalidateCache } from "@/lib/cache";
 import { translations, formatMoney } from "@/i18n/translations";
 
 const StoreContext = createContext(null);
@@ -19,7 +20,7 @@ export function StoreProvider({ children }) {
 
   // ---- currency & settings ----
   const [currency, setCurrencyState] = useState(() => localStorage.getItem("strykos_currency") || "EUR");
-  const [settings, setSettings] = useState(null);
+  const [settings, setSettings] = useState(() => { try { return JSON.parse(localStorage.getItem("strykos_cache:/settings") || "null")?.data || null; } catch { return null; } });
   const rates = settings?.currency?.rates || DEFAULT_RATES;
   const setCurrency = (c) => { setCurrencyState(c); localStorage.setItem("strykos_currency", c); };
   const convertEur = useCallback((amtEur) => {
@@ -34,17 +35,20 @@ export function StoreProvider({ children }) {
   }, [currency]);
 
   useEffect(() => {
-    api.get("/settings").then((r) => setSettings(r.data)).catch(() => {});
+    swrGetShared("/settings", (d) => setSettings(d), { ttl: 2 * 60 * 1000 }).catch(() => {});
   }, []);
 
   // ---- auth ----
-  const [user, setUser] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [user, setUserState] = useState(() => {
+    try { return localStorage.getItem("strykos_token") ? JSON.parse(localStorage.getItem("strykos_user") || "null") : null; } catch { return null; }
+  });
+  const setUser = (u) => { setUserState(u); if (u) localStorage.setItem("strykos_user", JSON.stringify(u)); else localStorage.removeItem("strykos_user"); };
+  const [authChecked, setAuthChecked] = useState(() => !localStorage.getItem("strykos_token"));
   useEffect(() => {
     const tk = localStorage.getItem("strykos_token");
     if (!tk) { setAuthChecked(true); return; }
-    api.get("/auth/me").then((r) => setUser(r.data)).catch(() => setAuthToken(null)).finally(() => setAuthChecked(true));
-  }, []);
+    api.get("/auth/me").then((r) => setUser(r.data)).catch((e) => { if (e?.response?.status === 401) { setAuthToken(null); setUser(null); } }).finally(() => setAuthChecked(true));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });
     setAuthToken(data.token); setUser(data.user); await loadWishlist(); return data.user;
@@ -55,14 +59,15 @@ export function StoreProvider({ children }) {
   };
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch (e) {}
-    setAuthToken(null); setUser(null); setWishlist([]);
+    setAuthToken(null); setUser(null); setWishlist([]); localStorage.removeItem("strykos_wishlist"); invalidateCache("/auth");
   };
 
   // ---- wishlist ----
-  const [wishlist, setWishlist] = useState([]);
+  const [wishlist, setWishlistState] = useState(() => { try { return JSON.parse(localStorage.getItem("strykos_wishlist") || "[]"); } catch { return []; } });
+  const setWishlist = (v) => setWishlistState((prev) => { const next = typeof v === "function" ? v(prev) : v; localStorage.setItem("strykos_wishlist", JSON.stringify(next)); return next; });
   const loadWishlist = useCallback(async () => {
     try { const { data } = await api.get("/wishlist"); setWishlist(data.product_ids || []); }
-    catch (e) { setWishlist([]); }
+    catch (e) { /* keep cached */ }
   }, []);
   useEffect(() => { if (user) loadWishlist(); }, [user, loadWishlist]);
   const toggleWishlist = async (productId) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { api } from "@/lib/api";
+import { swrGetShared } from "@/lib/cache";
 import ProductCard from "@/components/ProductCard";
 import HeroCarousel from "@/components/HeroCarousel";
 import SectionBanner from "@/components/SectionBanner";
@@ -31,7 +31,7 @@ function Section({ id, title, link, products, media, dark }) {
 export default function Home() {
   const { t, settings } = useStore();
   const [data, setData] = useState(null);
-  useEffect(() => { api.get("/home").then((r) => setData(r.data)).catch(() => {}); }, []);
+  useEffect(() => { swrGetShared("/home", (d) => setData(d), { ttl: 3 * 60 * 1000 }).catch(() => {}); }, []);
   const sec = settings?.sections || {};
 
   return (

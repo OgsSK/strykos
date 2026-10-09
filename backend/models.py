@@ -361,6 +361,8 @@ class Review(Base):
     images = Column(JSON, default=list)
     verified_purchase = Column(Boolean, default=False)
     approved = Column(Boolean, default=True, index=True)
+    admin_reply = Column(Text, default="")
+    admin_reply_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     def to_dict(self, admin=False):
@@ -369,7 +371,60 @@ class Review(Base):
             "rating": self.rating, "title": self.title, "body": self.body,
             "images": self.images or [], "verified_purchase": self.verified_purchase,
             "approved": self.approved, "created_at": self.created_at.isoformat() if self.created_at else None,
+            "admin_reply": self.admin_reply or "",
+            "admin_reply_at": self.admin_reply_at.isoformat() if self.admin_reply_at else None,
         }
         if admin:
             d["user_id"] = self.user_id
         return d
+
+
+class NewsletterSubscriber(Base):
+    __tablename__ = "newsletter_subscribers"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    user_id = Column(String(36), nullable=True, index=True)
+    lang = Column(String(5), default="fr")
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    active = Column(Boolean, default=True, index=True)
+    source = Column(String(40), default="footer")
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    unsubscribed_at = Column(DateTime(timezone=True), nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "email": self.email, "user_id": self.user_id, "lang": self.lang, "active": self.active,
+            "source": self.source, "created_at": self.created_at.isoformat() if self.created_at else None,
+            "unsubscribed_at": self.unsubscribed_at.isoformat() if self.unsubscribed_at else None,
+        }
+
+
+class NewsletterCampaign(Base):
+    __tablename__ = "newsletter_campaigns"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    name = Column(String(160), default="")
+    subject_fr = Column(String(200), default="")
+    subject_en = Column(String(200), default="")
+    body_fr = Column(Text, default="")
+    body_en = Column(Text, default="")
+    product_slugs = Column(JSON, default=list)
+    cta_link = Column(String(300), default="/catalog?is_new=true")
+    cta_fr = Column(String(80), default="Decouvrir")
+    cta_en = Column(String(80), default="Shop now")
+    status = Column(String(20), default="draft", index=True)  # draft | sending | sent | failed
+    sent_count = Column(Integer, default=0)
+    failed_count = Column(Integer, default=0)
+    total_recipients = Column(Integer, default=0)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id, "name": self.name, "subject_fr": self.subject_fr, "subject_en": self.subject_en,
+            "body_fr": self.body_fr, "body_en": self.body_en, "product_slugs": self.product_slugs or [],
+            "cta_link": self.cta_link, "cta_fr": self.cta_fr, "cta_en": self.cta_en, "status": self.status,
+            "sent_count": self.sent_count or 0, "failed_count": self.failed_count or 0,
+            "total_recipients": self.total_recipients or 0,
+            "sent_at": self.sent_at.isoformat() if self.sent_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }

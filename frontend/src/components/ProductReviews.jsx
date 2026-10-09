@@ -92,6 +92,12 @@ export default function ProductReviews({ slug }) {
             <p className="text-sm text-ink-soft mt-1 whitespace-pre-line">{r.body}</p>
             {r.images?.length > 0 && <div className="flex gap-2 mt-3">{r.images.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" className="w-16 h-16 object-cover" /></a>)}</div>}
             <div className="mt-3 text-xs text-ink-muted flex items-center gap-2">{r.author_name}{r.verified_purchase && <span className="inline-flex items-center gap-1 text-green-700"><BadgeCheck className="w-3.5 h-3.5" /> {t("verifiedPurchase")}</span>}</div>
+            {r.admin_reply && (
+              <div className="mt-3 bg-secondary border-l-2 border-brand p-3 text-sm" data-testid={`review-reply-${r.id}`}>
+                <div className="text-[11px] uppercase tracking-wider font-bold text-brand mb-1">{t("storeReply")}</div>
+                <p className="text-ink-soft whitespace-pre-line">{r.admin_reply}</p>
+              </div>
+            )}
           </article>
         ))}
         {data.count === 0 && <p className="text-ink-muted text-sm">{t("noReviews")}</p>}

@@ -2,6 +2,8 @@ import React from "react";
 import { Outlet } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import NewsletterBox from "@/components/NewsletterBox";
+import CookieNotice from "@/components/CookieNotice";
 
 export default function Layout() {
   return (
@@ -10,7 +12,9 @@ export default function Layout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <NewsletterBox />
       <Footer />
+      <CookieNotice />
     </div>
   );
 }

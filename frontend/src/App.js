@@ -29,6 +29,8 @@ import AdminEmails from "@/pages/admin/AdminEmails";
 import TrackOrder from "@/pages/TrackOrder";
 import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 import AdminReviews from "@/pages/admin/AdminReviews";
+import AdminNewsletter from "@/pages/admin/AdminNewsletter";
+import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
 
 function Protected({ children, admin }) {
   const { user, authChecked } = useStore();
@@ -59,6 +61,7 @@ function App() {
               <Route path="/register" element={<Auth mode="register" />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/newsletter/unsubscribe" element={<NewsletterUnsubscribe />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
               <Route path="/page/:slug" element={<StaticPage />} />
               <Route path="/suivi" element={<TrackOrder />} />
@@ -77,6 +80,7 @@ function App() {
               <Route path="promos" element={<AdminPromos />} />
               <Route path="emails" element={<AdminEmails />} />
               <Route path="reviews" element={<AdminReviews />} />
+              <Route path="newsletter" element={<AdminNewsletter />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
           </Routes>

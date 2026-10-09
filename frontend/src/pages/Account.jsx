@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,14 @@ export default function Account() {
   const [orders, setOrders] = useState([]);
   const [addresses, setAddresses] = useState([]);
   const [expanded, setExpanded] = useState(null);
+  const [news, setNews] = useState(null);
+  useEffect(() => { if (user) api.get("/newsletter/status").then((r) => setNews(r.data)).catch(() => {}); }, [user]);
+  const toggleNews = async () => {
+    try {
+      if (news?.subscribed) { await api.post("/newsletter/unsubscribe", {}); setNews({ ...news, subscribed: false }); toast.success(t("newsletterOff")); }
+      else { await api.post("/newsletter/subscribe", { email: user.email, lang, source: "account" }); setNews({ ...news, subscribed: true }); toast.success(t("newsletterOk")); }
+    } catch (e) { toast.error(apiError(e)); }
+  };
   const [profile, setProfile] = useState({ first_name: user.first_name, last_name: user.last_name, phone: user.phone });
   const [newAddr, setNewAddr] = useState({ label: "", address_line: "", city: "", country: "ML", postal_code: "", first_name: user.first_name, last_name: user.last_name, phone: user.phone });
 
@@ -125,6 +133,10 @@ export default function Account() {
 
           {tab === "profile" && (
             <div className="max-w-md space-y-4" data-testid="profile-tab">
+              <div className="border border-border p-4 flex items-center justify-between gap-3" data-testid="newsletter-pref">
+                <div><div className="text-sm font-semibold">{t("newsletterPref")}</div><div className="text-xs text-ink-muted">{news?.subscribed ? t("newsletterOn") : t("newsletterOff")}</div></div>
+                <button onClick={toggleNews} className={`text-xs font-bold uppercase px-3 py-2 border ${news?.subscribed ? "border-border text-ink-muted hover:text-brand" : "bg-ink text-white border-ink"}`} data-testid="newsletter-toggle">{news?.subscribed ? t("unsubscribe") : t("subscribe")}</button>
+              </div>
               <div><Label>{t("firstName")}</Label><Input value={profile.first_name} onChange={(e) => setProfile({ ...profile, first_name: e.target.value })} className="mt-1" /></div>
               <div><Label>{t("lastName")}</Label><Input value={profile.last_name} onChange={(e) => setProfile({ ...profile, last_name: e.target.value })} className="mt-1" /></div>
               <div><Label>{t("phone")}</Label><Input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1" /></div>
