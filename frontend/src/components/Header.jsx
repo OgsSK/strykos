@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
@@ -36,6 +36,8 @@ export default function Header() {
 
   const infoMsgs = settings?.info_bar?.enabled
     ? (lang === "fr" ? settings.info_bar.messages_fr : settings.info_bar.messages_en) || [] : [];
+  const [infoIdx, setInfoIdx] = useState(0);
+  useEffect(() => { if (infoMsgs.length < 2) return; const id = setInterval(() => setInfoIdx((i) => i + 1), 4000); return () => clearInterval(id); }, [infoMsgs.length]);
 
   const doSearch = (e) => {
     e.preventDefault();
@@ -53,9 +55,10 @@ export default function Header() {
     <header className="sticky top-0 z-50 bg-white border-b border-border">
       {infoMsgs.length > 0 && (
         <div className="bg-ink text-white text-xs py-2 overflow-hidden" data-testid="info-bar">
-          <div className="max-w-7xl mx-auto px-4 flex items-center justify-center gap-6 whitespace-nowrap">
+          <div className="hidden sm:flex max-w-7xl mx-auto px-4 items-center justify-center gap-6 whitespace-nowrap">
             {infoMsgs.map((m, i) => <span key={i} className="tracking-wide">{m}</span>)}
           </div>
+          <div className="sm:hidden px-4 text-center truncate tracking-wide" key={infoIdx} data-testid="info-bar-mobile">{infoMsgs[infoIdx % infoMsgs.length]}</div>
         </div>
       )}
       <div className="max-w-7xl mx-auto px-4">

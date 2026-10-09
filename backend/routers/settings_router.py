@@ -16,7 +16,8 @@ async def public_settings(db: AsyncSession = Depends(get_db)):
     hero = dict(s.get("hero") or {})
     hero["slides"] = [{**sl, "video_url": resolve_media(sl.get("video_url", "")), "image_url": resolve_media(sl.get("image_url", ""))}
                       for sl in (hero.get("slides") or [])]
-    sections = {k: {**v, "video_url": resolve_media(v.get("video_url", "")), "image_url": resolve_media(v.get("image_url", ""))}
+    sections = {k: {**v, "video_url": resolve_media(v.get("video_url", "")), "image_url": resolve_media(v.get("image_url", "")),
+                    "cards": [{**c, "video_url": resolve_media(c.get("video_url", "")), "image_url": resolve_media(c.get("image_url", ""))} for c in (v.get("cards") or [])]}
                 for k, v in (s.get("sections") or {}).items()}
     return {
         "sections": sections,

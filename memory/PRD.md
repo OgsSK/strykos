@@ -46,6 +46,11 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 - **Performance** : cache localStorage stale-while-revalidate (`lib/cache.js`) pour settings, accueil, marques, listes et fiches produits ; utilisateur et favoris mis en cache pour un rendu instantané ; en-têtes `Cache-Control` publics côté API (le proxy preview les écrase, effectifs en production) ; bannière d'information stockage local (consentement mémorisé).
 - Correctif agent de test : eager-load `Product.variants` dans `_campaign_products` (MissingGreenlet). Retry automatique sur 429 du proxy e-mail.
 
+### Itération 5 (2026-06) — vérifiée (screenshots desktop/tablette/mobile + API)
+- **Accueil façon Nike** : hero vidéo conservé, bannière vidéo « terrain vu du ciel » conservée pour « Achetez par catégorie ». Les autres sections affichent une ligne de titre sobre (« Nouveautés · Tout → ») puis 2 **cartes éditoriales** côte à côte (image ou vidéo, surtitre, titre, boutons pill « Acheter » / « En savoir plus ») puis la grille produits. Vidéos plein écran des sections retirées (format inadapté sur PC). Éditeur complet dans Paramètres → Accueil & videos (jusqu'à 2 cartes par section, upload image/vidéo, textes FR/EN, liens).
+- **Messages universels** : sous-titre hero « Performance et style, sans compromis », barre info et footer sans mention « livré au Mali » (livraison internationale suivie).
+- **Responsive** : vérifié à 390 px (mobile), 820 px (tablette), 1920 px : aucun débordement horizontal ; barre info mobile = un message à la fois en rotation ; cartes empilées sur mobile ; tableaux admin défilent horizontalement.
+
 ## Non implémenté / à activer (clairement désactivé)
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
 - URLs préfixées /fr /en (langue gérée par contexte + localStorage).

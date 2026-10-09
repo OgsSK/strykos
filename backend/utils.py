@@ -38,11 +38,11 @@ DEFAULT_SETTINGS = {
     "info_bar": {
         "enabled": True,
         "messages_fr": [
-            "Livraison au Mali et en Belgique - boutique multimarque independante",
+            "Boutique football multimarque independante - livraison internationale suivie",
             "Nouveautes football chaque semaine",
         ],
         "messages_en": [
-            "Delivery to Mali and Belgium - independent multi-brand store",
+            "Independent multi-brand football store - tracked worldwide delivery",
             "New football gear every week",
         ],
     },
@@ -52,8 +52,8 @@ DEFAULT_SETTINGS = {
             {"video_url": "https://assets.mixkit.co/videos/43482/43482-720.mp4",
              "image_url": "https://images.unsplash.com/photo-1614170059029-3b7422659b37?crop=entropy&cs=srgb&fm=jpg&q=85&w=2000",
              "title_fr": "L'EQUIPEMENT DES VRAIS JOUEURS", "title_en": "GEAR FOR REAL PLAYERS",
-             "subtitle_fr": "Maillots authentiques, chaussures et equipements des plus grandes marques, livres au Mali.",
-             "subtitle_en": "Authentic jerseys, boots and equipment from the biggest brands, delivered to Mali.",
+             "subtitle_fr": "Maillots authentiques, chaussures et equipements des plus grandes marques. Performance et style, sans compromis.",
+             "subtitle_en": "Authentic jerseys, boots and gear from the biggest brands. Performance and style, no compromise.",
              "cta_fr": "Decouvrir les produits", "cta_en": "Shop now", "cta_link": "/catalog"},
             {"video_url": "https://assets.mixkit.co/videos/43494/43494-720.mp4", "image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800",
              "title_fr": "NOUVELLE SAISON, NOUVEAUX MAILLOTS", "title_en": "NEW SEASON, NEW JERSEYS",
@@ -69,10 +69,10 @@ DEFAULT_SETTINGS = {
     },
     "sections": {
         "categories": {"video_url": "https://assets.mixkit.co/videos/42355/42355-720.mp4", "image_url": "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Tout l'univers du football", "tagline_en": "The whole football universe"},
-        "new_arrivals": {"video_url": "https://assets.mixkit.co/videos/43486/43486-720.mp4", "image_url": "https://images.unsplash.com/photo-1540254597053-3901b858d40f?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Fraichement arrive en boutique", "tagline_en": "Just landed in store"},
-        "promotions": {"video_url": "https://assets.mixkit.co/videos/43495/43495-720.mp4", "image_url": "https://images.unsplash.com/photo-1614170059029-3b7422659b37?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Offres limitees sur une selection", "tagline_en": "Limited offers on selected gear"},
-        "best_sellers": {"video_url": "https://assets.mixkit.co/videos/43499/43499-720.mp4", "image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Les favoris de la communaute", "tagline_en": "Community favourites"},
-        "featured": {"video_url": "https://assets.mixkit.co/videos/43484/43484-720.mp4", "image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Choisis par l'equipe STRYKOS", "tagline_en": "Picked by the STRYKOS team"},
+        "new_arrivals": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1540254597053-3901b858d40f?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Fraichement arrive en boutique", "tagline_en": "Just landed in store", "cards": [{"image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Nouvelle collection", "overline_en": "New collection", "title_fr": "La saison commence ici", "title_en": "The season starts here", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?is_new=true", "cta2_fr": "En savoir plus", "cta2_en": "Learn more", "cta2_link": "/page/about"}, {"image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Chaussures", "overline_en": "Boots", "title_fr": "Faites pour le terrain", "title_en": "Built for the pitch", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=chaussures", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}]},
+        "promotions": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1614170059029-3b7422659b37?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Offres limitees sur une selection", "tagline_en": "Limited offers on selected gear", "cards": [{"image_url": "https://images.unsplash.com/photo-1614170059029-3b7422659b37?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Offres limitees", "overline_en": "Limited offers", "title_fr": "Jusqu'a -30% sur une selection", "title_en": "Up to 30% off selected gear", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?on_sale=true", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}, {"image_url": "https://images.unsplash.com/photo-1540254597053-3901b858d40f?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Vetements", "overline_en": "Apparel", "title_fr": "Entrainez-vous avec style", "title_en": "Train in style", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=vetements", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}]},
+        "best_sellers": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Les favoris de la communaute", "tagline_en": "Community favourites", "cards": [{"image_url": "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Equipements", "overline_en": "Equipment", "title_fr": "Les indispensables du vestiaire", "title_en": "Locker-room essentials", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=equipements", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}, {"image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Maillots", "overline_en": "Jerseys", "title_fr": "Portez vos couleurs", "title_en": "Wear your colours", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=maillots", "cta2_fr": "En savoir plus", "cta2_en": "Learn more", "cta2_link": "/catalog?sort=best_sellers"}]},
+        "featured": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Choisis par l'equipe STRYKOS", "tagline_en": "Picked by the STRYKOS team", "cards": [{"image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Selection STRYKOS", "overline_en": "STRYKOS picks", "title_fr": "Choisis pour la performance", "title_en": "Picked for performance", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}, {"image_url": "https://images.unsplash.com/photo-1692506530242-c12d6c3ae2e2?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Accessoires", "overline_en": "Accessories", "title_fr": "Les details qui font la difference", "title_en": "Details that make the difference", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=accessoires", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}]},
     },
     "shipping": {
         "methods": [
