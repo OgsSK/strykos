@@ -32,16 +32,22 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 - Coordonnées : contact@actoos.com / +32 465743001 (défauts + migration auto de l'ancienne valeur en base), page contact dynamique (WhatsApp, horaires), footer.
 - Warnings React Hooks corrigés (Catalog, OrderConfirmation).
 
+### Itération 3 (2026-06) — testée (iteration_3.json : backend 25/25, frontend 100 %)
+- **Accueil vidéo style Nike** : hero = carrousel de slides vidéo (poster image de secours, défilement auto configurable, flèches, points de progression, swipe, pause). Chaque section de l'accueil (catégories, nouveautés, promos, meilleures ventes, sélection) démarre par une bannière vidéo/image plein écran avec accroche FR/EN. Tout éditable dans `/admin/settings` → « Accueil & videos » (upload vidéo/image, textes, ordre, durée). Vidéos de démo : Mixkit (libres de droits), posters Unsplash.
+- **Identifiants admin** : contact@actoos.com (mot de passe dans test_credentials.md). Migration auto de l'ancien compte au démarrage.
+- **Mot de passe oublié** : `/forgot-password` → e-mail (FR/EN) avec lien 1 h usage unique → `/reset-password?token=`. Table `password_reset_tokens` (hash SHA-256), anti-spam 2 min, pas d'énumération de comptes.
+- **Avis clients** : table `reviews` (note 1-5, titre, texte, jusqu'à 4 photos via upload client, « achat vérifié » auto). Un avis par client et par produit (ré-envoi = mise à jour). Note moyenne + nombre sur cartes produits, fiche produit et section avis avec distribution. Modération admin `/admin/reviews` (masquer/supprimer).
+- **Export CSV** : `/admin/export/orders.csv` (filtres statut/paiement) et `/admin/export/stock.csv` (une ligne par variante), boutons dans Commandes et Produits.
+
 ## Non implémenté / à activer (clairement désactivé)
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
 - URLs préfixées /fr /en (langue gérée par contexte + localStorage).
 - Réservation de stock temporisée pendant le paiement (stock décrémenté à la confirmation, idempotent).
 - RLS Supabase (accès uniquement via backend ; sécurité côté API).
-- Réinitialisation de mot de passe par e-mail.
 
 ## Backlog priorisé
-- P1 : CinetPay + PawaPay (mobile money Mali), réinitialisation mot de passe (e-mail), réservation stock temporisée, tri tenant compte du prix promo.
-- P2 : URLs /fr /en, import/export CSV catalogue, avis clients, partenaires locaux (commissions), newsletter opt-in.
+- P1 : CinetPay + PawaPay (mobile money Mali), réservation stock temporisée, tri tenant compte du prix promo, réponse admin aux avis.
+- P2 : URLs /fr /en, import CSV catalogue, partenaires locaux (commissions), newsletter opt-in, vidéos par produit en vignette catalogue.
 
 ## Données de test
 - Commandes de test présentes en base (test@example.com, delivered@resend.dev) — à supprimer depuis le cockpit avant production.
