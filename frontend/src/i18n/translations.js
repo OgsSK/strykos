@@ -76,7 +76,7 @@ export const translations = {
     newsletterPref: "Newsletter STRYKOS", newsletterOn: "Abonne : vous recevez les nouveautes et offres.", newsletterOff: "Non abonne.",
     subscribe: "S'abonner", unsubscribe: "Se desabonner", unsubTitle: "Desabonnement", unsubDone: "Vous etes desabonne. Vous ne recevrez plus nos e-mails.",
     unsubError: "Lien invalide ou deja utilise.", cookieText: "Nous utilisons le stockage local de votre navigateur pour accelerer la boutique (panier, langue, devise, cache). Aucun traceur publicitaire.",
-    cookieOk: "J'ai compris",
+    cookieOk: "J'ai compris", dontMiss: "A ne pas manquer",
   },
   en: {
     jerseys: "Jerseys", boots: "Boots", clothing: "Clothing", equipment: "Equipment",
@@ -144,7 +144,7 @@ export const translations = {
     newsletterPref: "STRYKOS newsletter", newsletterOn: "Subscribed: you receive new drops and offers.", newsletterOff: "Not subscribed.",
     subscribe: "Subscribe", unsubscribe: "Unsubscribe", unsubTitle: "Unsubscribe", unsubDone: "You have been unsubscribed. You will no longer receive our emails.",
     unsubError: "Invalid or already used link.", cookieText: "We use your browser's local storage to speed up the store (cart, language, currency, cache). No advertising trackers.",
-    cookieOk: "Got it",
+    cookieOk: "Got it", dontMiss: "Don't miss",
   },
 };
 

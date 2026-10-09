@@ -54,6 +54,9 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 ### Itération 6 (2026-06) — vérifiée (screenshot + API)
 - **Section « Nos essentiels » façon Nike** remplace la rangée de tuiles catégories : grand titre centré, 16 vignettes rondes (8 par ligne, 4 sur mobile) avec libellé et lien (catégories, surfaces, marques, nouveautés, promos, personnalisation), puis 4 colonnes de liens (Chaussures, Maillots, Équipements, À la une). Clé de réglages `icons`, éditeur complet dans Paramètres → Accueil & videos (vignettes avec upload, ordre, libellés FR/EN, liens ; colonnes et liens).
 
+### Itération 7 (2026-06) — vérifiée (screenshot)
+- **Carrousels produits façon Nike** : chaque section de l'accueil (nouveautés, promotions, meilleures ventes, sélection) affiche 8 produits dans un carrousel horizontal (scroll-snap, swipe tactile, flèches rondes désactivées en bout de piste, 4 visibles sur PC / 3 tablette / 1,4 mobile). Titre de section au-dessus des cartes éditoriales puis sous-titre « À ne pas manquer » au-dessus du carrousel. Données démo complétées pour avoir 8 articles par section.
+
 ## Non implémenté / à activer (clairement désactivé)
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
 - URLs préfixées /fr /en (langue gérée par contexte + localStorage).
