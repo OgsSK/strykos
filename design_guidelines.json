@@ -1,0 +1,147 @@
+{
+  "project_name": "STRYKOS",
+  "project_type": "E-commerce (Premium Professional Football/Soccer)",
+  "target_audience": "Football players, athletes, fans in Mali and internationally",
+  "theme_strategy": "Light theme dominant (modern premium sporty)",
+  "typography": {
+    "headings": {
+      "font_family": "Outfit, sans-serif",
+      "styles": "Confident, clean geometric sans. Use uppercase with tight tracking (tracking-tight) for promotional banners and main titles to evoke a professional athletic feel.",
+      "weights": ["600", "700", "800"]
+    },
+    "body": {
+      "font_family": "Manrope, sans-serif",
+      "styles": "Highly readable, structured, clean.",
+      "weights": ["400", "500", "600"]
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight uppercase font-bold",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight uppercase font-bold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "h4": "text-lg sm:text-xl font-semibold",
+      "body": "text-base leading-relaxed",
+      "small": "text-sm",
+      "labels": "text-xs tracking-wider uppercase font-semibold"
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#F9FAFB",
+      "tertiary": "#F3F4F6"
+    },
+    "text": {
+      "primary": "#111827",
+      "secondary": "#4B5563",
+      "tertiary": "#6B7280"
+    },
+    "accent": {
+      "primary": "#E60000",
+      "hover": "#CC0000",
+      "description": "Signal Red - Bold, energetic, commercial, used for CTAs, sale badges, active states."
+    },
+    "status": {
+      "success": "#16A34A",
+      "warning": "#F59E0B",
+      "error": "#DC2626",
+      "info": "#2563EB"
+    },
+    "borders": {
+      "default": "#E5E7EB",
+      "darker": "#D1D5DB"
+    }
+  },
+  "layouts": {
+    "spacing": "Generous spacing. Use p-4 to p-8 for containers, gap-6 to gap-8 for grids.",
+    "product_grid": "Regular, consistent product grid. grid-cols-2 (mobile) to grid-cols-4 (desktop).",
+    "mobile_first": "Ensure filters are in a slide-out drawer on mobile, and standard sidebar on desktop. Sticky bottom CTA for add to cart on mobile product pages.",
+    "header": "Solid white or glassmorphism (bg-white/90 backdrop-blur-md) with 1px border-b border-gray-200. Must include Language (FR/EN) and Currency (EUR/USD/XOF) switchers."
+  },
+  "visual_enhancers": {
+    "borders_and_radius": "Sharp edges or very subtle rounding (rounded-sm or max rounded-md) to maintain a serious, professional, technical sportswear feel.",
+    "shadows": "Minimalist. Use shadow-sm for cards, shadow-md for dropdowns/modals. Avoid large soft shadows.",
+    "icons": "lucide-react. Simple, homogeneous, outlined icons with consistent stroke widths.",
+    "badges": "Use rectangular badges for 'NEW' (black/white) and 'SALE' (Accent Red/White) placed at the top-left of product images."
+  },
+  "motion": {
+    "philosophy": "Light animations only when they improve experience. Nothing overloaded.",
+    "interactions": "Hover states on product cards: slightly fade in second image. Button hover: slight color darkening and transform scale (scale-[1.02]).",
+    "transitions": "Use transition-colors duration-200 for links/buttons. Avoid universal 'transition-all'."
+  },
+  "components_instructions": {
+    "product_card": {
+      "structure": "Image (aspect-[4/5] object-cover bg-gray-100), brand name (small, gray), product name (base, dark), price (current + old if sale), badges (absolute top-left), wishlist icon (absolute top-right).",
+      "hover": "Show alternative image on hover if available. Show quick 'Add to Cart' button at bottom of image."
+    },
+    "filters": "Use Shadcn Accordion or Checkboxes for categories, brands, sizes, colors.",
+    "checkout": "Multi-step (Contact, Shipping, Payment, Review). Use Shadcn forms and inputs.",
+    "admin_dashboard": "Use tight grids, solid borders, clear KPI cards, and Shadcn data tables."
+  },
+  "media": {
+    "image_urls": {
+      "hero_banners": [
+        {
+          "url": "https://images.unsplash.com/photo-1614170059029-3b7422659b37?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwyfHxmb290YmFsbCUyMHBsYXllciUyMHByb2Zlc3Npb25hbCUyMGplcnNleSUyMG1hdGNofGVufDB8fHx8MTc5MTUwNjM3OHww&ixlib=rb-4.1.0&q=85",
+          "description": "Football player in red jersey (for Hero banner)",
+          "category": "hero"
+        }
+      ],
+      "jerseys": [
+        {
+          "url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwxfHxmb290YmFsbCUyMHBsYXllciUyMHByb2Zlc3Npb25hbCUyMGplcnNleSUyMG1hdGNofGVufDB8fHx8MTc5MTUwNjM3OHww&ixlib=rb-4.1.0&q=85",
+          "description": "Hanging yellow/green jersey",
+          "category": "product_jersey"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1610736342326-b59eb016ba95?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwzfHxmb290YmFsbCUyMHBsYXllciUyMHByb2Zlc3Npb25hbCUyMGplcnNleSUyMG1hdGNofGVufDB8fHx8MTc5MTUwNjM3OHww&ixlib=rb-4.1.0&q=85",
+          "description": "Blue and white jersey holding ball",
+          "category": "product_jersey"
+        }
+      ],
+      "boots": [
+        {
+          "url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwxfHxmb290YmFsbCUyMHNvY2NlciUyMGJvb3RzJTIwY2xlYXRzJTIwZ3Jhc3N8ZW58MHx8fHwxNzkxNTA2Mzc4fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Black adidas cleats",
+          "category": "product_boots"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1511426463457-0571e247d816?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwyfHxmb290YmFsbCUyMHNvY2NlciUyMGJvb3RzJTIwY2xlYXRzJTIwZ3Jhc3N8ZW58MHx8fHwxNzkxNTA2Mzc4fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Blue and black cleats",
+          "category": "product_boots"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1529900748604-07564a03e7a6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzR8MHwxfHNlYXJjaHwzfHxmb290YmFsbCUyMHNvY2NlciUyMGJvb3RzJTIwY2xlYXRzJTIwZ3Jhc3N8ZW58MHx8fHwxNzkxNTA2Mzc4fDA&ixlib=rb-4.1.0&q=85",
+          "description": "Orange adidas cleats",
+          "category": "product_boots"
+        }
+      ],
+      "equipment": [
+        {
+          "url": "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2MTJ8MHwxfHNlYXJjaHw0fHxzb2NjZXIlMjBiYWxsJTIwc3RhZGl1bSUyMGdyYXNzJTIwbWF0Y2h8ZW58MHx8fHwxNzkxNTA2Mzc4fDA&ixlib=rb-4.1.0&q=85",
+          "description": "White and black soccer ball",
+          "category": "product_equipment"
+        }
+      ],
+      "training_wear": [
+        {
+          "url": "https://images.unsplash.com/photo-1679768763201-e07480531b49?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwxfHxmb290YmFsbCUyMHRyYWluaW5nJTIwd2VhciUyMGFjdGl2ZXdlYXIlMjBhdGhsZXRlfGVufDB8fHx8MTc5MTUwNjM3OHww&ixlib=rb-4.1.0&q=85",
+          "description": "Man holding soccer ball in training wear",
+          "category": "product_training"
+        }
+      ]
+    }
+  },
+  "accessibility": {
+    "testing": "All interactive and key informational elements MUST include a 'data-testid' attribute (e.g., data-testid='add-to-cart-button', data-testid='product-price').",
+    "contrast": "Ensure minimum 4.5:1 ratio for text. Grey text on white must be at least text-gray-500, prefer text-gray-600 or darker for readability."
+  },
+  "universal_guidelines_for_main_agent": [
+    "Prioritize Shadcn UI components for complex interactions (Dropdowns, Selects, Accordions, Dialogs).",
+    "Use Lucide icons strictly for uniformity.",
+    "Do not use generic 'transition: all', use specific transition properties.",
+    "Ensure 'data-testid' attributes are attached to all actionable components.",
+    "Header must not be fully transparent if overlapping images; use a semi-transparent or solid white background to ensure navigation links remain legible.",
+    "Ensure currency switcher supports EUR, USD, XOF and language switcher supports FR, EN.",
+    "Mobile layout must be prioritized: use hamburger menus and slide-out bottom sheets or drawers for filters on mobile."
+  ]
+}

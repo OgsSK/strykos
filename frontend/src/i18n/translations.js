@@ -1,0 +1,106 @@
+export const translations = {
+  fr: {
+    // nav
+    jerseys: "Maillots", boots: "Chaussures", clothing: "Vetements", equipment: "Equipements",
+    accessories: "Accessoires", clubs: "Clubs", nationalTeams: "Selections", brands: "Marques",
+    newArrivals: "Nouveautes", promotions: "Promotions", localBrands: "Marques locales",
+    catalog: "Catalogue",
+    // common
+    search: "Rechercher", searchPlaceholder: "Rechercher un maillot, une marque, un club...",
+    account: "Compte", wishlist: "Favoris", cart: "Panier", login: "Connexion", logout: "Deconnexion",
+    register: "Creer un compte", addToCart: "Ajouter au panier", buyNow: "Acheter maintenant",
+    outOfStock: "Epuise", inStock: "En stock", viewProduct: "Voir le produit", shopNow: "Decouvrir",
+    from: "A partir de", size: "Taille", color: "Couleur", quantity: "Quantite", brand: "Marque",
+    price: "Prix", filters: "Filtres", sortBy: "Trier par", relevance: "Pertinence",
+    priceAsc: "Prix croissant", priceDesc: "Prix decroissant", newest: "Nouveautes",
+    bestSellers: "Meilleures ventes", products: "produits", noResults: "Aucun resultat",
+    clearFilters: "Effacer les filtres", apply: "Appliquer", all: "Tout",
+    // product
+    description: "Description", reference: "Reference", relatedProducts: "Produits complementaires",
+    customization: "Personnalisation", playerName: "Nom du joueur", playerNumber: "Numero",
+    addCustomization: "Ajouter la personnalisation", delivery: "Livraison et retours",
+    deliveryInfo: "Livraison au Mali, en Belgique et a l'international. Retours sous 14 jours.",
+    // cart / checkout
+    yourCart: "Votre panier", emptyCart: "Votre panier est vide", continueShopping: "Continuer les achats",
+    subtotal: "Sous-total", shipping: "Livraison", total: "Total", checkout: "Passer la commande",
+    remove: "Supprimer", contactDetails: "Coordonnees", shippingMethod: "Mode de livraison",
+    payment: "Paiement", review: "Recapitulatif", firstName: "Prenom", lastName: "Nom",
+    email: "E-mail", phone: "Telephone", country: "Pays", city: "Ville", address: "Adresse",
+    postalCode: "Code postal", payWithStripe: "Payer avec Stripe", placeOrder: "Valider et payer",
+    orderSummary: "Recapitulatif de commande", paymentNotice: "Information de paiement",
+    // confirmation
+    orderConfirmed: "Commande confirmee", thankYou: "Merci pour votre commande",
+    orderNumber: "Numero de commande", paymentPending: "Paiement en attente de confirmation",
+    trackOrder: "Suivre ma commande", orderProcessing: "Verification du paiement...",
+    // account
+    dashboard: "Tableau de bord", myOrders: "Mes commandes", myAddresses: "Mes adresses",
+    profile: "Profil", welcome: "Bienvenue", noOrders: "Aucune commande pour le moment",
+    orderDate: "Date", status: "Statut", save: "Enregistrer", addAddress: "Ajouter une adresse",
+    // auth
+    passwordLabel: "Mot de passe", loginTitle: "Connexion a votre compte",
+    registerTitle: "Creer votre compte STRYKOS", noAccount: "Pas encore de compte ?",
+    haveAccount: "Deja un compte ?", signIn: "Se connecter", signUp: "S'inscrire",
+    // footer
+    footerTagline: "Boutique multimarque independante specialisee dans le football. Livraison au Mali.",
+    customerService: "Service client", about: "A propos", faq: "FAQ", contact: "Contact",
+    shippingPolicy: "Politique de livraison", returnsPolicy: "Retours et remboursements",
+    terms: "Conditions generales", privacy: "Confidentialite", cookies: "Cookies",
+    allRightsReserved: "Tous droits reserves", independentStore: "Boutique independante - non affiliee aux marques",
+    // misc
+    loading: "Chargement...", heroCta2: "Voir les nouveautes", shopByCategory: "Achetez par categorie",
+    internationalBrands: "Marques internationales", recommended: "Recommandes pour vous",
+    featured: "Selection STRYKOS", admin: "Administration",
+  },
+  en: {
+    jerseys: "Jerseys", boots: "Boots", clothing: "Clothing", equipment: "Equipment",
+    accessories: "Accessories", clubs: "Clubs", nationalTeams: "National Teams", brands: "Brands",
+    newArrivals: "New Arrivals", promotions: "Sale", localBrands: "Local Brands", catalog: "Catalog",
+    search: "Search", searchPlaceholder: "Search a jersey, brand, club...",
+    account: "Account", wishlist: "Wishlist", cart: "Cart", login: "Login", logout: "Logout",
+    register: "Create account", addToCart: "Add to cart", buyNow: "Buy now",
+    outOfStock: "Out of stock", inStock: "In stock", viewProduct: "View product", shopNow: "Shop now",
+    from: "From", size: "Size", color: "Color", quantity: "Quantity", brand: "Brand",
+    price: "Price", filters: "Filters", sortBy: "Sort by", relevance: "Relevance",
+    priceAsc: "Price: low to high", priceDesc: "Price: high to low", newest: "Newest",
+    bestSellers: "Best sellers", products: "products", noResults: "No results",
+    clearFilters: "Clear filters", apply: "Apply", all: "All",
+    description: "Description", reference: "Reference", relatedProducts: "You may also like",
+    customization: "Customization", playerName: "Player name", playerNumber: "Number",
+    addCustomization: "Add customization", delivery: "Delivery & returns",
+    deliveryInfo: "Delivery to Mali, Belgium and internationally. 14-day returns.",
+    yourCart: "Your cart", emptyCart: "Your cart is empty", continueShopping: "Continue shopping",
+    subtotal: "Subtotal", shipping: "Shipping", total: "Total", checkout: "Checkout",
+    remove: "Remove", contactDetails: "Contact details", shippingMethod: "Shipping method",
+    payment: "Payment", review: "Review", firstName: "First name", lastName: "Last name",
+    email: "Email", phone: "Phone", country: "Country", city: "City", address: "Address",
+    postalCode: "Postal code", payWithStripe: "Pay with Stripe", placeOrder: "Place order & pay",
+    orderSummary: "Order summary", paymentNotice: "Payment notice",
+    orderConfirmed: "Order confirmed", thankYou: "Thank you for your order",
+    orderNumber: "Order number", paymentPending: "Payment awaiting confirmation",
+    trackOrder: "Track my order", orderProcessing: "Verifying payment...",
+    dashboard: "Dashboard", myOrders: "My orders", myAddresses: "My addresses",
+    profile: "Profile", welcome: "Welcome", noOrders: "No orders yet",
+    orderDate: "Date", status: "Status", save: "Save", addAddress: "Add address",
+    passwordLabel: "Password", loginTitle: "Sign in to your account",
+    registerTitle: "Create your STRYKOS account", noAccount: "No account yet?",
+    haveAccount: "Already have an account?", signIn: "Sign in", signUp: "Sign up",
+    footerTagline: "Independent multi-brand football store. Delivery to Mali.",
+    customerService: "Customer service", about: "About", faq: "FAQ", contact: "Contact",
+    shippingPolicy: "Shipping policy", returnsPolicy: "Returns & refunds",
+    terms: "Terms & conditions", privacy: "Privacy", cookies: "Cookies",
+    allRightsReserved: "All rights reserved", independentStore: "Independent store - not affiliated with brands",
+    loading: "Loading...", heroCta2: "View new arrivals", shopByCategory: "Shop by category",
+    internationalBrands: "International brands", recommended: "Recommended for you",
+    featured: "STRYKOS selection", admin: "Admin",
+  },
+};
+
+export const CURRENCY_SYMBOLS = { EUR: "€", USD: "$", XOF: "FCFA" };
+
+export function formatMoney(amount, currency) {
+  if (amount === null || amount === undefined) return "";
+  const sym = CURRENCY_SYMBOLS[currency] || currency;
+  if (currency === "XOF") return `${Math.round(amount).toLocaleString("fr-FR")} ${sym}`;
+  if (currency === "USD") return `${sym}${Number(amount).toFixed(2)}`;
+  return `${Number(amount).toFixed(2)} ${sym}`;
+}
