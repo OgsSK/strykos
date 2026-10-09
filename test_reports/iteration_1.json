@@ -1,0 +1,36 @@
+{
+  "summary": "First-pass full regression on STRYKOS. Backend: 27/27 pytest cases pass covering catalog (home sections, filters, sort, pagination, EUR/USD/XOF prices + manual XOF override on maillot-djoliba-local = 32000 XOF, XOF conversion for products without manual price), auth (login/register/me/logout, invalid credentials), wishlist (auth-required + per-user isolation), checkout (validate EUR, XOF notice stating EUR charge, create -> Stripe checkout URL, payment_status pending), order isolation (customer cannot read another customer's order via /api/orders/{order_number}), admin security (401/403 for anon + 403 for customer, admin OK) and admin product CRUD + stock adjust. Frontend: homepage/hero/category tiles render, product sections populate; language switch FR<->EN translates UI; currency switch EUR/USD/XOF updates displayed prices site-wide (verified EUR 54.99 € -> XOF 36 070 FCFA etc.); catalog shows product-count '18 products' and on-sale filter reduces to '4 products'; product detail (variant-M button, add-to-cart) increments cart-count badge; cart -> checkout 3-step flow -> place-order-btn redirects to https://checkout.stripe.com/... as expected; admin login (admin@strykos.com / Strykos2026!) redirects to /admin, dashboard KPIs load, admin-products with new-product-btn opens dialog containing save-product-btn, admin-orders renders list of real orders.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All pages", "issues": ["<title> still reads 'Emergent | Fullstack App' instead of 'STRYKOS' - update public/index.html title"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_strykos_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Minor: update <title> in frontend/public/index.html from 'Emergent | Fullstack App' to STRYKOS branding."
+  ],
+  "critical_code_review_comments": [
+    "catalog_router list_products applies variant-level filters (color/size/in_stock) in Python AFTER pagination variables are evaluated; total count is computed post-filter which is correct, but SQL sort by Product.price_eur does not account for sale_price_eur so sort order can diverge from displayed sale prices (minor UX).",
+    "auth.py: cookie 'access_token' is set httponly+samesite=none+secure=True on both /register and /login, which is good; however requests session on the client auto-sends the cookie, meaning tests must use fresh sessions to validate 401 path.",
+    "commerce_router /payments/status re-queries Stripe each call when not paid; fine for v1 but could rate-limit on hot refresh.",
+    "admin_router delete_product performs soft-delete (published=False) which is correct, but no hard-delete path exists; acceptable for v1.",
+    "No input validation on product price_eur < 0 or quantity > stock mid-request (handled by variant.stock check in _compute_order).",
+    "Cart is purely client-side localStorage; no server-side stock reservation until checkout. Acceptable for v1 but note potential race condition between validate and create.",
+    "server.py startup seed updates admin password if changed - good idempotent behavior per playbook."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_strykos_backend.py"
+  ],
+  "success_rate": {"backend": "100% (27/27)", "frontend": "100% of tested flows"},
+  "test_credentials": "Admin: admin@strykos.com / Strykos2026! | Test customer created dynamically per run (client+<rand>@strykos.com / Client2026!)",
+  "seed_data_creation": "Backend tests create ephemeral customers via /api/auth/register and one TEST_ product via admin CRUD then soft-deletes. Multiple pending_payment Stripe sessions were created in checkout tests (expected - will remain in Supabase).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression suite at /app/backend/tests/test_strykos_backend.py (pytest-xdist safe). Frontend route for product detail is /product/{slug} (singular). Currency and lang switchers are native <select> elements - use select_option('EUR'/'USD'/'XOF') and ('FR'/'EN'). Checkout fields use testids: checkout-first_name, checkout-last_name, checkout-email, checkout-phone, checkout-country (select ML/BE/FR), checkout-city, checkout-address (NOT checkout-address_line). postal_code field may not have a testid in step 1. Variants are rendered as buttons [data-testid='variant-M'] etc, not a select. Admin credentials seed re-applies on each backend startup."
+}
