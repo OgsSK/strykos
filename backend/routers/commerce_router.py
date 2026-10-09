@@ -1,4 +1,5 @@
 import os
+import asyncio
 import stripe
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -340,7 +341,7 @@ def push_history(order, status, by="system", note=""):
     order.status_history = hist
 
 
-async def _finalize_paid(db, order_id, payment_intent=None):
+async def _finalize_paid_inner(db, order_id, payment_intent=None):
     result = await db.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()
     if not order or order.payment_status == "paid":
@@ -371,6 +372,13 @@ async def _finalize_paid(db, order_id, payment_intent=None):
     await db.commit()
     await send_order_email(db, order, "order_confirmed")
     await notify_admin_new_order(db, order)
+
+
+async def _finalize_paid(db, order_id, payment_intent=None):
+    try:
+        await asyncio.wait_for(_finalize_paid_inner(db, order_id, payment_intent), timeout=25)
+    except asyncio.TimeoutError:
+        pass
 
 
 @router.get("/payments/status/{session_id}")

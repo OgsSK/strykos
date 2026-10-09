@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 2 regression testing on STRYKOS new features (emails, carrier tracking, promo codes, full admin cockpit, media uploads). Backend: 45/46 new pytest cases pass covering public /api/settings exposing contact@actoos.com / +32 465743001; admin security (anon rejected on all /admin/* new endpoints); PromoCode CRUD (create, list, update, delete, duplicate code 400, invalid percent >100 400); /api/promo/check for unknown=promo_invalid, inactive=promo_invalid, expired=promo_expired, below_min=promo_min_subtotal, valid returns discount_eur; /api/checkout/validate with real variant from GET /api/products/maillot-djoliba-local applying percent promo returns discount>0 and total == subtotal-discount+shipping, free_shipping promo zeroes shipping_cost; /api/checkout/create with valid promo returns Stripe checkout_url + order_number and admin order has promo_code+discount persisted; create with invalid promo returns 400 with promo_error; /api/orders/track returns public dict scrubbed of phone/shipping_address/stripe_session_id/admin_notes and includes tracking fields + status_history; wrong email -> 404; PUT /api/admin/orders/{id}/tracking rejects non-https (400) and when mark_shipped=true transitions status to shipped, stamps shipped_at, pushes status_history, and triggers order_shipped email (sent); PUT /status to delivered with notify=true produces order_delivered email in /api/admin/emails list; notes save and persist; resend-email returns ok sent; refund on unpaid order rejected 400; DELETE /admin/orders/{id} removes order; Media: POST /admin/media/upload with JPEG returns url /api/media/strykos/images/<uuid>.jpg, public GET returns 200 image/jpeg, DELETE then public GET -> 404; text/plain rejected 400; chunked flow (2 chunks) + complete returns record; GET /admin/media lists; Products admin: creating product with absolute media URL image and video_url works, publish toggle hides from public, DELETE ?hard=true actually removes (public GET 404); DUPLICATE endpoint returns 500 (BACKEND BUG - see below); Brands/Categories CRUD with product_count; Customers list has orders_count/spent_eur, cannot demote own admin role (400), cannot delete self (400), detail endpoint OK; Dashboard returns series(14 entries), recent_orders, by_status, customers, emails_enabled=true, promos_active. Settings: unknown key rejected 400, site update persists. Frontend: /page/contact shows contact-email contact@actoos.com and contact-phone +32 465743001; footer-email/footer-phone correct and footer-track-link -> /suivi; /suivi public tracking page with wrong email shows track-error 'Commande introuvable. Verifiez le numero et l'e-mail.'; admin login redirects to /admin; admin sidebar renders 9 nav entries + Retour boutique; /admin/promos new-promo-btn + promo-code-input + promo-value + save-promo-btn create UITEST20 row with toggle-promo-UITEST20 present; /admin/orders renders 8 order-link rows; /admin/settings all 5 tabs (site/hero/shipping/currency/payments) render; /admin/brands /admin/categories /admin/customers /admin/emails all render without errors (emails list shows real 'sent' order_confirmed/shipped/delivered rows for delivered@resend.dev proving Emergent email proxy integration is live).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/admin/products/{id}/duplicate", "issue": "500 TypeError: models.Product() got multiple values for keyword argument 'published'. admin_router.duplicate_product builds copy_fields from Product.__table__.columns (which already includes 'published') then passes published=False explicitly to Product(**copy_fields, slug=slug, published=False). Must exclude 'published' from copy_fields (same way 'id','slug','created_at','sales_count' are excluded).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/admin/orders/{id}/resend-email", "issue": "Response may return 502 if Emergent email proxy is transient; endpoint is correct but client-facing error wrapping of log.error could leak internals."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_strykos_iter2.py",
+    "/app/test_reports/pytest/iter2_results.xml",
+    "/app/backend/tests/test_strykos_backend.py"
+  ],
+  "action_items": [
+    "Fix duplicate_product in /app/backend/routers/admin_router.py line ~221: add 'published' to the exclusion set when building copy_fields so the explicit kwarg does not conflict. One-liner: change `if c.name not in (\"id\", \"slug\", \"created_at\", \"sales_count\")` to also exclude 'published'."
+  ],
+  "critical_code_review_comments": [
+    "admin_router.duplicate_product: duplicate kwarg bug (above) is a clear defect.",
+    "admin_router.py is 723 LOC - over the 700 line soft-limit; consider splitting into orders/products/promos/customers sub-routers for maintainability.",
+    "admin_router update_order_status: when status unchanged it returns early with {ok:true,unchanged:true} but never pushes history; acceptable but means status_history will not record manual repeats.",
+    "commerce_router _finalize_paid awaits send_order_email + notify_admin_new_order inline; if email proxy stalls, Stripe webhook could timeout. Consider dispatching via BackgroundTasks.",
+    "media_router.serve_media caches content globally in-process (_cache dict) with ~80MB cap. In a multi-worker uvicorn setup each worker caches independently; fine for single worker but note memory doubling.",
+    "models.Order.to_dict(public=True) correctly scrubs phone/shipping_address/stripe_session_id/admin_notes (validated).",
+    "promo validation: _validate_promo caps percent 0-100 but allows 0 (effectively no-op); acceptable because free_shipping flag can still apply.",
+    "resolve_promo first_order_only path: when there is no user and no email, returns promo_first_order_only - correct, but UI must forward shipping.email on validate for anonymous carts (validated to work)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_strykos_iter2.py"
+  ],
+  "success_rate": {"backend": "97.8% (45/46 new tests; 1 failure is a real backend bug)", "frontend": "100% of tested flows (contact page, footer, /suivi error, admin login, sidebar, promos create+toggle, orders list, settings tabs, brands/categories/customers/emails pages)"},
+  "test_credentials": "Admin: admin@strykos.com / Strykos2026! | Customer: dynamically registered client+<rand>@strykos.com / Client2026! | Test email recipient: delivered@resend.dev",
+  "seed_data_creation": "Tests created ephemeral promo codes (TST*/FSH*/EXP*/INA*/UITEST20) all cleaned up; one TEST product with media (cleaned via hard delete); several checkout orders remain in Supabase (pending_payment and one transitioned paid->shipped->delivered for testing emails). Multiple real emails were sent via Emergent proxy to delivered@resend.dev (order_confirmed, order_shipped, order_delivered) - all recorded in email_logs with status 'sent'.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Full iter2 backend regression at /app/backend/tests/test_strykos_iter2.py (pytest-xdist, 2 workers, 66s). Reuses product slug maillot-djoliba-local for cart building. Media testing uses an embedded 1x1 valid JPEG constant _JPEG. All promo tests cleanup their created promos. Order fixture uses one admin-paid-then-shipped-then-delivered flow to trigger real emails - keep count low. The duplicate_product 500 bug was the only backend failure; retest after fix with: pytest tests/test_strykos_iter2.py::TestProductsAdminNew -v. Frontend testid dictionary: auth-email/password/submit, new-promo-btn, promo-code-input, promo-value, save-promo-btn, toggle-promo-<CODE>, delete-promo-<CODE>, track-order-number, track-email, track-submit, track-error, contact-email, contact-phone, footer-email, footer-phone, footer-track-link, settings-tab-{site,hero,shipping,currency,payments}, order-link. The add-to-cart UI testid remains 'add-to-cart' (per iter1), with variant selected via [data-testid^='variant-'] buttons; the storefront flow passed via API tests."
+}

@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, or_, and_
+from sqlalchemy import select, or_, and_
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
-from models import Product, Brand, Category, ProductVariant
-from utils import get_rates, serialize_product, SUPPORTED_CURRENCIES
+from models import Product, Brand, Category
+from utils import get_rates, serialize_product
 
 router = APIRouter(tags=["catalog"])
 

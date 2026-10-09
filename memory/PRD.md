@@ -5,36 +5,44 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 
 ## Architecture (implémentée)
 - Frontend : React 19 + Tailwind + shadcn/ui. Contexte unique `StoreProvider` (i18n, devises, auth, panier, favoris).
-- Backend : FastAPI + SQLAlchemy async → Supabase PostgreSQL (Transaction Pooler). Migrations Alembic.
-- Auth : JWT custom (Bearer token), rôles vérifiés serveur (customer/admin).
-- Paiement : Stripe (sandbox claimable, mode test). XOF réglé en EUR avec notice explicite. Statut "payé" confirmé serveur (polling + webhook idempotent).
+- Backend : FastAPI + SQLAlchemy async → Supabase PostgreSQL (Transaction Pooler). Migrations Alembic (`9a7cf7064fba` initial, `bb8f9672b439` tracking/promo/media/emails).
+- Auth : JWT custom (Bearer token), rôles vérifiés serveur (customer/admin). Seed admin idempotent (ne réécrit plus le mot de passe à chaque démarrage).
+- Paiement : Stripe (mode test). XOF réglé en EUR avec notice explicite. Statut "payé" confirmé serveur (polling + webhook idempotent). Remise promo transmise à Stripe via coupon `duration=once`.
+- E-mails : proxy e-mail Emergent (`emails.py`), expéditeur affiché "STRYKOS", Reply-To contact@actoos.com, notification admin → contact@actoos.com. Journal en table `email_logs`. (La clé Resend fournie par l'utilisateur n'est pas utilisée : l'adresse expéditeur est gérée par la plateforme.)
+- Médias : Emergent Object Storage (`storage.py`), upload admin simple ou par morceaux (4 Mo), servi publiquement via `GET /api/media/{path}` (cache mémoire + Cache-Control immutable). URLs stockées en relatif `/api/media/...` et résolues avec `PUBLIC_BASE_URL`.
 - Devises : référence EUR, taux administrables, prix manuels par devise prioritaires, arrondis par devise (XOF entier).
 
 ## Personas
 - Joueur/supporter au Mali commandant sur mobile.
 - Club/académie achetant en volume.
-- Administrateur STRYKOS (catalogue, commandes, stock, paramètres).
+- Administrateur STRYKOS (cockpit : catalogue, commandes, suivi, promos, clients, e-mails, paramètres).
 
-## Implémenté (2026-06)
-- Accueil (hero/barre info/catégories/sections dynamiques), catalogue + filtres (marque, prix, taille, stock, promo) + tri, fiche produit (galerie, variantes liées au stock, personnalisation maillot nom/numéro, produits liés), recherche + suggestions.
-- Favoris (serveur, par utilisateur), panier (localStorage, revérifié serveur), tunnel 3 étapes → Stripe, confirmation avec paiement confirmé serveur.
-- Compte client (dashboard, commandes, adresses, profil). Isolation des données par client.
-- Admin : dashboard KPIs (CA par devise, ruptures, best-sellers), CRUD produits + variantes + images, ajustement stock, gestion commandes + statuts, paramètres (taux de change, barre info, providers paiement).
-- 18 produits de démo, 6 marques (dont 2 locales africaines), 5 catégories.
-- Pages légales/statiques FR/EN (à propos, livraison, retours, FAQ, contact, CGV, confidentialité, cookies), 404.
-- SEO de base (title/description, slugs stables, i18n contenu produit).
+## Implémenté
+### V1 (2026-06, itération 1)
+- Accueil, catalogue + filtres + tri, fiche produit (galerie, variantes/stock, personnalisation), recherche + suggestions.
+- Favoris, panier, tunnel 3 étapes → Stripe, confirmation serveur.
+- Compte client (dashboard, commandes, adresses, profil).
+- 18 produits de démo, 6 marques, 5 catégories. Pages légales FR/EN, 404, SEO de base.
+
+### Itération 2 (2026-06) — testée (iteration_2.json : backend 46/46 après correctif, frontend 100 %)
+- **E-mails transactionnels FR/EN** : confirmation de paiement (client + copie admin), expédition (avec transporteur/n°/lien), livraison, annulation/remboursement. Déclenchés par `_finalize_paid` (webhook/polling) et par les changements de statut admin. Renvoi manuel depuis le détail commande. Journal `/admin/emails`.
+- **Suivi transporteur** : champs `tracking_carrier/number/url`, `status_history`, `shipped_at/delivered_at`. Page publique `/suivi` (n° + e-mail), timeline dans le compte client et sur la confirmation. Lien de suivi dans les e-mails.
+- **Codes promo** : table `promo_codes` (percent/fixed, min, dates, limite, actif, livraison offerte, 1ère commande). `POST /api/promo/check`, application dans `/checkout/validate|create`, `used_count` incrémenté au paiement. UI checkout (promo-box) + admin CRUD. Code démo `BIENVENUE10` (10 %, min 20 €).
+- **Cockpit admin complet** : dashboard (KPIs, graphe 14 j, CA par devise, dernières commandes, alertes stock/e-mails), commandes (filtres, recherche, détail, statut + note, suivi, notes internes, renvoi e-mail, remboursement Stripe total/partiel avec restock, suppression), produits (CRUD complet, upload images drag&drop/réordonnancement, vidéo, prix manuels USD/XOF, presets tailles, dupliquer, publier/dépublier, suppression définitive), marques (CRUD + logo), catégories (CRUD), clients (liste, fiche, rôle, suppression), codes promo, e-mails, paramètres (coordonnées, hero + upload, barre info, modes de livraison, taux, fournisseurs).
+- Coordonnées : contact@actoos.com / +32 465743001 (défauts + migration auto de l'ancienne valeur en base), page contact dynamique (WhatsApp, horaires), footer.
+- Warnings React Hooks corrigés (Catalog, OrderConfirmation).
 
 ## Non implémenté / à activer (clairement désactivé)
-- Emails transactionnels Resend : clé stockée dans backend/.env (EMAILS_ENABLED=false), envoi NON câblé — à activer.
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
-- URLs préfixées /fr /en (langue gérée par contexte + localStorage en v1).
-- Réservation de stock temporisée pendant le paiement (stock décrémenté à la confirmation de paiement, idempotent).
-- RLS Supabase (accès uniquement via backend service ; sécurité appliquée côté API).
+- URLs préfixées /fr /en (langue gérée par contexte + localStorage).
+- Réservation de stock temporisée pendant le paiement (stock décrémenté à la confirmation, idempotent).
+- RLS Supabase (accès uniquement via backend ; sécurité côté API).
+- Réinitialisation de mot de passe par e-mail.
 
 ## Backlog priorisé
-- P0 : Emails transactionnels (Resend) confirmation commande/paiement.
-- P1 : CinetPay + PawaPay (mobile money Mali), réservation stock temporisée, tri tenant compte du prix promo.
-- P2 : URLs /fr /en, import/export CSV catalogue, suivi transporteur, partenaires locaux (commissions), marketplace.
+- P1 : CinetPay + PawaPay (mobile money Mali), réinitialisation mot de passe (e-mail), réservation stock temporisée, tri tenant compte du prix promo.
+- P2 : URLs /fr /en, import/export CSV catalogue, avis clients, partenaires locaux (commissions), newsletter opt-in.
 
-## Identifiants de test
-Voir /app/memory/test_credentials.md (admin@strykos.com / Strykos2026!).
+## Données de test
+- Commandes de test présentes en base (test@example.com, delivered@resend.dev) — à supprimer depuis le cockpit avant production.
+- Identifiants : voir /app/memory/test_credentials.md.

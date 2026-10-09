@@ -9,7 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import (Product, ProductImage, ProductVariant, Brand, Category, Order, Payment, Setting,
-                    Profile, PromoCode, EmailLog, UserAddress)
+                    Profile, PromoCode, EmailLog)
 from auth import get_current_admin
 from utils import get_rates, serialize_product, get_settings, normalize_media
 from emails import send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO, ADMIN_NOTIFY_EMAIL
@@ -219,7 +219,7 @@ async def duplicate_product(product_id: str, db: AsyncSession = Depends(get_db))
     while (await db.execute(select(Product).where(Product.slug == slug))).scalar_one_or_none():
         slug = f"{base_slug}-{i}"; i += 1
     copy_fields = {c.name: getattr(p, c.name) for c in Product.__table__.columns
-                   if c.name not in ("id", "slug", "created_at", "sales_count")}
+                   if c.name not in ("id", "slug", "created_at", "sales_count", "published")}
     np = Product(**copy_fields, slug=slug, published=False)
     db.add(np)
     await db.flush()
