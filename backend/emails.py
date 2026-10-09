@@ -1,4 +1,5 @@
 import os
+import asyncio
 import re
 import ipaddress
 import logging
@@ -119,7 +120,13 @@ async def send_templated(db, *, to: str, subject: str, html: str, template: str,
         log.status = "disabled"
     else:
         try:
-            log.provider_id = (await _send(to, subject, html)) or ""
+            try:
+                log.provider_id = (await _send(to, subject, html)) or ""
+            except RuntimeError as e:
+                if "429" not in str(e):
+                    raise
+                await asyncio.sleep(3)
+                log.provider_id = (await _send(to, subject, html)) or ""
             log.status = "sent"
         except Exception as e:
             log.status = "failed"

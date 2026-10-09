@@ -250,7 +250,8 @@ async def _campaign_products(db, slugs):
         return []
     rates = await get_rates(db)
     res = await db.execute(select(Product).where(Product.slug.in_(slugs), Product.published == True)
-                           .options(selectinload(Product.images), selectinload(Product.brand), selectinload(Product.category)))
+                           .options(selectinload(Product.images), selectinload(Product.brand),
+                                    selectinload(Product.category), selectinload(Product.variants)))
     prods = {p.slug: serialize_product(p, rates) for p in res.scalars().unique().all()}
     return [prods[s] for s in slugs if s in prods]
 

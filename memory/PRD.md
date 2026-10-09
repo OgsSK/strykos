@@ -39,6 +39,13 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 - **Avis clients** : table `reviews` (note 1-5, titre, texte, jusqu'à 4 photos via upload client, « achat vérifié » auto). Un avis par client et par produit (ré-envoi = mise à jour). Note moyenne + nombre sur cartes produits, fiche produit et section avis avec distribution. Modération admin `/admin/reviews` (masquer/supprimer).
 - **Export CSV** : `/admin/export/orders.csv` (filtres statut/paiement) et `/admin/export/stock.csv` (une ligne par variante), boutons dans Commandes et Produits.
 
+### Itération 4 (2026-06) — testée (iteration_4.json : backend 19/19, frontend 100 %)
+- **Réponse aux avis** : réponse publique STRYKOS depuis `/admin/reviews` (publier/modifier/supprimer), affichée sous l'avis sur la fiche produit.
+- **Vidéo produit au survol** : dans les grilles catalogue/accueil, les produits avec `video_url` lisent leur vidéo au survol (badge « Vidéo », poster = image). 2 produits de démo équipés.
+- **Newsletter** : tables `newsletter_subscribers` (token de désabonnement) et `newsletter_campaigns`. Box d'inscription sur toutes les pages (au-dessus du footer), préférence dans le compte client (Profil), page `/newsletter/unsubscribe?token=` (lien dans chaque e-mail), e-mail de bienvenue FR/EN. Admin `/admin/newsletter` : abonnés (recherche, ajout, activer/désactiver, suppression, CSV) + campagnes (brouillon FR/EN, jusqu'à 6 produits mis en avant, bouton CTA, e-mail test vers contact@actoos.com, envoi en tâche de fond avec compteurs envoyés/échecs).
+- **Performance** : cache localStorage stale-while-revalidate (`lib/cache.js`) pour settings, accueil, marques, listes et fiches produits ; utilisateur et favoris mis en cache pour un rendu instantané ; en-têtes `Cache-Control` publics côté API (le proxy preview les écrase, effectifs en production) ; bannière d'information stockage local (consentement mémorisé).
+- Correctif agent de test : eager-load `Product.variants` dans `_campaign_products` (MissingGreenlet). Retry automatique sur 429 du proxy e-mail.
+
 ## Non implémenté / à activer (clairement désactivé)
 - CinetPay / PawaPay : architecture providers présente, désactivés (non sélectionnables).
 - URLs préfixées /fr /en (langue gérée par contexte + localStorage).
@@ -46,8 +53,8 @@ Plateforme e-commerce football premium, multimarque indépendante. Marché de la
 - RLS Supabase (accès uniquement via backend ; sécurité côté API).
 
 ## Backlog priorisé
-- P1 : CinetPay + PawaPay (mobile money Mali), réservation stock temporisée, tri tenant compte du prix promo, réponse admin aux avis.
-- P2 : URLs /fr /en, import CSV catalogue, partenaires locaux (commissions), newsletter opt-in, vidéos par produit en vignette catalogue.
+- P1 : CinetPay + PawaPay (mobile money Mali), réservation stock temporisée, tri tenant compte du prix promo.
+- P2 : URLs /fr /en, import CSV catalogue, partenaires locaux (commissions), double opt-in newsletter, segmentation campagnes (langue/pays).
 
 ## Données de test
 - Commandes de test présentes en base (test@example.com, delivered@resend.dev) — à supprimer depuis le cockpit avant production.
