@@ -22,6 +22,7 @@ from routers.media_router import router as media_router
 from routers.reviews_router import router as reviews_router
 from routers.newsletter_router import router as newsletter_router
 from routers.contact_router import router as contact_router
+from routers.sitemap_router import router as sitemap_router
 from routers.cart_router import router as cart_router
 from fastapi import Request
 from storage import init_storage
@@ -49,6 +50,7 @@ api_router.include_router(media_router)
 api_router.include_router(reviews_router)
 api_router.include_router(newsletter_router)
 api_router.include_router(contact_router)
+api_router.include_router(sitemap_router)
 api_router.include_router(cart_router)
 api_router.include_router(cron_router)
 app.include_router(api_router)

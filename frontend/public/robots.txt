@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Pages à ne pas indexer
+Disallow: /admin/
+Disallow: /account/
+Disallow: /cart
+Disallow: /checkout
+Disallow: /order/
+
+# Sitemap
+Sitemap: https://strykos.actoos.com/sitemap.xml
