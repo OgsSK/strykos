@@ -1,7 +1,20 @@
 import { api } from "@/lib/api";
 
 export const BACKEND = process.env.REACT_APP_BACKEND_URL;
-export const mediaSrc = (url) => (url && url.startsWith("/api/media/") ? `${BACKEND}${url}` : url || "");
+
+// Supabase Storage publique
+const SUPABASE_URL = process.env.REACT_APP_SUPABASE_URL || "https://ynyzeryepumaqunvspoy.supabase.co";
+const SUPABASE_BUCKET = "strykos-media";
+
+// Transforme /api/media/strykos/images/xxx.jpg en URL Supabase Storage directe (CDN rapide)
+export const mediaSrc = (url) => {
+  if (!url) return "";
+  if (url.startsWith("/api/media/")) {
+    const path = url.replace("/api/media/", "");
+    return `${SUPABASE_URL}/storage/v1/object/public/${SUPABASE_BUCKET}/${path}`;
+  }
+  return url;
+};
 
 export const money = (v, cur) => {
   if (v == null) return "";
