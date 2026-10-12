@@ -41,7 +41,7 @@ export default function AdminSettings() {
     try { await api.put("/admin/settings", { key, value: value ?? s[key] }); toast.success("Parametres enregistres"); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {};
+  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {}, editorial = s.sections?.editorial || {};
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
   const setOrigin = (i, patch) => upd("shipping", { origins: origins.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
   const tabs = [["site", "Coordonnees"], ["hero", "Accueil & videos"], ["shipping", "Livraison"], ["taxonomies", "Taxonomies"], ["cart", "Relances panier"], ["currency", "Devises"], ["payments", "Paiements"]];
@@ -167,6 +167,93 @@ export default function AdminSettings() {
             testid="settings-sections"
           >
             <SectionsEditor sections={s.sections || {}} onChange={(v) => setS({ ...s, sections: v })} />
+          </Card>
+
+          <Card
+            title="Section éditoriale (grande image + texte)"
+            description="Bloc pleine largeur affiché sur la home entre les Nouveautés et les Promotions. Idéal pour du storytelling ou mettre en avant une collection."
+            onSave={() => save("sections", { ...s.sections, editorial })}
+            testid="settings-editorial"
+          >
+            <div className="space-y-4">
+              <div>
+                <Label>Image de fond</Label>
+                <SingleMediaUploader
+                  value={editorial.image_url || ""}
+                  onChange={(v) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, image_url: v } } })}
+                  label="une image"
+                  testid="editorial-image"
+                />
+                <p className="text-[11px] text-ink-muted mt-1">
+                  Recommandé : image paysage 1200×800 minimum. Format JPG ou WEBP.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>Titre FR</Label>
+                  <Input
+                    value={editorial.title_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, title_fr: e.target.value } } })}
+                    placeholder="L'ÉQUIPEMENT DES VRAIS JOUEURS"
+                  />
+                </div>
+                <div>
+                  <Label>Titre EN</Label>
+                  <Input
+                    value={editorial.title_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, title_en: e.target.value } } })}
+                    placeholder="GEAR FOR REAL PLAYERS"
+                  />
+                </div>
+                <div>
+                  <Label>Sous-titre FR</Label>
+                  <Textarea
+                    rows={2}
+                    value={editorial.subtitle_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, subtitle_fr: e.target.value } } })}
+                    placeholder="Maillots authentiques, chaussures et équipements des plus grandes marques."
+                  />
+                </div>
+                <div>
+                  <Label>Sous-titre EN</Label>
+                  <Textarea
+                    rows={2}
+                    value={editorial.subtitle_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, subtitle_en: e.target.value } } })}
+                    placeholder="Authentic jerseys, boots and gear from the biggest brands."
+                  />
+                </div>
+                <div>
+                  <Label>Bouton FR</Label>
+                  <Input
+                    value={editorial.cta_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_fr: e.target.value } } })}
+                    placeholder="Découvrir le catalogue"
+                  />
+                </div>
+                <div>
+                  <Label>Bouton EN</Label>
+                  <Input
+                    value={editorial.cta_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_en: e.target.value } } })}
+                    placeholder="Shop now"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <Label>Lien du bouton</Label>
+                  <Input
+                    value={editorial.cta_link || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_link: e.target.value } } })}
+                    placeholder="/catalog"
+                  />
+                </div>
+              </div>
+
+              <p className="text-xs text-ink-muted bg-secondary/40 border border-border p-3">
+                <strong>Astuce</strong> : si l'image est vide, la section affichera un dégradé noir + brand en attendant. Une fois l'image uploadée, elle s'affichera automatiquement.
+              </p>
+            </div>
           </Card>
 
           <Card title="Barre d'information" onSave={() => save("info_bar")} testid="settings-infobar">

@@ -21,7 +21,7 @@ export default function EditorialSection({ media }) {
   const title = lang === "fr" ? (m.title_fr || DEFAULT.title_fr) : (m.title_en || DEFAULT.title_en);
   const subtitle = lang === "fr" ? (m.subtitle_fr || DEFAULT.subtitle_fr) : (m.subtitle_en || DEFAULT.subtitle_en);
   const cta = lang === "fr" ? (m.cta_fr || DEFAULT.cta_fr) : (m.cta_en || DEFAULT.cta_en);
-  const hasImg = m.image_url && m.image_url.startsWith("http");
+  const hasImg = !!(m.image_url && m.image_url.trim());
 
   return (
     <section className="max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-10 py-10 sm:py-14" data-testid="editorial-section">
