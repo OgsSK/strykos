@@ -89,3 +89,7 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# Backups locaux
+*.bak
+*.bak.*

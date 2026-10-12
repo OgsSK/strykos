@@ -16,20 +16,31 @@ export const fmtDate = (d, withTime = false) => {
   return withTime ? dt.toLocaleString("fr-FR") : dt.toLocaleDateString("fr-FR");
 };
 
-export const STATUSES = ["pending_payment", "paid", "preparing", "shipped", "in_transit", "delivered", "cancelled", "return_requested", "returned", "refunded"];
+export const STATUSES = ["pending_payment", "paid", "preparing", "cancellation_requested", "shipped", "in_transit", "delivered", "return_requested", "return_approved", "return_shipped", "return_received", "exchange_sent", "cancelled", "returned", "refunded"];
 export const STATUS_LABELS = {
-  pending_payment: "En attente de paiement", paid: "Payee", preparing: "En preparation", shipped: "Expediee",
-  in_transit: "En transit", delivered: "Livree", cancelled: "Annulee", return_requested: "Retour demande",
-  returned: "Retournee", refunded: "Remboursee",
+  pending_payment: "En attente de paiement", paid: "Payee", preparing: "En preparation",
+  cancellation_requested: "Annulation demandee",
+  shipped: "Expediee",
+  in_transit: "En transit", delivered: "Livree",
+  return_requested: "Retour demande", return_approved: "Retour approuve",
+  return_shipped: "Retour expedie", return_received: "Retour recu",
+  exchange_sent: "Echange envoye",
+  cancelled: "Annulee", returned: "Retournee", refunded: "Remboursee",
 };
 export const STATUS_COLORS = {
   pending_payment: "bg-amber-100 text-amber-800", paid: "bg-blue-100 text-blue-800", preparing: "bg-indigo-100 text-indigo-800",
+  cancellation_requested: "bg-red-100 text-red-800 ring-1 ring-red-300",
   shipped: "bg-cyan-100 text-cyan-800", in_transit: "bg-cyan-100 text-cyan-800", delivered: "bg-green-100 text-green-800",
-  cancelled: "bg-gray-200 text-gray-700", return_requested: "bg-orange-100 text-orange-800", returned: "bg-gray-200 text-gray-700",
+  return_requested: "bg-orange-100 text-orange-800 ring-1 ring-orange-300",
+  return_approved: "bg-orange-100 text-orange-800",
+  return_shipped: "bg-orange-100 text-orange-800",
+  return_received: "bg-orange-200 text-orange-900",
+  exchange_sent: "bg-purple-100 text-purple-800",
+  cancelled: "bg-gray-200 text-gray-700", returned: "bg-gray-200 text-gray-700",
   refunded: "bg-red-100 text-red-800",
 };
 
-export const CARRIERS = ["DHL Express", "UPS", "FedEx", "Chronopost", "Colissimo", "bpost", "La Poste Mali", "Coursier local", "Autre"];
+export const CARRIERS = ["DHL Express", "UPS", "FedEx", "Chronopost", "Colissimo", "bpost", "Coursier local", "Autre"];
 
 const CHUNK = 4 * 1024 * 1024;
 

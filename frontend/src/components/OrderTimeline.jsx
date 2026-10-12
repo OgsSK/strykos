@@ -18,6 +18,9 @@ export function OrderTimeline({ order }) {
   const terminal = TERMINAL.includes(order.status);
   const money = (v) => formatMoney(v, order.currency);
 
+  // Statut actuel determine-t-il une expedition reellement effectuee ?
+  const wasShipped = ["shipped", "in_transit", "delivered"].includes(order.status);
+
   return (
     <div className="border border-border bg-white" data-testid="order-timeline">
       <div className="p-5 border-b border-border flex flex-wrap justify-between gap-2">
@@ -64,7 +67,13 @@ export function OrderTimeline({ order }) {
               {order.tracking_url && <a href={order.tracking_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand font-semibold hover:underline" data-testid="tracking-link">{t("trackOnCarrier")} <ExternalLink className="w-3 h-3" /></a>}
               {order.shipped_at && <div className="text-xs text-ink-muted">{t("st_shipped")}: {new Date(order.shipped_at).toLocaleDateString()}</div>}
             </div>
-          ) : <p className="text-ink-muted">{t("notShippedYet")}</p>}
+          ) : wasShipped ? (
+            <p className="text-ink-muted">
+              {lang === "fr" ? "Aucun numero de suivi enregistre." : "No tracking number on file."}
+            </p>
+          ) : (
+            <p className="text-ink-muted">{t("notShippedYet")}</p>
+          )}
         </div>
 
         <div className="mt-4 text-sm">

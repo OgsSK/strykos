@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
+import { mediaSrc } from "@/lib/adminUtils";
 
 function Media({ card }) {
   const ref = useRef();
@@ -13,8 +14,8 @@ function Media({ card }) {
   }, [card.video_url]);
   return (
     <>
-      {card.image_url && <img src={card.image_url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" />}
-      {card.video_url && <video ref={ref} src={card.video_url} poster={card.image_url || undefined} muted loop playsInline preload="metadata"
+      {card.image_url && <img src={mediaSrc(card.image_url)} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" />}
+      {card.video_url && <video ref={ref} src={mediaSrc(card.video_url)} poster={card.image_url ? mediaSrc(card.image_url) : undefined} muted loop playsInline preload="metadata"
         onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 w-full h-full object-cover" />}
     </>
   );

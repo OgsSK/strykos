@@ -10,11 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Heart, Minus, Plus, ShieldCheck, Truck } from "lucide-react";
 import { toast } from "sonner";
+import TiltCard from "@/components/TiltCard";
 
 export default function ProductDetail() {
   const { slug } = useParams();
   const nav = useNavigate();
-  const { lang, t, fmt, priceOf, convertEur, addToCart, wishlist, toggleWishlist, user } = useStore();
+  const { lang, t, fmt, priceOf, convertEur, addToCart, wishlist, toggleWishlist, user, brand } = useStore();
   const [product, setProduct] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
   const [variant, setVariant] = useState(null);
@@ -47,7 +48,9 @@ export default function ProductDetail() {
     size: variant.size, color: variant.color, prices: product.prices,
     extra_price_eur: variant.extra_price_eur || 0,
     customizable: product.customizable, customization_price_eur: product.customization_price_eur,
-    customization: useCustom && (custom.name || custom.number) ? custom : null,
+    // PERSONNALISATION DESACTIVEE TEMPORAIREMENT — remettre la ligne ci-dessous pour reactiver
+    // customization: useCustom && (custom.name || custom.number) ? custom : null,
+    customization: null,
     quantity: qty,
   });
 
@@ -69,14 +72,16 @@ export default function ProductDetail() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8" data-testid="product-detail">
       <nav className="text-xs text-ink-muted mb-6">
-        <Link to="/" className="hover:text-brand">STRYKOS</Link> / <Link to="/catalog" className="hover:text-brand">{t("catalog")}</Link> / <span className="text-ink">{name}</span>
+        <Link to="/" className="hover:text-brand">{brand.part1}{brand.part2}</Link> / <Link to="/catalog" className="hover:text-brand">{t("catalog")}</Link> / <span className="text-ink">{name}</span>
       </nav>
       <div className="grid md:grid-cols-2 gap-10">
         {/* Gallery */}
         <div>
-          <div className="aspect-[4/5] bg-secondary overflow-hidden">
-            <img src={product.images?.[activeImg]} alt={name} className="w-full h-full object-cover" data-testid="product-main-image" />
-          </div>
+          <TiltCard intensity={6} scale={1.01} key={`tilt-${activeImg}`}>
+            <div className="aspect-[4/5] bg-secondary overflow-hidden">
+              <img src={product.images?.[activeImg]} alt={name} className="w-full h-full object-cover" data-testid="product-main-image" />
+            </div>
+          </TiltCard>
           {product.images?.length > 1 && (
             <div className="flex gap-2 mt-3">
               {product.images.map((img, i) => (
@@ -122,7 +127,8 @@ export default function ProductDetail() {
           </div>
 
           {/* Customization */}
-          {product.customizable && (
+          {/* PERSONNALISATION DESACTIVEE TEMPORAIREMENT — retirer le "false &&" pour reactiver */}
+          {false && product.customizable && (
             <div className="mt-6 border border-border p-4" data-testid="customization-block">
               <label className="flex items-center gap-2 cursor-pointer font-semibold text-sm">
                 <input type="checkbox" checked={useCustom} onChange={(e) => setUseCustom(e.target.checked)} data-testid="customization-toggle" />

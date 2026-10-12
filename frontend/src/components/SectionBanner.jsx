@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { ArrowRight } from "lucide-react";
+import { mediaSrc } from "@/lib/adminUtils";
 
 /* Full-bleed video/image banner introducing a homepage section (Nike-style). */
 export default function SectionBanner({ media, title, link, testid }) {
@@ -19,8 +20,8 @@ export default function SectionBanner({ media, title, link, testid }) {
 
   return (
     <div className={`relative overflow-hidden ${hasMedia ? "h-[260px] sm:h-[340px]" : ""}`} data-testid={testid}>
-      {media?.image_url && <img src={media.image_url} alt="" className="absolute inset-0 w-full h-full object-cover" />}
-      {media?.video_url && <video ref={ref} src={media.video_url} poster={media.image_url || undefined} muted loop playsInline preload="metadata" onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 w-full h-full object-cover" />}
+      {media?.image_url && <img src={mediaSrc(media.image_url)} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+      {media?.video_url && <video ref={ref} src={mediaSrc(media.video_url)} poster={media.image_url ? mediaSrc(media.image_url) : undefined} muted loop playsInline preload="metadata" onError={(e) => { e.currentTarget.style.display = "none"; }} className="absolute inset-0 w-full h-full object-cover" />}
       {hasMedia && <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/40 to-transparent" />}
       <div className={`relative max-w-7xl mx-auto px-4 h-full flex ${hasMedia ? "flex-col justify-end pb-8 text-white" : "items-end justify-between py-10"}`}>
         <div className="flex items-end justify-between w-full gap-4">

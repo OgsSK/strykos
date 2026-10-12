@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { Search, Heart, ShoppingBag, User, Menu, X, ChevronRight } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
+import Brand from "@/components/Brand";
 
 const NAV = [
   { key: "jerseys", cat: "maillots" },
@@ -67,8 +68,8 @@ export default function Header() {
             <button className="lg:hidden" onClick={() => setMobileOpen(true)} data-testid="mobile-menu-btn" aria-label="menu">
               <Menu className="w-6 h-6" />
             </button>
-            <Link to="/" data-testid="logo-link" className="font-heading font-extrabold text-2xl tracking-tight">
-              STRY<span className="text-brand">KOS</span>
+            <Link to="/" data-testid="logo-link">
+              <Brand />
             </Link>
           </div>
 
@@ -127,7 +128,7 @@ export default function Header() {
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent side="left" className="w-80 p-0">
           <div className="p-4 border-b flex items-center justify-between">
-            <span className="font-heading font-extrabold text-xl">STRY<span className="text-brand">KOS</span></span>
+            <Brand size="sm" />
           </div>
           <form onSubmit={doSearch} className="p-4 border-b">
             <Input value={q} onChange={(e) => onSearchChange(e.target.value)} placeholder={t("searchPlaceholder")} data-testid="mobile-search-input" />

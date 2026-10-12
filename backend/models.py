@@ -122,6 +122,8 @@ class Product(Base):
     is_new = Column(Boolean, default=False, index=True)
     is_featured = Column(Boolean, default=False, index=True)
     is_best_seller = Column(Boolean, default=False, index=True)
+    gender = Column(String(30), default="", index=True)     # homme | femme | enfant | unisexe
+    sport = Column(String(40), default="", index=True)      # football | running | lifestyle | ...
     club = Column(String(120), default="", index=True)
     national_team = Column(String(120), default="", index=True)
     surface = Column(String(60), default="")
@@ -210,6 +212,30 @@ class Order(Base):
     status_history = Column(JSON, default=list)
     shipped_at = Column(DateTime(timezone=True), nullable=True)
     delivered_at = Column(DateTime(timezone=True), nullable=True)
+    review_request_sent_at = Column(DateTime(timezone=True), nullable=True)
+    hidden_by_customer = Column(Boolean, default=False, index=True)
+    cancellation_reason = Column(Text, default="")
+    cancellation_requested_at = Column(DateTime(timezone=True), nullable=True)
+    cancellation_decided_at = Column(DateTime(timezone=True), nullable=True)
+    cancellation_refused_reason = Column(Text, default="")
+    # --- Retours / RMA ---
+    return_reason = Column(Text, default="")
+    return_type = Column(String(20), default="")          # refund | exchange
+    return_products = Column(JSON, default=list)           # [{product_id, variant_id, name, size, reason, photos: []}]
+    return_rma_code = Column(String(80), default="", index=True)
+    return_label_url = Column(Text, default="")
+    return_requested_at = Column(DateTime(timezone=True), nullable=True)
+    return_decided_at = Column(DateTime(timezone=True), nullable=True)
+    return_refused_reason = Column(Text, default="")
+    return_tracking_number = Column(String(120), default="")
+    return_received_at = Column(DateTime(timezone=True), nullable=True)
+    return_exchange_product_id = Column(String(36), nullable=True)
+    return_exchange_variant_id = Column(String(36), nullable=True)
+    exchange_price_diff = Column(Numeric(14, 2), default=0)      # diff en EUR (positif = a payer, negatif = a rembourser)
+    exchange_payment_status = Column(String(20), default="")     # pending | paid | refunded
+    exchange_stripe_session_id = Column(String(255), default="")
+    shipping_origin_country = Column(String(5), default="")       # BE, ML...
+    shipping_segments = Column(JSON, default=list)                # [{carrier, tracking_number, tracking_url, status, note, at}]
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -233,7 +259,29 @@ class Order(Base):
         }
         if not public:
             d.update({"user_id": self.user_id, "phone": self.phone, "shipping_address": self.shipping_address,
-                      "stripe_session_id": self.stripe_session_id, "admin_notes": self.admin_notes})
+                      "stripe_session_id": self.stripe_session_id, "admin_notes": self.admin_notes,
+                      "hidden_by_customer": bool(self.hidden_by_customer),
+                      "cancellation_reason": self.cancellation_reason or "",
+                      "cancellation_requested_at": self.cancellation_requested_at.isoformat() if self.cancellation_requested_at else None,
+                      "cancellation_decided_at": self.cancellation_decided_at.isoformat() if self.cancellation_decided_at else None,
+                      "cancellation_refused_reason": self.cancellation_refused_reason or "",
+                      "return_reason": self.return_reason or "",
+                      "return_type": self.return_type or "",
+                      "return_products": self.return_products or [],
+                      "return_rma_code": self.return_rma_code or "",
+                      "return_label_url": self.return_label_url or "",
+                      "return_requested_at": self.return_requested_at.isoformat() if self.return_requested_at else None,
+                      "return_decided_at": self.return_decided_at.isoformat() if self.return_decided_at else None,
+                      "return_refused_reason": self.return_refused_reason or "",
+                      "return_tracking_number": self.return_tracking_number or "",
+                      "return_received_at": self.return_received_at.isoformat() if self.return_received_at else None,
+                      "return_exchange_product_id": self.return_exchange_product_id,
+                      "return_exchange_variant_id": self.return_exchange_variant_id,
+                      "exchange_price_diff": float(self.exchange_price_diff or 0),
+                      "exchange_payment_status": self.exchange_payment_status or "",
+                      "exchange_stripe_session_id": self.exchange_stripe_session_id or "",
+                      "shipping_origin_country": self.shipping_origin_country or "",
+                      "shipping_segments": self.shipping_segments or []})
         return d
 
 
@@ -364,13 +412,21 @@ class Review(Base):
     admin_reply = Column(Text, default="")
     admin_reply_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
+    edited_at = Column(DateTime(timezone=True), nullable=True)
 
     def to_dict(self, admin=False):
+        can_edit = False
+        if self.created_at:
+            age = datetime.now(timezone.utc) - self.created_at
+            can_edit = age.days < 14
         d = {
             "id": self.id, "product_id": self.product_id, "author_name": self.author_name,
             "rating": self.rating, "title": self.title, "body": self.body,
             "images": self.images or [], "verified_purchase": self.verified_purchase,
             "approved": self.approved, "created_at": self.created_at.isoformat() if self.created_at else None,
+            "edited_at": self.edited_at.isoformat() if self.edited_at else None,
+            "is_edited": bool(self.edited_at),
+            "can_edit": can_edit,
             "admin_reply": self.admin_reply or "",
             "admin_reply_at": self.admin_reply_at.isoformat() if self.admin_reply_at else None,
         }
@@ -426,5 +482,97 @@ class NewsletterCampaign(Base):
             "sent_count": self.sent_count or 0, "failed_count": self.failed_count or 0,
             "total_recipients": self.total_recipients or 0,
             "sent_at": self.sent_at.isoformat() if self.sent_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ContactMessage(Base):
+    __tablename__ = "contact_messages"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    name = Column(String(120), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    subject = Column(String(200), nullable=False)
+    message = Column(Text, nullable=False)
+    lang = Column(String(5), default="fr")
+    status = Column(String(20), default="new", index=True)  # new | read | replied | archived
+    user_id = Column(String(36), nullable=True, index=True)
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+    read_at = Column(DateTime(timezone=True), nullable=True)
+    replied_at = Column(DateTime(timezone=True), nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "subject": self.subject,
+            "message": self.message,
+            "lang": self.lang,
+            "status": self.status,
+            "user_id": self.user_id,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "read_at": self.read_at.isoformat() if self.read_at else None,
+            "replied_at": self.replied_at.isoformat() if self.replied_at else None,
+        }
+
+
+class EmailChangeRequest(Base):
+    __tablename__ = "email_change_requests"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    user_id = Column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), index=True)
+    old_email = Column(String(255), nullable=False)
+    new_email = Column(String(255), nullable=False, index=True)
+    old_token_hash = Column(String(128), nullable=False, index=True)
+    new_token_hash = Column(String(128), nullable=False, index=True)
+    old_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    new_confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "old_email": self.old_email,
+            "new_email": self.new_email,
+            "old_confirmed_at": self.old_confirmed_at.isoformat() if self.old_confirmed_at else None,
+            "new_confirmed_at": self.new_confirmed_at.isoformat() if self.new_confirmed_at else None,
+            "expires_at": self.expires_at.isoformat() if self.expires_at else None,
+            "used_at": self.used_at.isoformat() if self.used_at else None,
+            "cancelled_at": self.cancelled_at.isoformat() if self.cancelled_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class Cart(Base):
+    __tablename__ = "carts"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    user_id = Column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    items = Column(JSON, default=list)                      # meme format que le panier front
+    subtotal_eur = Column(Numeric(14, 2), default=0)         # pour filtrer les mini-paniers
+    email_1_sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    email_2_sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    reminder_opt_out = Column(Boolean, default=False)
+    recovered_order_id = Column(String(36), nullable=True)   # commande creee depuis ce panier
+    promo_code_used = Column(String(60), default="")         # code envoye dans le 2e mail
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "items": self.items or [],
+            "subtotal_eur": float(self.subtotal_eur or 0),
+            "email_1_sent_at": self.email_1_sent_at.isoformat() if self.email_1_sent_at else None,
+            "email_2_sent_at": self.email_2_sent_at.isoformat() if self.email_2_sent_at else None,
+            "reminder_opt_out": bool(self.reminder_opt_out),
+            "recovered_order_id": self.recovered_order_id,
+            "promo_code_used": self.promo_code_used or "",
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

@@ -1,43 +1,69 @@
 import os
 import logging
-import requests
+import httpx
 
 logger = logging.getLogger("strykos.storage")
 
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+SUPABASE_URL = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or ""
+SUPABASE_BUCKET = os.environ.get("SUPABASE_MEDIA_BUCKET", "strykos-media")
 APP_NAME = "strykos"
-storage_key = None
+
+
+def _headers(content_type: str | None = None, upsert: bool = False) -> dict:
+    h = {
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "apikey": SUPABASE_KEY,
+    }
+    if content_type:
+        h["Content-Type"] = content_type
+    if upsert:
+        h["x-upsert"] = "true"
+    return h
+
+
+def _check_config():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise RuntimeError("Supabase Storage non configuré (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY manquants)")
 
 
 def init_storage(force: bool = False):
-    global storage_key
-    if storage_key and not force:
-        return storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    storage_key = resp.json()["storage_key"]
-    return storage_key
+    """Compat ancienne API — plus de 'storage_key' à initialiser, on utilise la clé service_role."""
+    _check_config()
+    return True
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                        headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
-    if resp.status_code == 404:
-        key = init_storage(force=True)
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type}, data=data, timeout=180)
-    resp.raise_for_status()
-    return resp.json()
+    """Upload un objet vers Supabase Storage."""
+    _check_config()
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{path}"
+    with httpx.Client(timeout=180) as client:
+        r = client.post(url, headers=_headers(content_type, upsert=True), content=data)
+    if r.status_code >= 400:
+        raise RuntimeError(f"Supabase Storage {r.status_code}: {r.text[:200]}")
+    return {"path": path, "size": len(data)}
 
 
 def get_object(path: str) -> tuple[bytes, str]:
-    key = init_storage()
-    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    if resp.status_code == 404 and storage_key:
-        key = init_storage(force=True)
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-    resp.raise_for_status()
-    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+    """Récupère un objet depuis Supabase Storage."""
+    _check_config()
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{path}"
+    with httpx.Client(timeout=60) as client:
+        r = client.get(url, headers=_headers())
+    if r.status_code >= 400:
+        raise RuntimeError(f"Supabase Storage {r.status_code}: {r.text[:200]}")
+    return r.content, r.headers.get("Content-Type", "application/octet-stream")
+
+
+def delete_object(path: str) -> bool:
+    """Supprime un objet (soft-delete côté DB, mais vraiment supprimé côté storage)."""
+    _check_config()
+    url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{path}"
+    with httpx.Client(timeout=30) as client:
+        r = client.delete(url, headers=_headers())
+    return r.status_code < 400
+
+
+def public_url(path: str) -> str:
+    """Retourne l'URL publique d'un objet (bucket public)."""
+    return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{path}"

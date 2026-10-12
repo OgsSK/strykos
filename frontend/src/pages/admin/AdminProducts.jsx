@@ -15,6 +15,7 @@ const EMPTY = {
   slug: "", sku: "", brand_id: "", category_id: "", name_fr: "", name_en: "",
   description_fr: "", description_en: "", price_eur: "", price_usd: "", price_xof: "",
   sale_price_eur: "", is_new: false, is_featured: false, is_best_seller: false,
+  gender: "", sport: "",
   club: "", national_team: "", surface: "", product_type: "", colors: "",
   customizable: false, customization_price_eur: 0, video_url: "", published: true, images: [], variants: [],
 };
@@ -33,6 +34,7 @@ export default function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [stockFilter, setStockFilter] = useState(params.get("stock") || "all");
+  const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [] });
 
   const load = () => api.get("/admin/products").then((r) => setProducts(r.data)).catch(() => {});
   useEffect(() => {
@@ -43,6 +45,10 @@ export default function AdminProducts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    api.get("/taxonomies").then((r) => setTaxonomies(r.data)).catch(() => {});
+  }, []);
+
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = (p) => {
     setEditing(p.id);
@@ -51,6 +57,7 @@ export default function AdminProducts() {
       name_fr: p.name_fr, name_en: p.name_en, description_fr: p.description_fr || "", description_en: p.description_en || "",
       price_eur: p.price_eur ?? "", price_usd: p.price_usd ?? "", price_xof: p.price_xof ?? "", sale_price_eur: p.sale_price_eur ?? "",
       is_new: p.is_new, is_featured: p.is_featured, is_best_seller: p.is_best_seller,
+      gender: p.gender || "", sport: p.sport || "",
       club: p.club || "", national_team: p.national_team || "", surface: p.surface || "",
       product_type: p.product_type || "", colors: (p.colors || []).join(", "), customizable: p.customizable,
       customization_price_eur: p.customization_price_eur || 0, video_url: p.video_url || "", published: p.published,
@@ -71,6 +78,7 @@ export default function AdminProducts() {
     const payload = {
       ...form,
       slug: form.slug || slugify(form.name_fr),
+      gender: form.gender || "", sport: form.sport || "",
       price_eur: parseFloat(form.price_eur) || 0,
       price_usd: numOrNull(form.price_usd), price_xof: numOrNull(form.price_xof), sale_price_eur: numOrNull(form.sale_price_eur),
       customization_price_eur: parseFloat(form.customization_price_eur) || 0,
@@ -185,6 +193,34 @@ export default function AdminProducts() {
                   <Label>Categorie</Label>
                   <select value={form.category_id} onChange={(e) => setF("category_id", e.target.value)} className="w-full border border-border h-10 px-2 bg-white" data-testid="pf-category">
                     <option value="">-</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name_fr}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <Label>Genre</Label>
+                  <select
+                    value={form.gender}
+                    onChange={(e) => setF("gender", e.target.value)}
+                    className="w-full border border-border h-10 px-2 bg-white text-sm"
+                    data-testid="pf-gender"
+                  >
+                    <option value="">—</option>
+                    {taxonomies.genders.map((g) => (
+                      <option key={g.value} value={g.value}>{g.name_fr}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Sport</Label>
+                  <select
+                    value={form.sport}
+                    onChange={(e) => setF("sport", e.target.value)}
+                    className="w-full border border-border h-10 px-2 bg-white text-sm"
+                    data-testid="pf-sport"
+                  >
+                    <option value="">—</option>
+                    {taxonomies.sports.map((s) => (
+                      <option key={s.value} value={s.value}>{s.name_fr}</option>
+                    ))}
                   </select>
                 </div>
               </div>

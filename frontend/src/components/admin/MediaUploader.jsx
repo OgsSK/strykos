@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, X, GripVertical, Film } from "lucide-react";
+import { Upload, X, GripVertical, Film, Image as ImageIcon } from "lucide-react";
 import { uploadMedia, mediaSrc, BACKEND } from "@/lib/adminUtils";
 import { apiError } from "@/lib/api";
 
@@ -65,9 +65,18 @@ export function ImageGalleryUploader({ value = [], onChange, testid = "gallery" 
 }
 
 /* Single file uploader (image or video). value: URL string */
-export function SingleMediaUploader({ value = "", onChange, accept = "image/*", kind = "image", label = "Fichier", testid = "single-media" }) {
+export function SingleMediaUploader({
+  value = "",
+  onChange,
+  accept = "image/*",
+  kind = "image",
+  label = "Fichier",
+  testid = "single-media",
+  compact = false,
+}) {
   const inputRef = useRef();
   const [pct, setPct] = useState(null);
+
   const handle = async (file) => {
     if (!file) return;
     try {
@@ -78,20 +87,85 @@ export function SingleMediaUploader({ value = "", onChange, accept = "image/*", 
     } catch (e) { toast.error(apiError(e)); }
     setPct(null);
   };
+
+  const Preview = ({ className = "" }) => (
+    <div className={`bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0 ${className}`}>
+      {value ? (
+        kind === "video"
+          ? <video src={mediaSrc(value)} className="w-full h-full object-cover" muted />
+          : <img src={mediaSrc(value)} alt="" className="w-full h-full object-cover" />
+      ) : (
+        kind === "video" ? <Film className="w-5 h-5 text-ink-muted" /> : <ImageIcon className="w-5 h-5 text-ink-muted" />
+      )}
+    </div>
+  );
+
+  // ---------- MODE COMPACT (pour listes denses) ----------
+  if (compact) {
+    return (
+      <div data-testid={testid} className="flex items-center gap-2">
+        <Preview className="w-12 h-12" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              data-testid={`${testid}-upload-btn`}
+              className="h-7 px-2 border border-border text-[11px] hover:bg-secondary whitespace-nowrap"
+            >
+              {pct != null ? `${pct}%` : value ? "Changer" : `Ajouter`}
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                className="h-7 w-7 border border-border text-[11px] text-red-600 hover:bg-red-50 inline-flex items-center justify-center"
+                title="Retirer"
+                data-testid={`${testid}-clear`}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+        <input ref={inputRef} type="file" accept={accept} hidden onChange={(e) => { handle(e.target.files?.[0]); e.target.value = ""; }} data-testid={`${testid}-file-input`} />
+      </div>
+    );
+  }
+
+  // ---------- MODE NORMAL ----------
   return (
     <div data-testid={testid}>
       <div className="flex items-start gap-3">
-        <div className="w-28 h-20 bg-secondary border border-border flex items-center justify-center overflow-hidden shrink-0">
-          {value ? (kind === "video" ? <video src={mediaSrc(value)} className="w-full h-full object-cover" muted /> : <img src={mediaSrc(value)} alt="" className="w-full h-full object-cover" />)
-            : (kind === "video" ? <Film className="w-6 h-6 text-ink-muted" /> : <Upload className="w-6 h-6 text-ink-muted" />)}
-        </div>
-        <div className="flex-1 space-y-2">
-          <div className="flex gap-2">
-            <button type="button" onClick={() => inputRef.current?.click()} data-testid={`${testid}-upload-btn`}
-              className="h-9 px-3 border border-border text-sm hover:bg-secondary">{pct != null ? `${pct}%` : `Televerser ${label.toLowerCase()}`}</button>
-            {value && <button type="button" onClick={() => onChange("")} className="h-9 px-3 text-sm text-brand hover:underline" data-testid={`${testid}-clear`}>Retirer</button>}
+        <Preview className="w-28 h-20" />
+        <div className="flex-1 min-w-0 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              data-testid={`${testid}-upload-btn`}
+              className="h-9 px-3 border border-border text-sm hover:bg-secondary whitespace-nowrap"
+            >
+              {pct != null ? `${pct}%` : `Televerser ${label.toLowerCase()}`}
+            </button>
+            {value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                className="h-9 px-3 text-sm text-brand hover:underline"
+                data-testid={`${testid}-clear`}
+              >
+                Retirer
+              </button>
+            )}
           </div>
-          <input value={value} onChange={(e) => onChange(e.target.value)} placeholder="ou URL https://..." className="w-full border border-border h-9 px-2 text-sm" data-testid={`${testid}-url`} />
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="ou URL https://..."
+            className="w-full border border-border h-9 px-2 text-sm"
+            data-testid={`${testid}-url`}
+          />
         </div>
       </div>
       <input ref={inputRef} type="file" accept={accept} hidden onChange={(e) => { handle(e.target.files?.[0]); e.target.value = ""; }} data-testid={`${testid}-file-input`} />

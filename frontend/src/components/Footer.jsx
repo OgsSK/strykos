@@ -1,15 +1,16 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
+import Brand from "@/components/Brand";
 
 export default function Footer() {
-  const { t, settings } = useStore();
+  const { t, settings, lang, brand } = useStore();
   const site = settings?.site;
   return (
     <footer className="bg-ink text-white" data-testid="footer">
       <div className="max-w-7xl mx-auto px-4 py-12 grid grid-cols-2 md:grid-cols-4 gap-8">
         <div className="col-span-2 md:col-span-1">
-          <div className="font-heading font-extrabold text-2xl mb-3">STRY<span className="text-brand">KOS</span></div>
+          <Brand className="mb-3 text-white" />
           <p className="text-sm text-white/60 leading-relaxed">{t("footerTagline")}</p>
         </div>
         <div>
@@ -32,18 +33,30 @@ export default function Footer() {
           </ul>
         </div>
         <div>
-          <h4 className="text-xs uppercase tracking-wider font-semibold mb-4 text-white/80">STRYKOS</h4>
+          <h4 className="text-xs uppercase tracking-wider font-semibold mb-4 text-white/80">
+            {brand.part1}{brand.part2}
+          </h4>
           <ul className="space-y-2 text-sm text-white/60">
             <li><Link to="/page/about" className="hover:text-brand">{t("about")}</Link></li>
             <li><Link to="/page/terms" className="hover:text-brand">{t("terms")}</Link></li>
             <li><Link to="/page/privacy" className="hover:text-brand">{t("privacy")}</Link></li>
             <li><Link to="/page/cookies" className="hover:text-brand">{t("cookies")}</Link></li>
+            <li><Link to="/page/legal" className="hover:text-brand">{t("legalNotice")}</Link></li>
+            <li>
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event("strykos:open-cookies"))}
+                className="hover:text-brand text-left"
+              >
+                {lang === "fr" ? "Gérer les cookies" : "Manage cookies"}
+              </button>
+            </li>
           </ul>
         </div>
       </div>
       <div className="border-t border-white/10">
         <div className="max-w-7xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-white/50">
-          <span>© {new Date().getFullYear()} STRYKOS. {t("allRightsReserved")}.</span>
+          <span>© {new Date().getFullYear()} {brand.part1}{brand.part2}. {t("allRightsReserved")}.</span>
           <span>{t("independentStore")}</span>
           <span className="flex gap-3">
             {site?.email && <a href={`mailto:${site.email}`} className="hover:text-white" data-testid="footer-email">{site.email}</a>}

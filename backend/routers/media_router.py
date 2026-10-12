@@ -3,7 +3,7 @@ import uuid
 import asyncio
 import shutil
 from pathlib import Path
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Response, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,10 +118,11 @@ async def delete_media(media_id: str, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/media/{path:path}")
-async def serve_media(path: str, db: AsyncSession = Depends(get_db)):
+async def serve_media(path: str, request: Request, db: AsyncSession = Depends(get_db)):
     global _cache_bytes
     if not path.startswith(f"{APP_NAME}/") or ".." in path:
         raise HTTPException(status_code=404, detail="Not found")
+
     cached = _cache.get(path)
     if cached:
         content, ctype = cached
@@ -135,9 +136,53 @@ async def serve_media(path: str, db: AsyncSession = Depends(get_db)):
         except Exception:
             raise HTTPException(status_code=502, detail="Media unavailable")
         ctype = m.content_type or ctype
+
+        # Cache memoire seulement pour les petits fichiers (<8 Mo)
         if len(content) < 8 * 1024 * 1024:
             if _cache_bytes + len(content) > CACHE_LIMIT:
-                _cache.clear(); _cache_bytes = 0
-            _cache[path] = (content, ctype); _cache_bytes += len(content)
-    return Response(content=content, media_type=ctype,
-                    headers={"Cache-Control": "public, max-age=31536000, immutable"})
+                _cache.clear()
+                _cache_bytes = 0
+            _cache[path] = (content, ctype)
+            _cache_bytes += len(content)
+
+    # --- Support des Range Requests (obligatoire pour la video) ---
+    total = len(content)
+    range_header = request.headers.get("range") or request.headers.get("Range")
+
+    if range_header and range_header.startswith("bytes="):
+        try:
+            ranges = range_header.replace("bytes=", "").split(",")[0].strip()
+            start_str, _, end_str = ranges.partition("-")
+            start = int(start_str) if start_str else 0
+            end = int(end_str) if end_str else total - 1
+            end = min(end, total - 1)
+            start = max(0, start)
+            if start > end or start >= total:
+                return Response(
+                    status_code=416,
+                    headers={"Content-Range": f"bytes */{total}"},
+                )
+            chunk = content[start:end + 1]
+            return Response(
+                content=chunk,
+                media_type=ctype,
+                status_code=206,
+                headers={
+                    "Content-Range": f"bytes {start}-{end}/{total}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(len(chunk)),
+                    "Cache-Control": "public, max-age=31536000, immutable",
+                },
+            )
+        except (ValueError, IndexError):
+            pass
+
+    # Reponse normale (fichier entier) avec Accept-Ranges pour indiquer le support
+    return Response(
+        content=content,
+        media_type=ctype,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=31536000, immutable",
+        },
+    )

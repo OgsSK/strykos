@@ -21,8 +21,12 @@ from routers.settings_router import router as settings_router
 from routers.media_router import router as media_router
 from routers.reviews_router import router as reviews_router
 from routers.newsletter_router import router as newsletter_router
+from routers.contact_router import router as contact_router
+from routers.cart_router import router as cart_router
 from fastapi import Request
 from storage import init_storage
+from routers.cron_router import router as cron_router
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("strykos")
@@ -44,7 +48,11 @@ api_router.include_router(settings_router)
 api_router.include_router(media_router)
 api_router.include_router(reviews_router)
 api_router.include_router(newsletter_router)
+api_router.include_router(contact_router)
+api_router.include_router(cart_router)
+api_router.include_router(cron_router)
 app.include_router(api_router)
+
 
 PUBLIC_CACHE_PREFIXES = ("/api/settings", "/api/home", "/api/products", "/api/categories", "/api/brands", "/api/search")
 
@@ -62,9 +70,10 @@ async def public_cache_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[os.environ.get("FRONTEND_URL", "*"), "http://localhost:3000"],
+    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
 )
 
 
@@ -83,7 +92,7 @@ async def startup():
                 row = res.scalar_one_or_none()
                 if not row:
                     db.add(Setting(key=key, value=value))
-                elif key == "site" and row.value.get("email") == "contact@strykos.com":
+                elif key == "site" and row.value.get("email") == "contact@actoos.com":
                     row.value = {**value, **{k: v for k, v in row.value.items() if k not in ("email", "phone")}}
                 elif key == "hero" and "slides" not in (row.value or {}):
                     old = row.value or {}

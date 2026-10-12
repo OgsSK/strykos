@@ -12,8 +12,11 @@ from models import (Product, ProductImage, ProductVariant, Brand, Category, Orde
                     Profile, PromoCode, EmailLog)
 from auth import get_current_admin
 from utils import get_rates, serialize_product, get_settings, normalize_media
-from emails import send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO, ADMIN_NOTIFY_EMAIL
+from emails import (send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO,
+                    ADMIN_NOTIFY_EMAIL, send_templated,
+                    tpl_cancellation_approved, tpl_cancellation_refused)
 from routers.commerce_router import push_history
+from sqlalchemy import select, func, delete
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
@@ -52,6 +55,7 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     customers = (await db.execute(select(func.count(Profile.id)).where(Profile.role == "customer"))).scalar() or 0
     emails_failed = (await db.execute(select(func.count(EmailLog.id)).where(EmailLog.status == "failed"))).scalar() or 0
     promos_active = (await db.execute(select(func.count(PromoCode.id)).where(PromoCode.active == True))).scalar() or 0
+    pending_cancellations = len([o for o in orders if o.status == "cancellation_requested"])
 
     return {
         "total_orders": len(orders),
@@ -61,6 +65,7 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
         "pending_payments": len([o for o in orders if o.payment_status == "pending"]),
         "orders_to_process": len([o for o in orders if o.status in ("paid", "preparing")]),
         "orders_shipped": len([o for o in orders if o.status in ("shipped", "in_transit")]),
+        "pending_cancellations": pending_cancellations,
         "by_status": by_status,
         "series": series,
         "total_products": len(products),
@@ -102,6 +107,8 @@ class ProductIn(BaseModel):
     is_new: bool = False
     is_featured: bool = False
     is_best_seller: bool = False
+    gender: str = ""
+    sport: str = ""
     club: str = ""
     national_team: str = ""
     surface: str = ""
@@ -353,22 +360,87 @@ async def delete_category(category_id: str, db: AsyncSession = Depends(get_db)):
 
 # ---------------- Orders ----------------
 VALID_STATUSES = ["pending_payment", "paid", "preparing", "shipped", "in_transit",
-                  "delivered", "cancelled", "return_requested", "returned", "refunded"]
+                  "delivered", "cancelled", "return_requested", "return_approved",
+                  "return_shipped", "return_received", "returned", "refunded",
+                  "exchange_sent", "cancellation_requested"]
+
+
+@router.get("/orders/counts")
+async def admin_orders_counts(db: AsyncSession = Depends(get_db)):
+    """Compteurs par groupe pour la barre d'accès rapides."""
+    from sqlalchemy import func as _f
+    res = await db.execute(select(Order.status, _f.count(Order.id)).group_by(Order.status))
+    by_status = {s: c for s, c in res.all()}
+
+    def sum_statuses(keys):
+        return sum(by_status.get(k, 0) for k in keys)
+
+    total = sum(by_status.values())
+    return {
+        "total": total,
+        "to_process": sum_statuses(["paid", "preparing"]),
+        "in_transit": sum_statuses(["shipped", "in_transit"]),
+        "returns": sum_statuses(["return_requested", "return_approved", "return_shipped", "return_received"]),
+        "cancellations": sum_statuses(["cancellation_requested"]),
+        "delivered": sum_statuses(["delivered"]),
+        "completed": sum_statuses(["returned", "refunded", "cancelled", "exchange_sent"]),
+        "by_status": by_status,
+    }
 
 
 @router.get("/orders")
 async def admin_orders(status: Optional[str] = None, payment_status: Optional[str] = None,
-                       q: Optional[str] = None, limit: int = 200, db: AsyncSession = Depends(get_db)):
-    query = select(Order).order_by(Order.created_at.desc()).limit(min(limit, 500))
+                       q: Optional[str] = None, country: Optional[str] = None,
+                       period: Optional[str] = None, sort: str = "recent",
+                       limit: int = 200, db: AsyncSession = Depends(get_db)):
+    """Liste des commandes avec filtres avancés.
+
+    - status : un ou plusieurs statuts separes par virgule (ex: "paid,preparing")
+    - payment_status : paid | pending | refunded
+    - q : recherche texte
+    - country : code pays (BE, ML...) - cherche dans shipping_address
+    - period : all | 7d | 30d | 90d
+    - sort : recent (defaut) | oldest | amount_desc | amount_asc
+    """
+    query = select(Order)
+    query = query.limit(min(limit, 500))
+
+    # Statut(s) : support du multi-valeur
     if status:
-        query = query.where(Order.status == status)
+        statuses = [s.strip() for s in status.split(",") if s.strip()]
+        if len(statuses) == 1:
+            query = query.where(Order.status == statuses[0])
+        else:
+            query = query.where(Order.status.in_(statuses))
+
     if payment_status:
         query = query.where(Order.payment_status == payment_status)
+
     if q:
         term = f"%{q.strip()}%"
         query = query.where(or_(Order.order_number.ilike(term), Order.email.ilike(term),
                                 Order.first_name.ilike(term), Order.last_name.ilike(term),
                                 Order.tracking_number.ilike(term)))
+
+    if country:
+        # country est stocke dans le JSON shipping_address sous la cle "country"
+        query = query.where(Order.shipping_address["country"].astext == country.upper())
+
+    if period and period != "all":
+        days = {"7d": 7, "30d": 30, "90d": 90}.get(period, 30)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        query = query.where(Order.created_at >= cutoff)
+
+    # Tri
+    if sort == "oldest":
+        query = query.order_by(Order.created_at.asc())
+    elif sort == "amount_desc":
+        query = query.order_by(Order.total.desc())
+    elif sort == "amount_asc":
+        query = query.order_by(Order.total.asc())
+    else:
+        query = query.order_by(Order.created_at.desc())
+
     res = await db.execute(query)
     return [o.to_dict() for o in res.scalars().all()]
 
@@ -425,36 +497,132 @@ async def update_order_status(order_id: str, data: OrderStatusIn, admin=Depends(
     return {"ok": True, "email": email_log.to_dict() if email_log else None}
 
 
+class SegmentIn(BaseModel):
+    carrier: str = ""
+    tracking_number: str = ""
+    tracking_url: str = ""
+    status: str = "pending"     # pending | in_transit | delivered | failed
+    note: str = ""
+
+
 class TrackingIn(BaseModel):
     tracking_carrier: str = ""
     tracking_number: str = ""
     tracking_url: str = ""
     mark_shipped: bool = True
     notify: bool = True
+    # Nouveaux champs (V1 origines + segments)
+    shipping_origin_country: str = ""
+    segments: list[SegmentIn] = []
 
 
 @router.put("/orders/{order_id}/tracking")
 async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_current_admin),
                           db: AsyncSession = Depends(get_db)):
+    from utils import carrier_url
+
     o = await _get_order(db, order_id)
-    url = data.tracking_url.strip()
-    if url and not url.lower().startswith("https://"):
-        raise HTTPException(status_code=400, detail="Le lien de suivi doit commencer par https://")
-    o.tracking_carrier, o.tracking_number, o.tracking_url = data.tracking_carrier.strip(), data.tracking_number.strip(), url
+
+    # Si le client envoie des segments, on les remplace entierement
+    if data.segments:
+        segments = []
+        for s in data.segments:
+            carrier = (s.carrier or "").strip()
+            num = (s.tracking_number or "").strip()
+            url = (s.tracking_url or "").strip()
+            # Auto-generation du lien si non fourni
+            if not url and carrier and num:
+                url = carrier_url(carrier, num)
+            if url and not url.lower().startswith("https://"):
+                raise HTTPException(status_code=400, detail="Le lien de suivi doit commencer par https://")
+            segments.append({
+                "carrier": carrier,
+                "tracking_number": num,
+                "tracking_url": url,
+                "status": s.status if s.status in ("pending", "in_transit", "delivered", "failed") else "pending",
+                "note": (s.note or "").strip()[:200],
+                "at": datetime.now(timezone.utc).isoformat(),
+            })
+        o.shipping_segments = segments
+        # On met aussi a jour les champs plats (compat + affichage client)
+        if segments:
+            first = segments[0]
+            o.tracking_carrier = first["carrier"]
+            o.tracking_number = first["tracking_number"]
+            o.tracking_url = first["tracking_url"]
+
+    else:
+        # Ancien comportement (1 seul segment)
+        url = data.tracking_url.strip()
+        if url and not url.lower().startswith("https://"):
+            raise HTTPException(status_code=400, detail="Le lien de suivi doit commencer par https://")
+        o.tracking_carrier = data.tracking_carrier.strip()
+        o.tracking_number = data.tracking_number.strip()
+        o.tracking_url = url
+
+    if data.shipping_origin_country:
+        o.shipping_origin_country = data.shipping_origin_country.strip().upper()
+
     sent = None
     if data.mark_shipped and o.status in ("paid", "preparing"):
         o.status = "shipped"
         o.shipped_at = datetime.now(timezone.utc)
-        push_history(o, "shipped", by=admin.email, note=f"{o.tracking_carrier} {o.tracking_number}".strip())
+        note = f"{o.tracking_carrier} {o.tracking_number}".strip()
+        if data.segments and len(data.segments) > 1:
+            note = f"{len(data.segments)} segments d'expedition"
+        push_history(o, "shipped", by=admin.email, note=note)
         await db.commit()
         if data.notify and o.email:
             sent = await send_order_email(db, o, "order_shipped")
     else:
-        push_history(o, o.status, by=admin.email, note=f"Suivi mis a jour: {o.tracking_carrier} {o.tracking_number}".strip())
+        note = f"Suivi mis a jour: {o.tracking_carrier} {o.tracking_number}".strip()
+        if data.segments:
+            note = f"Suivi mis a jour ({len(data.segments)} segment(s))"
+        push_history(o, o.status, by=admin.email, note=note)
         await db.commit()
         if data.notify and o.email and o.status in ("shipped", "in_transit"):
             sent = await send_order_email(db, o, "order_shipped")
     return {"ok": True, "order": o.to_dict(), "email": sent.to_dict() if sent else None}
+
+
+class SegmentStatusIn(BaseModel):
+    index: int
+    status: str       # pending | in_transit | delivered | failed
+    note: str = ""
+    notify: bool = True
+
+
+@router.put("/orders/{order_id}/segments/{index}/status")
+async def update_segment_status(order_id: str, index: int, data: SegmentStatusIn,
+                                admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Met a jour le statut d'un segment (utile pour les coursiers sans tracking)."""
+    if data.status not in ("pending", "in_transit", "delivered", "failed"):
+        raise HTTPException(status_code=400, detail="Statut invalide.")
+
+    o = await _get_order(db, order_id)
+    segs = list(o.shipping_segments or [])
+    if index < 0 or index >= len(segs):
+        raise HTTPException(status_code=404, detail="Segment introuvable.")
+    segs[index]["status"] = data.status
+    segs[index]["note"] = (data.note or "").strip()[:200]
+    segs[index]["at"] = datetime.now(timezone.utc).isoformat()
+    o.shipping_segments = segs
+
+    # Si tous les segments sont delivered -> statut commande delivered
+    if all(s.get("status") == "delivered" for s in segs):
+        if o.status not in ("delivered", "refunded", "cancelled", "returned"):
+            o.status = "delivered"
+            o.delivered_at = datetime.now(timezone.utc)
+            push_history(o, "delivered", by=admin.email, note="Tous les segments livres")
+            await db.commit()
+            if data.notify and o.email:
+                await send_order_email(db, o, "order_delivered")
+            return {"ok": True, "order": o.to_dict()}
+
+    push_history(o, o.status, by=admin.email,
+                 note=f"Segment {index + 1} : {data.status}")
+    await db.commit()
+    return {"ok": True, "order": o.to_dict()}
 
 
 class NotesIn(BaseModel):
@@ -499,8 +667,13 @@ async def refund_order(order_id: str, data: RefundIn, admin=Depends(get_current_
     o = await _get_order(db, order_id)
     if o.payment_status != "paid":
         raise HTTPException(status_code=400, detail="Seule une commande payee peut etre remboursee")
-    pres = await db.execute(select(Payment).where(Payment.order_id == o.id, Payment.status == "succeeded"))
-    pay = pres.scalar_one_or_none()
+    pres = await db.execute(
+        select(Payment).where(
+            Payment.order_id == o.id,
+            Payment.status.in_(["succeeded", "pending"])
+        ).order_by(Payment.created_at.desc())
+    )
+    pay = pres.scalars().first()
     if not pay:
         raise HTTPException(status_code=400, detail="Aucun paiement Stripe confirme pour cette commande")
     pi = pay.payment_intent
@@ -533,8 +706,83 @@ async def refund_order(order_id: str, data: RefundIn, admin=Depends(get_current_
     push_history(o, o.status, by=admin.email, note=f"Remboursement Stripe {refund.id} ({refund.amount / 100:.2f} {o.charge_currency})")
     await db.commit()
     if data.notify and full and o.email:
-        await send_order_email(db, o, "order_cancelled", refunded=True)
+                await send_order_email(db, o, "order_refunded")
     return {"ok": True, "refund_id": refund.id, "full": full, "order": o.to_dict()}
+
+@router.post("/orders/{order_id}/approve-cancellation")
+async def approve_cancellation(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """L'admin valide une demande d'annulation + rembourse automatiquement via Stripe."""
+    o = await _get_order(db, order_id)
+    if o.status != "cancellation_requested":
+        raise HTTPException(status_code=400, detail="Aucune demande d'annulation en cours.")
+
+    # Remboursement Stripe (meme logique que refund_order)
+    pres = await db.execute(
+        select(Payment).where(
+            Payment.order_id == o.id,
+            Payment.status.in_(["succeeded", "pending"])
+        ).order_by(Payment.created_at.desc())
+    )
+    pay = pres.scalars().first()
+    if pay:
+        pi = pay.payment_intent
+        if not pi and pay.session_id:
+            try:
+                s = stripe.checkout.Session.retrieve(pay.session_id)
+                pi = s.payment_intent
+            except stripe.error.StripeError:
+                pi = None
+        if pi:
+            try:
+                refund = stripe.Refund.create(payment_intent=pi)
+                pay.status = "refunded"
+                pay.payment_intent = pi
+                pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
+            except stripe.error.StripeError as e:
+                raise HTTPException(status_code=502, detail=f"Stripe refund: {e.user_message or str(e)}")
+
+    o.status = "cancelled"
+    o.payment_status = "refunded"
+    o.cancellation_decided_at = datetime.now(timezone.utc)
+    push_history(o, "cancelled", by=admin.email, note=f"Annulation validee : {o.cancellation_reason[:100]}")
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_cancellation_approved(o.to_dict(), lang)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="cancellation_approved", order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status, "payment_status": o.payment_status}
+
+
+@router.post("/orders/{order_id}/refuse-cancellation")
+async def refuse_cancellation(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """L'admin refuse une demande d'annulation."""
+    o = await _get_order(db, order_id)
+    if o.status != "cancellation_requested":
+        raise HTTPException(status_code=400, detail="Aucune demande d'annulation en cours.")
+
+    reason = (data.get("reason") or "").strip()[:500]
+    o.status = "paid"  # on revient a l'etat precedent
+    o.cancellation_refused_reason = reason
+    o.cancellation_decided_at = datetime.now(timezone.utc)
+    push_history(o, "paid", by=admin.email, note=f"Annulation refusee : {reason[:100]}")
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_cancellation_refused(o.to_dict(), lang)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="cancellation_refused", order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status}
 
 
 @router.delete("/orders/{order_id}")
@@ -692,6 +940,26 @@ async def list_emails(status: Optional[str] = None, db: AsyncSession = Depends(g
             "admin_notify": ADMIN_NOTIFY_EMAIL, "logs": [e.to_dict() for e in res.scalars().all()]}
 
 
+@router.delete("/emails/{log_id}")
+async def delete_email(log_id: str, db: AsyncSession = Depends(get_db)):
+    log = (await db.execute(select(EmailLog).where(EmailLog.id == log_id))).scalar_one_or_none()
+    if not log:
+        raise HTTPException(status_code=404, detail="E-mail introuvable")
+    await db.delete(log)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/emails")
+async def clear_emails(status: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    q = delete(EmailLog)
+    if status:
+        q = q.where(EmailLog.status == status)
+    result = await db.execute(q)
+    await db.commit()
+    return {"ok": True, "deleted": result.rowcount or 0}
+
+
 # ---------------- Settings ----------------
 @router.get("/settings")
 async def admin_get_settings(db: AsyncSession = Depends(get_db)):
@@ -703,7 +971,9 @@ class SettingIn(BaseModel):
     value: Any
 
 
-ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "icons", "shipping", "site", "payment_providers"}
+# AJOUT : "taxonomies" + "cart_reminders" pour autoriser ces cles depuis le frontend
+ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "icons", "shipping",
+                        "site", "payment_providers", "taxonomies", "cart_reminders"}
 
 
 @router.put("/settings")
@@ -720,6 +990,19 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         value = {k: {**v, "video_url": normalize_media(v.get("video_url", "")), "image_url": normalize_media(v.get("image_url", "")),
                      "cards": [{**c, "video_url": normalize_media(c.get("video_url", "")), "image_url": normalize_media(c.get("image_url", ""))} for c in (v.get("cards") or [])]}
                  for k, v in value.items()}
+    if data.key == "taxonomies" and isinstance(value, dict):
+        # Normalise les URLs d'images des taxonomies
+        def _clean_items(items):
+            return [{**it,
+                     "value": (it.get("value") or "").strip().lower(),
+                     "name_fr": (it.get("name_fr") or "").strip(),
+                     "name_en": (it.get("name_en") or "").strip(),
+                     "image_url": normalize_media(it.get("image_url", ""))}
+                    for it in (items or [])]
+        value = {
+            "genders": _clean_items(value.get("genders")),
+            "sports": _clean_items(value.get("sports")),
+        }
     res = await db.execute(select(Setting).where(Setting.key == data.key))
     s = res.scalar_one_or_none()
     if s:
@@ -833,3 +1116,203 @@ async def reply_review(review_id: str, data: ReplyIn, db: AsyncSession = Depends
     r.admin_reply_at = datetime.now(timezone.utc) if r.admin_reply else None
     await db.commit()
     return {"ok": True, "review": r.to_dict(admin=True)}
+
+
+# ---------------- Returns / RMA (admin) ----------------
+from emails import (tpl_return_approved, tpl_return_refused,
+                    tpl_return_received, tpl_return_refunded)
+
+
+@router.post("/orders/{order_id}/approve-return")
+async def approve_return(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin valide une demande de retour. Passe au statut return_approved."""
+    o = await _get_order(db, order_id)
+    if o.status != "return_requested":
+        raise HTTPException(status_code=400, detail="Aucune demande de retour en cours.")
+
+    o.status = "return_approved"
+    o.return_decided_at = datetime.now(timezone.utc)
+    push_history(o, "return_approved", by=admin.email, note=f"RMA {o.return_rma_code}")
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_return_approved(o.to_dict(), lang, o.return_rma_code or "")
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="return_approved", order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status}
+
+
+@router.post("/orders/{order_id}/refuse-return")
+async def refuse_return(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin refuse une demande de retour. Statut repasse a delivered."""
+    o = await _get_order(db, order_id)
+    if o.status not in ("return_requested", "return_approved", "return_shipped", "return_received"):
+        raise HTTPException(status_code=400, detail="Aucune demande de retour active.")
+
+    reason = (data.get("reason") or "").strip()[:500]
+    o.status = "delivered"
+    o.return_refused_reason = reason
+    o.return_decided_at = datetime.now(timezone.utc)
+    push_history(o, "delivered", by=admin.email, note=f"Retour refuse : {reason[:120]}")
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_return_refused(o.to_dict(), lang)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="return_refused", order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status}
+
+
+@router.post("/orders/{order_id}/mark-return-received")
+async def mark_return_received(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin marque le colis retour comme recu (controle en cours)."""
+    o = await _get_order(db, order_id)
+    if o.status not in ("return_approved", "return_shipped"):
+        raise HTTPException(status_code=400, detail="Le retour doit etre approuve ou expedie pour etre marque recu.")
+
+    o.status = "return_received"
+    o.return_received_at = datetime.now(timezone.utc)
+    push_history(o, "return_received", by=admin.email, note=f"RMA {o.return_rma_code}")
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_return_received(o.to_dict(), lang)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="return_received", order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status}
+
+
+@router.post("/orders/{order_id}/refund-return")
+async def refund_return(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Admin rembourse (ou valide l'echange) apres controle du retour recu."""
+    o = await _get_order(db, order_id)
+    if o.status != "return_received":
+        raise HTTPException(status_code=400, detail="Le colis doit d'abord etre marque recu.")
+
+    is_exchange = (o.return_type or "refund") == "exchange"
+
+    # Remboursement Stripe (sauf en cas d'echange)
+    refund_amount = 0
+    if not is_exchange:
+        pres = await db.execute(
+            select(Payment).where(
+                Payment.order_id == o.id,
+                Payment.status.in_(["succeeded", "pending"])
+            ).order_by(Payment.created_at.desc())
+        )
+        pay = pres.scalars().first()
+        if pay:
+            pi = pay.payment_intent
+            if not pi and pay.session_id:
+                try:
+                    s = stripe.checkout.Session.retrieve(pay.session_id)
+                    pi = s.payment_intent
+                except stripe.error.StripeError:
+                    pi = None
+            if pi:
+                try:
+                    refund = stripe.Refund.create(payment_intent=pi)
+                    pay.status = "refunded"
+                    pay.payment_intent = pi
+                    pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
+                    refund_amount = (refund.amount or 0) / 100
+                except stripe.error.StripeError as e:
+                    raise HTTPException(status_code=502, detail=f"Stripe refund: {e.user_message or str(e)}")
+
+    # Restock : remet en stock les produits retournes
+    for rp in (o.return_products or []):
+        variant_id = rp.get("variant_id")
+        qty = rp.get("quantity", 1) or 1
+        if variant_id:
+            vr = await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id))
+            variant = vr.scalar_one_or_none()
+            if variant:
+                variant.stock = (variant.stock or 0) + qty
+
+    if is_exchange:
+        # Si la diff de prix est negative, STRYKOS rembourse la difference
+        diff = float(o.exchange_price_diff or 0)
+        if diff < 0:
+            # Rembourse abs(diff) via Stripe (si paiement initial existe)
+            pres_pay = await db.execute(
+                select(Payment).where(
+                    Payment.order_id == o.id,
+                    Payment.status.in_(["succeeded", "pending"]),
+                ).order_by(Payment.created_at.desc())
+            )
+            initial_pay = pres_pay.scalars().first()
+            if initial_pay:
+                pi = initial_pay.payment_intent
+                if not pi and initial_pay.session_id:
+                    try:
+                        s = stripe.checkout.Session.retrieve(initial_pay.session_id)
+                        pi = s.payment_intent
+                    except stripe.error.StripeError:
+                        pi = None
+                if pi:
+                    try:
+                        refund = stripe.Refund.create(
+                            payment_intent=pi,
+                            amount=int(round(abs(diff) * 100)),
+                        )
+                        refund_amount = (refund.amount or 0) / 100
+                        o.exchange_payment_status = "refunded"
+                    except stripe.error.StripeError as e:
+                        raise HTTPException(status_code=502, detail=f"Stripe refund diff: {e.user_message or str(e)}")
+
+        o.status = "exchange_sent"
+        o.return_decided_at = datetime.now(timezone.utc)
+        note = f"RMA {o.return_rma_code} · echange"
+        if diff < 0:
+            note += f" · rembourse diff {abs(diff):.2f} EUR"
+        elif diff > 0:
+            note += f" · complement paye {diff:.2f} EUR"
+        push_history(o, "exchange_sent", by=admin.email, note=note)
+    else:
+        o.status = "returned"
+        o.payment_status = "refunded"
+        o.return_decided_at = datetime.now(timezone.utc)
+        push_history(o, "returned", by=admin.email,
+                     note=f"RMA {o.return_rma_code} · rembourse {refund_amount:.2f} {o.currency}")
+
+    await db.commit()
+
+    # Email client
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_return_refunded(o.to_dict(), lang, refund_amount, is_exchange=is_exchange)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template="return_refunded" if not is_exchange else "return_exchange_sent",
+                             order_id=o.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": o.status, "is_exchange": is_exchange, "refund_amount": refund_amount}
+
+
+# ---------------- Taxonomies (usage) ----------------
+@router.get("/taxonomies/usage")
+async def taxonomies_usage(db: AsyncSession = Depends(get_db)):
+    """Verifie combien de produits utilisent chaque gender/sport (avant suppression)."""
+    from sqlalchemy import func as _f
+    g_res = await db.execute(select(Product.gender, _f.count(Product.id)).group_by(Product.gender))
+    s_res = await db.execute(select(Product.sport, _f.count(Product.id)).group_by(Product.sport))
+    return {
+        "genders": {g or "": c for g, c in g_res.all()},
+        "sports": {s or "": c for s, c in s_res.all()},
+    }

@@ -31,6 +31,8 @@ import { ForgotPassword, ResetPassword } from "@/pages/PasswordReset";
 import AdminReviews from "@/pages/admin/AdminReviews";
 import AdminNewsletter from "@/pages/admin/AdminNewsletter";
 import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
+import ConfirmEmailChange from "@/pages/ConfirmEmailChange";
+import ScrollToTop from "@/components/ScrollToTop";
 
 function Protected({ children, admin }) {
   const { user, authChecked } = useStore();
@@ -45,6 +47,7 @@ function App() {
     <div className="App">
       <StoreProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Toaster position="top-center" richColors />
           <Routes>
             <Route element={<Layout />}>
@@ -61,6 +64,7 @@ function App() {
               <Route path="/register" element={<Auth mode="register" />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route path="/newsletter/unsubscribe" element={<NewsletterUnsubscribe />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
               <Route path="/page/:slug" element={<StaticPage />} />

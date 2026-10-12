@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Product, Brand, Category
-from utils import get_rates, serialize_product
+from utils import get_rates, get_settings, serialize_product
 from routers.reviews_router import attach_ratings
 
 router = APIRouter(tags=["catalog"])
@@ -18,6 +18,17 @@ async def list_brands(local: bool | None = None, db: AsyncSession = Depends(get_
     q = q.order_by(Brand.name)
     result = await db.execute(q)
     return [b.to_dict() for b in result.scalars().all()]
+
+
+@router.get("/taxonomies")
+async def list_taxonomies(db: AsyncSession = Depends(get_db)):
+    """Retourne les genres et sports configures (public)."""
+    s = await get_settings(db)
+    tx = s.get("taxonomies", {}) if s else {}
+    return {
+        "genders": tx.get("genders", []),
+        "sports": tx.get("sports", []),
+    }
 
 
 @router.get("/categories")
@@ -42,6 +53,8 @@ async def list_products(
     brand: str | None = None,
     club: str | None = None,
     national_team: str | None = None,
+    gender: str | None = None,
+    sport: str | None = None,
     surface: str | None = None,
     product_type: str | None = None,
     color: str | None = None,
@@ -71,6 +84,10 @@ async def list_products(
         conds.append(Product.club.ilike(f"%{club}%"))
     if national_team:
         conds.append(Product.national_team.ilike(f"%{national_team}%"))
+    if gender:
+        conds.append(Product.gender == gender)
+    if sport:
+        conds.append(Product.sport == sport)
     if surface:
         conds.append(Product.surface == surface)
     if product_type:

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { mediaSrc } from "@/lib/adminUtils";
 
 function Slide({ slide, active }) {
   const ref = useRef();
@@ -12,9 +13,9 @@ function Slide({ slide, active }) {
   }, [active]);
   return (
     <div className={`absolute inset-0 transition-opacity duration-1000 ${active ? "opacity-100" : "opacity-0 pointer-events-none"}`}>
-      {slide.image_url && <img src={slide.image_url} alt="" className="absolute inset-0 w-full h-full object-cover" />}
+      {slide.image_url && <img src={mediaSrc(slide.image_url)} alt="" className="absolute inset-0 w-full h-full object-cover" />}
       {slide.video_url && (
-        <video ref={ref} src={slide.video_url} poster={slide.image_url || undefined} muted loop playsInline preload={active ? "auto" : "metadata"} onError={(e) => { e.currentTarget.style.display = "none"; }}
+        <video ref={ref} src={mediaSrc(slide.video_url)} poster={slide.image_url ? mediaSrc(slide.image_url) : undefined} muted loop playsInline preload={active ? "auto" : "metadata"} onError={(e) => { e.currentTarget.style.display = "none"; }}
           className="absolute inset-0 w-full h-full object-cover" data-testid="hero-video" />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-ink/10" />

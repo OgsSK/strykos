@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { money, fmtDate, STATUS_LABELS, STATUS_COLORS } from "@/lib/adminUtils";
-import { Package, ShoppingCart, AlertTriangle, Clock, Truck, Users, Mail, Tag, ArrowRight, Plus } from "lucide-react";
+import { Package, ShoppingCart, AlertTriangle, Clock, Truck, Users, Mail, Tag, ArrowRight, Plus, XCircle } from "lucide-react";
 
 const Kpi = ({ icon: Icon, label, value, color, to, testid }) => (
   <Link to={to || "#"} className="bg-white border border-border p-4 hover:border-ink transition-colors block">
@@ -33,8 +33,33 @@ export default function AdminDashboard() {
       {!d.emails_enabled && <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 mb-4">Envoi d'e-mails desactive : les confirmations de commande ne partent pas.</div>}
       {d.emails_failed > 0 && <div className="bg-red-50 border border-red-200 text-red-800 text-sm p-3 mb-4">{d.emails_failed} e-mail(s) en echec. <Link to="/admin/emails" className="underline">Voir le journal</Link></div>}
 
+      {/* Alerte : demandes d'annulation en attente */}
+      {(d.pending_cancellations || 0) > 0 && (
+        <div className="bg-red-50 border-2 border-red-300 text-red-800 text-sm p-4 mb-4 flex items-center justify-between gap-3 flex-wrap" data-testid="alert-pending-cancellations">
+          <div className="flex items-center gap-2">
+            <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+            <div>
+              <div className="font-bold">
+                {d.pending_cancellations} demande{d.pending_cancellations > 1 ? "s" : ""} d'annulation en attente
+              </div>
+              <div className="text-xs text-red-700">
+                Un client a demande l'annulation d'une commande payee. A traiter sous 24 a 48h.
+              </div>
+            </div>
+          </div>
+          <Link
+            to="/admin/orders?status=cancellation_requested"
+            className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-4 py-2 shrink-0"
+            data-testid="view-pending-cancellations"
+          >
+            Voir les demandes
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Kpi icon={Package} label="A traiter" value={d.orders_to_process} color="text-brand" to="/admin/orders?status=paid" testid="kpi-a-traiter" />
+        <Kpi icon={XCircle} label="Annulations" value={d.pending_cancellations || 0} color={(d.pending_cancellations || 0) > 0 ? "text-red-600" : "text-ink-muted"} to="/admin/orders?status=cancellation_requested" testid="kpi-annulations" />
         <Kpi icon={Truck} label="En livraison" value={d.orders_shipped} color="text-cyan-600" to="/admin/orders?status=shipped" testid="kpi-en-livraison" />
         <Kpi icon={Clock} label="Paiements en attente" value={d.pending_payments} color="text-amber-500" to="/admin/orders?payment_status=pending" testid="kpi-en-attente" />
         <Kpi icon={ShoppingCart} label="Commandes payees" value={d.paid_orders} color="text-green-600" to="/admin/orders?payment_status=paid" testid="kpi-payees" />

@@ -14,8 +14,13 @@ from auth import get_current_user, get_optional_user
 from utils import (
     get_rates, get_settings, product_prices, convert_from_eur, round_currency,
     serialize_product, gen_order_number, STRIPE_SUPPORTED, resolve_media,
+    PUBLIC_BASE_URL,
 )
-from emails import send_order_email, notify_admin_new_order
+from emails import (
+    send_order_email, notify_admin_new_order, send_templated, ADMIN_NOTIFY_EMAIL,
+    tpl_cancellation_requested, tpl_cancellation_admin_notify,
+    tpl_return_requested, tpl_return_admin_notify,
+)
 
 router = APIRouter(tags=["commerce"])
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
@@ -312,6 +317,17 @@ async def checkout_create(data: CheckoutInput, request: Request,
     await db.commit()
     await db.refresh(order)
 
+    # Marque le panier du user comme recupere (pour stopper les relances)
+    if user:
+        try:
+            from models import Cart
+            cart = (await db.execute(select(Cart).where(Cart.user_id == user.id))).scalar_one_or_none()
+            if cart:
+                cart.recovered_order_id = order.id
+                await db.commit()
+        except Exception:
+            pass
+
     origin = data.origin_url.rstrip("/")
     session_kwargs = dict(
         line_items=calc["stripe_line_items"],
@@ -362,13 +378,14 @@ async def _finalize_paid_inner(db, order_id, payment_intent=None):
             promo.used_count = (promo.used_count or 0) + 1
     order.payment_status = "paid"
     order.status = "paid"
+    # Mise a jour du Payment lie
+    pres = await db.execute(select(Payment).where(Payment.order_id == order.id))
+    for pay in pres.scalars().all():
+        if pay.status == "pending":
+            pay.status = "succeeded"
+            if payment_intent and not pay.payment_intent:
+                pay.payment_intent = payment_intent
     push_history(order, "paid")
-    payres = await db.execute(select(Payment).where(Payment.session_id == order.stripe_session_id))
-    pay = payres.scalar_one_or_none()
-    if pay:
-        pay.status = "succeeded"
-        if payment_intent:
-            pay.payment_intent = payment_intent
     await db.commit()
     await send_order_email(db, order, "order_confirmed")
     await notify_admin_new_order(db, order)
@@ -400,6 +417,11 @@ async def payment_status(session_id: str, db: AsyncSession = Depends(get_db)):
             "order": order.to_dict()}
 
 
+def order_exchange_amount(obj: dict) -> float:
+    """Extrait le montant total du complement d'echange depuis l'event Stripe."""
+    return float(obj.get("amount_total") or 0) / 100.0
+
+
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
     payload = await request.body()
@@ -411,8 +433,24 @@ async def stripe_webhook(request: Request):
     obj, t = event["data"]["object"], event["type"]
     async with AsyncSessionLocal() as db:
         if t == "checkout.session.completed":
-            oid = (obj.get("metadata") or {}).get("order_id")
-            if oid:
+            meta = obj.get("metadata") or {}
+            oid = meta.get("order_id")
+            is_exchange = meta.get("type") == "exchange"
+            if oid and is_exchange:
+                # Paiement de complement d'echange
+                ores = await db.execute(select(Order).where(Order.id == oid))
+                o = ores.scalar_one_or_none()
+                if o:
+                    o.exchange_payment_status = "paid"
+                    # Enregistre le Payment du complement
+                    db.add(Payment(order_id=o.id, provider="stripe",
+                                   session_id=obj.get("id") or "",
+                                   payment_intent=obj.get("payment_intent") or "",
+                                   amount=order_exchange_amount(obj),
+                                   currency=(obj.get("currency") or "eur").upper(),
+                                   status="succeeded"))
+                    await db.commit()
+            elif oid:
                 await _finalize_paid(db, oid, obj.get("payment_intent"))
         elif t == "charge.refunded":
             pi = obj.get("payment_intent")
@@ -458,3 +496,440 @@ async def track_order(data: TrackIn, db: AsyncSession = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Commande introuvable. Verifiez le numero et l'e-mail.")
     return order.to_dict(public=True)
+
+# ---------- Client order actions (retry / cancel / delete) ----------
+def _assert_pending(order: Order):
+    if order.status != "pending_payment" or order.payment_status != "pending":
+        raise HTTPException(
+            status_code=400,
+            detail="Cette commande ne peut plus etre modifiee (deja payee ou traitee)."
+        )
+
+
+async def _get_my_order(db: AsyncSession, user, order_number: str) -> Order:
+    order = (await db.execute(select(Order).where(
+        Order.order_number == order_number,
+        Order.user_id == user.id,
+    ))).scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+    return order
+
+
+@router.post("/orders/{order_number}/retry-payment")
+async def retry_payment(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Genere une nouvelle session Stripe pour une commande en attente de paiement."""
+    order = await _get_my_order(db, user, order_number)
+    _assert_pending(order)
+
+    origin = (data.get("origin_url") or "").rstrip("/")
+    if not origin:
+        raise HTTPException(status_code=400, detail="origin_url requis")
+
+    # Recalcul des line_items Stripe depuis les donnees de la commande
+    shipping_addr = order.shipping_address or {}
+    shipping_country = shipping_addr.get("country", "")
+
+    # Retrouver l'index de la shipping method (par country + name_fr, fallback 0)
+    method_name = (order.shipping_method or {}).get("name_fr", "")
+    try:
+        from utils import get_settings
+        settings = await get_settings(db)
+        methods = (settings.get("shipping", {}) or {}).get("methods", []) or []
+        indices = [i for i, m in enumerate(methods) if m.get("country") == shipping_country and m.get("name_fr") == method_name]
+        method_index = indices[0] if indices else 0
+    except Exception:
+        method_index = 0
+
+    try:
+        calc = await _compute_order(
+            db,
+            items=[{
+                "product_id": it.get("product_id"),
+                "variant_id": it.get("variant_id"),
+                "quantity": it.get("quantity", 1),
+                "customization": it.get("customization"),
+            } for it in (order.items or [])],
+            currency=order.currency,
+            shipping_country=shipping_country,
+            shipping_method_index=method_index,
+            promo_code=order.promo_code or None,
+            email=order.email,
+            user=user,
+        )
+    except Exception as e:
+        # Fallback : une seule ligne avec le montant total
+        calc = None
+
+    if calc and calc.get("stripe_line_items"):
+        line_items = calc["stripe_line_items"]
+        discounts = None
+        if calc.get("discount_charge", 0) > 0:
+            coupon = stripe.Coupon.create(
+                amount_off=int(round(calc["discount_charge"] * 100)),
+                currency=calc["charge_currency"].lower(),
+                duration="once",
+                name=f"Code {order.promo_code}",
+            )
+            discounts = [{"coupon": coupon.id}]
+    else:
+        # Fallback : ligne unique avec le montant total
+        line_items = [{
+            "price_data": {
+                "currency": order.charge_currency.lower(),
+                "product_data": {"name": f"Commande {order.order_number}"},
+                "unit_amount": int(round(float(order.charge_total or 0) * 100)),
+            },
+            "quantity": 1,
+        }]
+        discounts = None
+
+    session_kwargs = dict(
+        line_items=line_items,
+        mode="payment",
+        success_url=f"{origin}/order/confirmation?session_id={{CHECKOUT_SESSION_ID}}",
+        cancel_url=f"{origin}/checkout?cancelled=1",
+        customer_email=order.email,
+        metadata={"order_id": order.id, "order_number": order.order_number, "promo_code": order.promo_code or "", "retry": "1"},
+    )
+    if discounts:
+        session_kwargs["discounts"] = discounts
+
+    try:
+        session = stripe.checkout.Session.create(**session_kwargs)
+    except stripe.error.StripeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    order.stripe_session_id = session.id
+    # Historique
+    push_history(order, "pending_payment", by="client", note="Nouvelle session de paiement")
+    # Nouveau Payment pending (on garde l'ancien pour trace)
+    db.add(Payment(order_id=order.id, provider="stripe", session_id=session.id,
+                   amount=order.charge_total, currency=order.charge_currency, status="pending"))
+    await db.commit()
+
+    return {"checkout_url": session.url, "session_id": session.id}
+
+
+@router.post("/orders/{order_number}/cancel")
+async def cancel_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Le client annule une commande en attente de paiement (suppression reelle car jamais payee)."""
+    order = await _get_my_order(db, user, order_number)
+    _assert_pending(order)
+    # Supprimer les Payment lies
+    pays = (await db.execute(select(Payment).where(Payment.order_id == order.id))).scalars().all()
+    for p in pays:
+        await db.delete(p)
+    await db.delete(order)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/orders/{order_number}")
+async def delete_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Suppression definitive d'une commande en attente de paiement (client)."""
+    order = await _get_my_order(db, user, order_number)
+    _assert_pending(order)
+    # Supprimer les Payment lies
+    pays = (await db.execute(select(Payment).where(Payment.order_id == order.id))).scalars().all()
+    for p in pays:
+        await db.delete(p)
+    await db.delete(order)
+    await db.commit()
+    return {"ok": True}
+
+# ---------- Retours / RMA (client) ----------
+import secrets
+from emails import (tpl_return_requested, tpl_return_admin_notify)
+
+
+def _gen_rma_code(order_number: str) -> str:
+    """Genere un code RMA unique : RET-{order}-{4 chiffres}"""
+    suffix = str(secrets.randbelow(9000) + 1000)  # 1000-9999
+    return f"RET-{order_number}-{suffix}"
+
+
+@router.post("/orders/{order_number}/request-return")
+async def request_return(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Le client demande un retour (total ou partiel) sur une commande livree."""
+    order = await _get_my_order(db, user, order_number)
+
+    if order.status != "delivered":
+        raise HTTPException(status_code=400, detail="Seule une commande livree peut faire l'objet d'un retour.")
+    if order.payment_status != "paid":
+        raise HTTPException(status_code=400, detail="Seule une commande payee peut faire l'objet d'un retour.")
+    if order.status in ("return_requested", "return_approved", "return_shipped", "return_received"):
+        raise HTTPException(status_code=400, detail="Une demande de retour est deja en cours.")
+
+    if order.delivered_at:
+        age = datetime.now(timezone.utc) - order.delivered_at
+        if age.days > 14:
+            raise HTTPException(status_code=403, detail="Le delai de retour de 14 jours est depasse. Contactez notre service client.")
+
+    selected = data.get("products") or []
+    if not selected:
+        raise HTTPException(status_code=400, detail="Selectionnez au moins un article a retourner.")
+
+    return_type = data.get("return_type") or "refund"
+    if return_type not in ("refund", "exchange"):
+        raise HTTPException(status_code=400, detail="Type de retour invalide.")
+
+    general_reason = (data.get("reason") or "").strip()[:500]
+
+    # Construit la liste finale des produits
+    items_map = {(it.get("product_id"), it.get("variant_id")): it for it in (order.items or [])}
+    return_products = []
+    for sel in selected:
+        key = (sel.get("product_id"), sel.get("variant_id"))
+        item = items_map.get(key)
+        if not item:
+            continue
+        return_products.append({
+            "product_id": item.get("product_id"),
+            "variant_id": item.get("variant_id"),
+            "slug": item.get("slug"),
+            "name_fr": item.get("name_fr"),
+            "name_en": item.get("name_en"),
+            "size": item.get("size"),
+            "quantity": item.get("quantity", 1),
+            "unit_price": item.get("unit_price", 0),
+            "line_total": item.get("line_total", 0),
+            "image": item.get("image"),
+            "reason": (sel.get("reason") or "").strip()[:200],
+        })
+
+    if not return_products:
+        raise HTTPException(status_code=400, detail="Aucun article valide dans la selection.")
+
+    # ---- ECHANGE : calcul de la difference de prix ----
+    exchange_variant_id = data.get("exchange_variant_id")
+    exchange_product_id = None
+    exchange_price_diff = 0.0
+    exchange_charge_currency = "EUR"
+    exchange_line_item = None
+
+    if return_type == "exchange":
+        if not exchange_variant_id:
+            raise HTTPException(status_code=400, detail="Selectionnez la variante de remplacement pour l'echange.")
+
+        # La variante cible
+        vres = await db.execute(select(ProductVariant).where(ProductVariant.id == exchange_variant_id))
+        target_variant = vres.scalar_one_or_none()
+        if not target_variant:
+            raise HTTPException(status_code=404, detail="Variante de remplacement introuvable.")
+
+        pres = await db.execute(select(Product).where(Product.id == target_variant.product_id))
+        target_product = pres.scalar_one_or_none()
+        if not target_product:
+            raise HTTPException(status_code=404, detail="Produit de remplacement introuvable.")
+
+        # Verif : au moins une variante retournee doit appartenir au meme produit
+        returned_product_ids = {rp["product_id"] for rp in return_products}
+        if target_product.id not in returned_product_ids:
+            raise HTTPException(status_code=400,
+                detail="L'echange doit se faire vers une autre variante du meme produit.")
+
+        if target_variant.stock <= 0:
+            raise HTTPException(status_code=400, detail="Cette variante n'est pas disponible en stock.")
+
+        # Prix actuel du produit cible (EUR)
+        target_price_eur = float(target_product.sale_price_eur or target_product.price_eur or 0)
+        target_price_eur += float(target_variant.extra_price_eur or 0)
+
+        # Prix paye par le client pour le produit retourne (on prend le 1er retourne du meme produit)
+        paid_price_eur = 0.0
+        for rp in return_products:
+            if rp["product_id"] == target_product.id:
+                paid_price_eur = float(rp.get("unit_price") or 0)
+                break
+
+        diff = round(target_price_eur - paid_price_eur, 2)
+
+        exchange_product_id = target_product.id
+        exchange_price_diff = diff
+
+        # Convertit la diff en devise de charge si besoin (XOF client -> EUR facture)
+        if diff > 0:
+            # On facture en EUR (simplifie, Stripe ne supporte pas XOF)
+            exchange_line_item = {
+                "price_data": {
+                    "currency": "eur",
+                    "product_data": {"name": f"Echange - complement {target_product.name_fr}"},
+                    "unit_amount": int(round(diff * 100)),
+                },
+                "quantity": 1,
+            }
+
+    # Genere le code RMA
+    rma_code = _gen_rma_code(order.order_number)
+    now = datetime.now(timezone.utc)
+
+    order.status = "return_requested"
+    order.return_reason = general_reason
+    order.return_type = return_type
+    order.return_products = return_products
+    order.return_rma_code = rma_code
+    order.return_requested_at = now
+    order.return_decided_at = None
+    order.return_refused_reason = ""
+    order.return_tracking_number = ""
+    order.return_received_at = None
+    order.return_exchange_product_id = exchange_product_id
+    order.return_exchange_variant_id = exchange_variant_id if return_type == "exchange" else None
+    order.exchange_price_diff = exchange_price_diff
+    order.exchange_payment_status = ""
+    order.exchange_stripe_session_id = ""
+    push_history(order, "return_requested", by=user.email, note=f"RMA {rma_code} — {general_reason[:120]}")
+    await db.commit()
+    await db.refresh(order)
+
+    # ---- Si echange avec diff > 0 : creer session Stripe ----
+    checkout_url = None
+    if return_type == "exchange" and exchange_price_diff > 0 and exchange_line_item:
+        origin = (data.get("origin_url") or "").rstrip("/")
+        if not origin:
+            raise HTTPException(status_code=400, detail="origin_url requis pour un echange avec complement.")
+        session_kwargs = dict(
+            line_items=[exchange_line_item],
+            mode="payment",
+            success_url=f"{origin}/order/confirmation?session_id={{CHECKOUT_SESSION_ID}}&exchange=1",
+            cancel_url=f"{origin}/account?cancel_exchange=1",
+            customer_email=order.email,
+            metadata={
+                "type": "exchange",
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "rma_code": rma_code,
+            },
+        )
+        try:
+            session = stripe.checkout.Session.create(**session_kwargs)
+        except stripe.error.StripeError as e:
+            raise HTTPException(status_code=502, detail=f"Stripe: {e.user_message or str(e)}")
+        order.exchange_stripe_session_id = session.id
+        order.exchange_payment_status = "pending"
+        await db.commit()
+        checkout_url = session.url
+
+    # Emails
+    try:
+        lang = order.lang if order.lang in ("fr", "en") else "fr"
+        products_for_email = []
+        for rp in return_products:
+            img = rp.get("image") or ""
+            if img.startswith("/api/media/") and PUBLIC_BASE_URL.startswith("https://"):
+                img = f"{PUBLIC_BASE_URL}{img}"
+            products_for_email.append({
+                "name_fr": rp.get("name_fr"),
+                "name_en": rp.get("name_en"),
+                "image_url": img,
+                "reason_label": rp.get("reason") or general_reason,
+            })
+        subject, html = tpl_return_requested(order.to_dict(), lang, rma_code, products_for_email)
+        await send_templated(db, to=order.email, subject=subject, html=html,
+                             template="return_requested", order_id=order.id)
+    except Exception:
+        pass
+
+    try:
+        if ADMIN_NOTIFY_EMAIL:
+            subject, html = tpl_return_admin_notify(order.to_dict(), rma_code)
+            await send_templated(db, to=ADMIN_NOTIFY_EMAIL, subject=subject, html=html,
+                                 template="return_admin_notify", order_id=order.id)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "rma_code": rma_code,
+        "status": order.status,
+        "checkout_url": checkout_url,
+        "exchange_price_diff": exchange_price_diff,
+    }
+
+
+@router.post("/orders/{order_number}/mark-return-shipped")
+async def mark_return_shipped(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Le client indique qu'il a envoye le colis retour + numero de suivi."""
+    order = await _get_my_order(db, user, order_number)
+
+    if order.status not in ("return_requested", "return_approved"):
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune demande de retour active pour cette commande."
+        )
+
+    tracking = (data.get("tracking_number") or "").strip()[:120]
+    if not tracking:
+        raise HTTPException(status_code=400, detail="Numero de suivi requis.")
+
+    order.return_tracking_number = tracking
+    order.status = "return_shipped"
+    push_history(order, "return_shipped", by=user.email, note=f"Suivi retour: {tracking}")
+    await db.commit()
+
+    return {"ok": True, "status": order.status}
+
+@router.post("/orders/{order_number}/request-cancellation")
+async def request_cancellation(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Le client demande l'annulation d'une commande deja payee (avant expedition)."""
+    order = await _get_my_order(db, user, order_number)
+
+    if order.status not in ("paid", "preparing"):
+        raise HTTPException(
+            status_code=400,
+            detail="Cette commande ne peut plus etre annulee (deja expediee ou livree). Utilisez la procedure de retour."
+        )
+    if order.payment_status != "paid":
+        raise HTTPException(status_code=400, detail="Seule une commande payee peut etre annulee.")
+    if order.status == "cancellation_requested":
+        raise HTTPException(status_code=400, detail="Une demande d'annulation est deja en cours.")
+
+    reason = (data.get("reason") or "").strip()[:500]
+    order.status = "cancellation_requested"
+    order.cancellation_reason = reason
+    order.cancellation_requested_at = datetime.now(timezone.utc)
+    order.cancellation_decided_at = None
+    order.cancellation_refused_reason = ""
+    push_history(order, "cancellation_requested", by=user.email, note=reason)
+    await db.commit()
+
+    # Emails (client + admin)
+    try:
+        lang = order.lang if order.lang in ("fr", "en") else "fr"
+        subject, html = tpl_cancellation_requested(order.to_dict(), lang)
+        await send_templated(db, to=order.email, subject=subject, html=html,
+                             template="cancellation_requested", order_id=order.id)
+    except Exception:
+        pass
+    try:
+        if ADMIN_NOTIFY_EMAIL:
+            subject, html = tpl_cancellation_admin_notify(order.to_dict())
+            await send_templated(db, to=ADMIN_NOTIFY_EMAIL, subject=subject, html=html,
+                                 template="cancellation_admin_notify", order_id=order.id)
+    except Exception:
+        pass
+
+    return {"ok": True, "status": order.status}
+
+@router.post("/orders/{order_number}/hide")
+async def hide_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Masque une commande traitee de l'historique client (soft delete)."""
+    order = await _get_my_order(db, user, order_number)
+    if order.status == "pending_payment":
+        raise HTTPException(
+            status_code=400,
+            detail="Utilisez Annuler ou Supprimer pour les commandes en attente de paiement."
+        )
+    order.hidden_by_customer = True
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/orders/{order_number}/unhide")
+async def unhide_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Reaffiche une commande masquee dans l'historique client."""
+    order = await _get_my_order(db, user, order_number)
+    order.hidden_by_customer = False
+    await db.commit()
+    return {"ok": True}

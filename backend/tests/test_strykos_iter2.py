@@ -58,7 +58,7 @@ class TestSettings:
         assert r.status_code == 200
         site = r.json().get("site") or {}
         assert site.get("email") == "contact@actoos.com", site
-        assert site.get("phone") == "+32 465743001", site
+        assert site.get("phone") == "+32 465743661", site
 
     def test_admin_update_setting_unknown_key(self, http, admin_h):
         r = http.put(f"{API}/admin/settings", json={"key": "nope", "value": {}}, headers=admin_h)

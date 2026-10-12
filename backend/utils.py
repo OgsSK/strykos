@@ -13,9 +13,7 @@ PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("FRONTEND
 
 
 def resolve_media(url):
-    """Relative /api/media/... paths -> absolute URL for the storefront."""
-    if url and url.startswith("/api/media/"):
-        return f"{PUBLIC_BASE_URL}{url}"
+    """Retourne le chemin relatif. Le frontend le prefixe avec REACT_APP_BACKEND_URL."""
     return url or ""
 
 
@@ -75,6 +73,33 @@ DEFAULT_SETTINGS = {
         "best_sellers": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Les favoris de la communaute", "tagline_en": "Community favourites", "cards": [{"image_url": "https://images.unsplash.com/photo-1575361204480-aadea25e6e68?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Equipements", "overline_en": "Equipment", "title_fr": "Les indispensables du vestiaire", "title_en": "Locker-room essentials", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=equipements", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}, {"image_url": "https://images.unsplash.com/photo-1552066379-e7bfd22155c5?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Maillots", "overline_en": "Jerseys", "title_fr": "Portez vos couleurs", "title_en": "Wear your colours", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=maillots", "cta2_fr": "En savoir plus", "cta2_en": "Learn more", "cta2_link": "/catalog?sort=best_sellers"}]},
         "featured": {"video_url": "", "image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1800", "tagline_fr": "Choisis par l'equipe STRYKOS", "tagline_en": "Picked by the STRYKOS team", "cards": [{"image_url": "https://images.unsplash.com/photo-1511886929837-354d827aae26?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Selection STRYKOS", "overline_en": "STRYKOS picks", "title_fr": "Choisis pour la performance", "title_en": "Picked for performance", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}, {"image_url": "https://images.unsplash.com/photo-1692506530242-c12d6c3ae2e2?crop=entropy&cs=srgb&fm=jpg&q=80&w=1200", "video_url": "", "overline_fr": "Accessoires", "overline_en": "Accessories", "title_fr": "Les details qui font la difference", "title_en": "Details that make the difference", "cta_fr": "Acheter", "cta_en": "Shop", "cta_link": "/catalog?category=accessoires", "cta2_fr": "", "cta2_en": "", "cta2_link": ""}]},
     },
+    "taxonomies": {
+        "genders": [
+            {"value": "homme", "name_fr": "Homme", "name_en": "Men"},
+            {"value": "femme", "name_fr": "Femme", "name_en": "Women"},
+            {"value": "enfant", "name_fr": "Enfant", "name_en": "Kids"},
+            {"value": "unisexe", "name_fr": "Unisexe", "name_en": "Unisex"},
+        ],
+        "sports": [
+            {"value": "football", "name_fr": "Football", "name_en": "Football"},
+            {"value": "running", "name_fr": "Running", "name_en": "Running"},
+            {"value": "lifestyle", "name_fr": "Lifestyle", "name_en": "Lifestyle"},
+            {"value": "fitness", "name_fr": "Fitness", "name_en": "Fitness"},
+            {"value": "tennis", "name_fr": "Tennis", "name_en": "Tennis"},
+            {"value": "basketball", "name_fr": "Basketball", "name_en": "Basketball"},
+            {"value": "motorsport", "name_fr": "Motorsport", "name_en": "Motorsport"},
+            {"value": "cyclisme", "name_fr": "Cyclisme", "name_en": "Cycling"},
+        ],
+    },
+    "cart_reminders": {
+        "enabled": True,
+        "delay_1_hours": 4,             # 1er email apres 4h d'inactivite
+        "delay_2_hours": 24,            # 2e email apres 24h
+        "min_items": 1,                 # au moins 1 article
+        "promo_on_second_email": True,  # code promo offert dans le 2e email
+        "promo_code": "REVIENS5",       # code a envoyer
+        "promo_discount_percent": 5,    # % de remise
+    },
     "shipping": {
         "methods": [
             {"country": "ML", "country_name": "Mali", "name_fr": "Livraison standard Mali", "name_en": "Standard delivery Mali", "cost_eur": 5.0, "delay_fr": "3-6 jours ouvres", "delay_en": "3-6 business days"},
@@ -82,12 +107,42 @@ DEFAULT_SETTINGS = {
             {"country": "BE", "country_name": "Belgique", "name_fr": "Livraison standard Belgique", "name_en": "Standard delivery Belgium", "cost_eur": 4.5, "delay_fr": "2-4 jours ouvres", "delay_en": "2-4 business days"},
             {"country": "FR", "country_name": "France", "name_fr": "Livraison standard France", "name_en": "Standard delivery France", "cost_eur": 6.0, "delay_fr": "3-5 jours ouvres", "delay_en": "3-5 business days"},
         ],
+        "origins": [
+            {
+                "country": "BE",
+                "country_name": "Belgique",
+                "name": "Depot Bruxelles",
+                "address_line": "",
+                "city": "Bruxelles",
+                "postal_code": "",
+                "phone": "+32 465743661",
+                "email": "contact@actoos.com",
+                "is_default": True,
+                "carriers": ["bpost", "DHL", "UPS", "FedEx", "Colissimo", "Chronopost"],
+            },
+            {
+                "country": "ML",
+                "country_name": "Mali",
+                "name": "Depot Bamako",
+                "address_line": "",
+                "city": "Bamako",
+                "postal_code": "",
+                "phone": "+223 00000000",
+                "email": "contact@actoos.com",
+                "is_default": True,
+                "carriers": ["Coursier local", "Sendbox", "DHL Mali", "Autre"],
+            },
+        ],
     },
     "site": {
         "name": "STRYKOS",
+        "brand_part1": "STRY",
+        "brand_part2": "KOS",
+        "brand_tagline": "Multimarque. Authentique. Livré chez vous.",
+        "brand_tagline_en": "Multi-brand. Authentic. Delivered to you.",
         "email": "contact@actoos.com",
-        "phone": "+32 465743001",
-        "whatsapp": "+32465743001",
+        "phone": "+32 465743661",
+        "whatsapp": "+32465743661",
         "address_fr": "Bamako, Mali",
         "address_en": "Bamako, Mali",
         "hours_fr": "Lun-Sam 9h-19h",
@@ -154,6 +209,8 @@ def serialize_product(product, rates, brand=None, category=None, full=False):
         "prices": prices,
         "is_new": product.is_new, "is_featured": product.is_featured,
         "is_best_seller": product.is_best_seller, "on_sale": product.sale_price_eur is not None,
+        "gender": getattr(product, "gender", "") or "",
+        "sport": getattr(product, "sport", "") or "",
         "club": product.club, "national_team": product.national_team,
         "surface": product.surface, "product_type": product.product_type,
         "colors": product.colors or [],
@@ -202,3 +259,53 @@ async def get_rates(db):
     if row and row.value and "rates" in row.value:
         return row.value["rates"]
     return DEFAULT_RATES
+
+
+# ---------------- Transporteurs connus (liens de suivi auto) ----------------
+CARRIER_URL_TEMPLATES = {
+    "bpost": "https://tracking.bpost.be/{num}",
+    "dhl": "https://www.dhl.com/global-en/home/tracking.html?tracking-id={num}",
+    "dhl mali": "https://www.dhl.com/global-en/home/tracking.html?tracking-id={num}",
+    "ups": "https://www.ups.com/track?tracknum={num}",
+    "fedex": "https://www.fedex.com/fedextrack/?trknbr={num}",
+    "colissimo": "https://www.laposte.fr/outils/suivre-vos-envois?code={num}",
+    "chronopost": "https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT={num}",
+    "sendbox": "https://sendbox.co/track?code={num}",
+}
+
+
+def carrier_url(carrier: str, tracking_number: str) -> str:
+    """Genere un lien de suivi auto pour un transporteur connu (retourne '' sinon)."""
+    if not carrier or not tracking_number:
+        return ""
+    key = carrier.strip().lower()
+    tpl = CARRIER_URL_TEMPLATES.get(key)
+    if not tpl:
+        return ""
+    return tpl.replace("{num}", tracking_number.strip())
+
+
+def get_shipping_origins(settings: dict) -> list:
+    """Retourne la liste des origines d'expedition (avec fallback vide)."""
+    if not settings:
+        return []
+    return (settings.get("shipping", {}) or {}).get("origins", []) or []
+
+
+def find_origin_for_country(settings: dict, country_code: str) -> dict | None:
+    """Trouve l'origine d'expedition par defaut pour un pays."""
+    origins = get_shipping_origins(settings)
+    country_code = (country_code or "").upper()
+    # Priorite : origin du pays marquee par defaut
+    for o in origins:
+        if (o.get("country") or "").upper() == country_code and o.get("is_default"):
+            return o
+    # Fallback : premiere origin du pays
+    for o in origins:
+        if (o.get("country") or "").upper() == country_code:
+            return o
+    # Fallback : premiere origin tout court (is_default global)
+    for o in origins:
+        if o.get("is_default"):
+            return o
+    return origins[0] if origins else None
