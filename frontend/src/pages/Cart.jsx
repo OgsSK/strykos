@@ -4,6 +4,7 @@ import { useStore } from "@/context/StoreProvider";
 import { Button } from "@/components/ui/button";
 import { Minus, Plus, Trash2, ShoppingBag, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { mediaSrc } from "@/lib/adminUtils";
 
 export default function Cart() {
   const { t, lang, cart, fmt, cartUnitPrice, cartSubtotal, updateQty, removeFromCart } = useStore();
@@ -39,7 +40,7 @@ export default function Cart() {
             const unit = cartUnitPrice(item);
             return (
               <div key={i} className="flex gap-4 border border-border p-3" data-testid="cart-item">
-                <img src={item.image} alt={name} className="w-20 h-24 object-cover bg-secondary" />
+                <img src={mediaSrc(item.image)} alt={name} className="w-20 h-24 object-cover bg-secondary" />
                 <div className="flex-1">
                   <Link to={`/product/${item.slug}`} className="font-medium hover:text-brand">{name}</Link>
                   <div className="text-xs text-ink-muted mt-1">{t("size")}: {item.size}{item.color ? ` · ${item.color}` : ""}</div>
@@ -101,7 +102,7 @@ export default function Cart() {
             {/* Aperçu du produit */}
             <div className="flex gap-3 border border-border p-3 bg-secondary/40">
               <img
-                src={confirmRemove.item.image}
+                src={mediaSrc(confirmRemove.item.image)}
                 alt={lang === "fr" ? confirmRemove.item.name_fr : confirmRemove.item.name_en}
                 className="w-14 h-16 object-cover bg-secondary shrink-0"
               />

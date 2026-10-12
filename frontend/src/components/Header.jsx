@@ -6,6 +6,7 @@ import { Search, Heart, ShoppingBag, User, Menu, X, ChevronRight } from "lucide-
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import Brand from "@/components/Brand";
+import { mediaSrc } from "@/lib/adminUtils";
 
 const NAV = [
   { key: "jerseys", cat: "maillots" },
@@ -89,7 +90,7 @@ export default function Header() {
                 {suggest.map((p) => (
                   <Link key={p.id} to={`/product/${p.slug}`} onClick={() => { setSuggest([]); setQ(""); }}
                     className="flex items-center gap-3 p-2 hover:bg-secondary">
-                    <img src={p.images[0]} alt="" className="w-10 h-12 object-cover" />
+                    <img src={mediaSrc(p.images[0])} alt="" className="w-10 h-12 object-cover" />
                     <span className="text-sm">{lang === "fr" ? p.name_fr : p.name_en}</span>
                   </Link>
                 ))}

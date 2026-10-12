@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { HeroSlidesEditor, SectionsEditor, IconsEditor } from "@/components/admin/HomeMediaEditors";
+import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -322,7 +323,7 @@ export default function AdminSettings() {
                   </div>
                   <div className="space-y-3">
                     {items.map((it, i) => (
-                      <div key={i} className="border border-border p-3 grid sm:grid-cols-[1fr_1fr_1fr_1fr_32px] gap-2 items-end bg-secondary/30">
+                      <div key={i} className="border border-border p-3 grid sm:grid-cols-[1fr_1fr_1fr_1.5fr_32px] gap-2 items-end bg-secondary/30">
                         <div>
                           <Label className="text-xs">Identifiant</Label>
                           <Input value={it.value || ""} onChange={(e) => updItem(i, { value: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="homme" className="h-9 font-mono" />
@@ -336,8 +337,14 @@ export default function AdminSettings() {
                           <Input value={it.name_en || ""} onChange={(e) => updItem(i, { name_en: e.target.value })} placeholder="Men" className="h-9" />
                         </div>
                         <div>
-                          <Label className="text-xs">Image (URL)</Label>
-                          <Input value={it.image_url || ""} onChange={(e) => updItem(i, { image_url: e.target.value })} placeholder="https://..." className="h-9 text-xs" />
+                          <Label className="text-xs">Image</Label>
+                          <SingleMediaUploader
+                            compact
+                            value={it.image_url || ""}
+                            onChange={(v) => updItem(i, { image_url: v })}
+                            label="une image"
+                            testid={`taxonomy-image-${kind}-${i}`}
+                          />
                         </div>
                         <button type="button" onClick={() => delItem(i)} className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center" title="Supprimer">
                           <Trash2 className="w-4 h-4" />

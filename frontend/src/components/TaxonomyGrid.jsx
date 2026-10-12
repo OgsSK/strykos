@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
 import { ArrowRight } from "lucide-react";
+import { mediaSrc } from "@/lib/adminUtils";
 
 /* Grid of gender/sport tiles — image si dispo, sinon fond noir uni */
 export default function TaxonomyGrid({ type = "gender" }) {
@@ -30,7 +31,8 @@ export default function TaxonomyGrid({ type = "gender" }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
         {list.map((tx) => {
           const name = lang === "fr" ? tx.name_fr : tx.name_en;
-          const hasImg = tx.image_url && tx.image_url.startsWith("http");
+          const imgSrc = mediaSrc(tx.image_url || "");
+          const hasImg = !!imgSrc;
           return (
             <Link
               key={tx.value}
@@ -41,7 +43,7 @@ export default function TaxonomyGrid({ type = "gender" }) {
               {hasImg && (
                 <>
                   <img
-                    src={tx.image_url}
+                    src={imgSrc}
                     alt={name}
                     loading="lazy"
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"

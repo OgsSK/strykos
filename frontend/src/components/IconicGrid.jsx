@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
+import { mediaSrc } from "@/lib/adminUtils";
 
 /* Nike-style "iconic models": big centred heading, grid of round/square thumbnails with labels, then link columns. */
 export default function IconicGrid({ icons }) {
@@ -19,7 +20,7 @@ export default function IconicGrid({ icons }) {
           {items.slice(0, 16).map((it, i) => (
             <Link key={i} to={it.link || "/catalog"} className="group flex flex-col items-center text-center" data-testid={`iconic-item-${i}`}>
               <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 overflow-hidden rounded-full bg-secondary ring-1 ring-border group-hover:ring-ink transition-all group-hover:scale-105">
-                {it.image_url && <img src={it.image_url} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                {it.image_url && <img src={mediaSrc(it.image_url)} alt="" loading="lazy" className="w-full h-full object-cover" />}
               </div>
               <span className="mt-3 text-xs sm:text-sm font-medium leading-tight group-hover:text-brand transition-colors">{L(it, "label")}</span>
             </Link>

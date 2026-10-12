@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Check, Tag, X, MapPin, Loader2, Save, Plus } from "lucide-react";
 import { countryName, reverseGeocode } from "@/lib/countries";
+import { mediaSrc } from "@/lib/adminUtils";
 
 export default function Checkout() {
   const { t, lang, currency, fmt, cart, cartSubtotal, user, settings, convertEur } = useStore();
@@ -469,7 +470,7 @@ export default function Checkout() {
                 {cart.map((i, idx) => {
                   const name = lang === "fr" ? i.name_fr : i.name_en;
                   return <div key={idx} className="flex gap-3 border border-border p-3">
-                    <img src={i.image} alt="" className="w-14 h-16 object-cover" />
+                    <img src={mediaSrc(i.image)} alt="" className="w-14 h-16 object-cover" />
                     <div className="flex-1 text-sm">
                       <div className="font-medium">{name}</div>
                       <div className="text-xs text-ink-muted">{t("size")}: {i.size} · x{i.quantity}</div>

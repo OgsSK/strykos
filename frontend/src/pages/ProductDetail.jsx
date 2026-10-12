@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Heart, Minus, Plus, ShieldCheck, Truck } from "lucide-react";
 import { toast } from "sonner";
 import TiltCard from "@/components/TiltCard";
+import { mediaSrc } from "@/lib/adminUtils";
 
 export default function ProductDetail() {
   const { slug } = useParams();
@@ -79,7 +80,7 @@ export default function ProductDetail() {
         <div>
           <TiltCard intensity={6} scale={1.01} key={`tilt-${activeImg}`}>
             <div className="aspect-[4/5] bg-secondary overflow-hidden">
-              <img src={product.images?.[activeImg]} alt={name} className="w-full h-full object-cover" data-testid="product-main-image" />
+              <img src={mediaSrc(product.images?.[activeImg])} alt={name} className="w-full h-full object-cover" data-testid="product-main-image" />
             </div>
           </TiltCard>
           {product.images?.length > 1 && (
@@ -87,13 +88,13 @@ export default function ProductDetail() {
               {product.images.map((img, i) => (
                 <button key={i} onClick={() => setActiveImg(i)}
                   className={`w-16 h-20 overflow-hidden border-2 ${activeImg === i ? "border-brand" : "border-transparent"}`}>
-                  <img src={img} alt="" className="w-full h-full object-cover" />
+                  <img src={mediaSrc(img)} alt="" className="w-full h-full object-cover" />
                 </button>
               ))}
             </div>
           )}
           {product.video_url && (
-            <video src={product.video_url} controls playsInline className="w-full mt-4 bg-black" data-testid="product-video" />
+            <video src={mediaSrc(product.video_url)} controls playsInline className="w-full mt-4 bg-black" data-testid="product-video" />
           )}
         </div>
 
