@@ -13,18 +13,39 @@ PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("FRONTEND
 
 
 def resolve_media(url):
-    """Retourne le chemin relatif. Le frontend le prefixe avec REACT_APP_BACKEND_URL."""
-    return url or ""
-
-
-def normalize_media(url):
-    """Absolute media URL on our own domain -> relative path (domain-independent storage)."""
+    """Retourne l'URL finale vers le CDN Supabase si le chemin contient /api/media/.
+    Gere tous les formats : relatif, absolu legacy (localhost, api.strykos.actoos.com)."""
     if not url:
         return ""
     url = url.strip()
     marker = "/api/media/"
-    if marker in url and (url.startswith(PUBLIC_BASE_URL) or url.startswith("http")) and "strykos/" in url:
+    if marker in url:
+        path = url[url.index(marker) + len(marker):]
+        supabase = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+        bucket = os.environ.get("SUPABASE_MEDIA_BUCKET", "strykos-media")
+        if supabase and path:
+            return f"{supabase}/storage/v1/object/public/{bucket}/{path}"
+    return url
+
+
+def normalize_media(url):
+    """Convertit une URL (absolue ou CDN Supabase) en chemin relatif /api/media/...
+    pour un stockage DB portable."""
+    if not url:
+        return ""
+    url = url.strip()
+    marker = "/api/media/"
+    # Ancien format : contient deja /api/media/
+    if marker in url and "strykos/" in url:
         return url[url.index(marker):]
+    # Nouveau format : URL publique Supabase
+    supabase = (os.environ.get("SUPABASE_URL") or "").rstrip("/")
+    bucket = os.environ.get("SUPABASE_MEDIA_BUCKET", "strykos-media")
+    if supabase:
+        public_prefix = f"{supabase}/storage/v1/object/public/{bucket}/"
+        if url.startswith(public_prefix):
+            path = url[len(public_prefix):]
+            return f"/api/media/{path}"
     return url
 
 DEFAULT_SETTINGS = {

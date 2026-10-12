@@ -4,6 +4,7 @@ import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
 import { ArrowRight } from "lucide-react";
 import { mediaSrc } from "@/lib/adminUtils";
+import SmartImage from "@/components/SmartImage";
 
 /* Grid of gender/sport tiles — image si dispo, sinon fond noir uni */
 export default function TaxonomyGrid({ type = "gender" }) {
@@ -42,13 +43,13 @@ export default function TaxonomyGrid({ type = "gender" }) {
             >
               {hasImg && (
                 <>
-                  <img
+                  <SmartImage
                     src={imgSrc}
                     alt={name}
-                    loading="lazy"
-                    className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"
+                    width={600}
+                    className="absolute inset-0 w-full h-full transition-transform duration-700 group-hover:scale-[1.06]"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent pointer-events-none" />
                 </>
               )}
               {!hasImg && (
