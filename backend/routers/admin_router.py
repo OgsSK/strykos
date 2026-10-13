@@ -1002,6 +1002,8 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         value = {
             "genders": _clean_items(value.get("genders")),
             "sports": _clean_items(value.get("sports")),
+            "teams": _clean_items(value.get("teams")),
+            "clubs": _clean_items(value.get("clubs")),
         }
     res = await db.execute(select(Setting).where(Setting.key == data.key))
     s = res.scalar_one_or_none()
@@ -1011,7 +1013,6 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         db.add(Setting(key=data.key, value=value))
     await db.commit()
     return {"ok": True}
-
 
 # ---------------- CSV exports ----------------
 import csv
@@ -1308,11 +1309,15 @@ async def refund_return(order_id: str, admin=Depends(get_current_admin), db: Asy
 # ---------------- Taxonomies (usage) ----------------
 @router.get("/taxonomies/usage")
 async def taxonomies_usage(db: AsyncSession = Depends(get_db)):
-    """Verifie combien de produits utilisent chaque gender/sport (avant suppression)."""
+    """Verifie combien de produits utilisent chaque gender/sport/team (avant suppression)."""
     from sqlalchemy import func as _f
     g_res = await db.execute(select(Product.gender, _f.count(Product.id)).group_by(Product.gender))
     s_res = await db.execute(select(Product.sport, _f.count(Product.id)).group_by(Product.sport))
+    t_res = await db.execute(select(Product.national_team, _f.count(Product.id)).group_by(Product.national_team))
+    c_res = await db.execute(select(Product.club, _f.count(Product.id)).group_by(Product.club))
     return {
         "genders": {g or "": c for g, c in g_res.all()},
         "sports": {s or "": c for s, c in s_res.all()},
+        "teams": {t or "": c for t, c in t_res.all()},
+        "clubs": {c or "": n for c, n in c_res.all()},
     }

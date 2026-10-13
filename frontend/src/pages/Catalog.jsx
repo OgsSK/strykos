@@ -10,8 +10,8 @@ import { SlidersHorizontal } from "lucide-react";
 
 const SIZES = ["S", "M", "L", "XL", "XXL", "39", "40", "41", "42", "43", "44", "45"];
 
-function FilterPanel({ brands, filters, setFilter }) {
-  const { t } = useStore();
+function FilterPanel({ brands, teams, clubs, filters, setFilter }) {
+  const { t, lang } = useStore();
   return (
     <div className="space-y-6 text-sm" data-testid="filter-panel">
       <div>
@@ -26,6 +26,47 @@ function FilterPanel({ brands, filters, setFilter }) {
           ))}
         </div>
       </div>
+
+      {teams && teams.length > 0 && (
+        <div>
+          <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
+            {lang === "fr" ? "Sélection" : "Team"}
+          </h4>
+          <div className="space-y-2 max-h-48 overflow-auto">
+            {teams.map((tm) => (
+              <label key={tm.value} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={filters.team === tm.value}
+                  onCheckedChange={(c) => setFilter("team", c ? tm.value : "")}
+                  data-testid={`filter-team-${tm.value}`}
+                />
+                <span>{lang === "fr" ? tm.name_fr : tm.name_en}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {clubs && clubs.length > 0 && (
+        <div>
+          <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
+            {lang === "fr" ? "Club" : "Club"}
+          </h4>
+          <div className="space-y-2 max-h-48 overflow-auto">
+            {clubs.map((cl) => (
+              <label key={cl.value} className="flex items-center gap-2 cursor-pointer">
+                <Checkbox
+                  checked={filters.club === cl.value}
+                  onCheckedChange={(c) => setFilter("club", c ? cl.value : "")}
+                  data-testid={`filter-club-${cl.value}`}
+                />
+                <span>{lang === "fr" ? cl.name_fr : cl.name_en}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">{t("price")} (EUR)</h4>
         <div className="flex items-center gap-2">
@@ -65,6 +106,7 @@ export default function Catalog() {
   const location = useLocation();
   const isSearch = location.pathname === "/search";
   const [brands, setBrands] = useState([]);
+  const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [], teams: [], clubs: [] });
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -73,6 +115,8 @@ export default function Catalog() {
   const filters = useMemo(() => ({
     category: params.get("category") || "",
     brand: params.get("brand") || "",
+    team: params.get("team") || "",
+    club: params.get("club") || "",
     min_price: params.get("min_price") || "",
     max_price: params.get("max_price") || "",
     size: params.get("size") || "",
@@ -90,6 +134,7 @@ export default function Catalog() {
   };
 
   useEffect(() => { swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {}); }, []);
+  useEffect(() => { swrGetShared("/taxonomies", (d) => setTaxonomies(d), { ttl: 10 * 60 * 1000 }).catch(() => {}); }, []);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -123,7 +168,7 @@ export default function Catalog() {
             </SheetTrigger>
             <SheetContent side="left" className="w-80 overflow-auto">
               <h3 className="font-heading font-bold text-lg mb-4 mt-2">{t("filters")}</h3>
-              <FilterPanel brands={brands} filters={filters} setFilter={setFilter} />
+              <FilterPanel brands={brands} teams={taxonomies.teams || []} clubs={taxonomies.clubs || []} filters={filters} setFilter={setFilter} />
             </SheetContent>
           </Sheet>
           <select value={filters.sort} onChange={(e) => setFilter("sort", e.target.value)}
@@ -139,7 +184,7 @@ export default function Catalog() {
 
       <div className="flex gap-8">
         <aside className="hidden lg:block w-56 shrink-0">
-          <FilterPanel brands={brands} filters={filters} setFilter={setFilter} />
+          <FilterPanel brands={brands} teams={taxonomies.teams || []} clubs={taxonomies.clubs || []} filters={filters} setFilter={setFilter} />
         </aside>
         <div className="flex-1">
           {loading ? (

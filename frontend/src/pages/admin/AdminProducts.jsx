@@ -34,7 +34,7 @@ export default function AdminProducts() {
   const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const [stockFilter, setStockFilter] = useState(params.get("stock") || "all");
-  const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [] });
+  const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [], teams: [], clubs: [] });
 
   const load = () => api.get("/admin/products").then((r) => setProducts(r.data)).catch(() => {});
   useEffect(() => {
@@ -259,8 +259,34 @@ export default function AdminProducts() {
             <section>
               <h4 className="text-xs uppercase tracking-wider text-ink-muted mb-2">Attributs football</h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div><Label>Club</Label><Input value={form.club} onChange={(e) => setF("club", e.target.value)} /></div>
-                <div><Label>Selection nationale</Label><Input value={form.national_team} onChange={(e) => setF("national_team", e.target.value)} /></div>
+                <div>
+                  <Label>Club</Label>
+                  <select
+                    value={form.club}
+                    onChange={(e) => setF("club", e.target.value)}
+                    className="w-full border border-border h-10 px-2 bg-white text-sm"
+                    data-testid="pf-club"
+                  >
+                    <option value="">—</option>
+                    {(taxonomies.clubs || []).map((cl) => (
+                      <option key={cl.value} value={cl.value}>{cl.name_fr}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label>Selection nationale</Label>
+                  <select
+                    value={form.national_team}
+                    onChange={(e) => setF("national_team", e.target.value)}
+                    className="w-full border border-border h-10 px-2 bg-white text-sm"
+                    data-testid="pf-national-team"
+                  >
+                    <option value="">—</option>
+                    {(taxonomies.teams || []).map((tm) => (
+                      <option key={tm.value} value={tm.value}>{tm.name_fr}</option>
+                    ))}
+                  </select>
+                </div>
                 <div><Label>Surface</Label><Input value={form.surface} onChange={(e) => setF("surface", e.target.value)} placeholder="FG / AG / TF / IC" /></div>
                 <div><Label>Type</Label><Input value={form.product_type} onChange={(e) => setF("product_type", e.target.value)} placeholder="home / away / ball..." /></div>
                 <div className="col-span-2"><Label>Couleurs (separees par des virgules)</Label><Input value={form.colors} onChange={(e) => setF("colors", e.target.value)} placeholder="Rouge, Blanc" /></div>

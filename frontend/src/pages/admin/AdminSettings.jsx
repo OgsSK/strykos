@@ -363,14 +363,23 @@ export default function AdminSettings() {
 
       {tab === "taxonomies" && (
         <Card
-          title="Taxonomies (genre et sport)"
-          description="Les valeurs de ces listes alimentent les filtres du catalogue et les tuiles de la page d'accueil. Chaque valeur a un identifiant interne (non modifiable) et un libellé FR/EN."
-          onSave={() => save("taxonomies", { genders: taxonomies.genders || [], sports: taxonomies.sports || [] })}
+          title="Taxonomies (genre, sport, sélections)"
+          description="Les valeurs de ces listes alimentent les filtres du catalogue. Chaque valeur a un identifiant interne (non modifiable) et un libellé FR/EN."
+          onSave={() => save("taxonomies", {
+            genders: taxonomies.genders || [],
+            sports: taxonomies.sports || [],
+            teams: taxonomies.teams || [],
+            clubs: taxonomies.clubs || [],
+          })}
           testid="settings-taxonomies"
         >
           <div className="space-y-6">
-            {["genders", "sports"].map((kind) => {
-              const label = kind === "genders" ? "Genres" : "Sports";
+            {[
+              { key: "genders", label: "Genres" },
+              { key: "sports", label: "Sports" },
+              { key: "teams", label: "Sélections nationales" },
+              { key: "clubs", label: "Clubs de football" },
+            ].map(({ key: kind, label }) => {
               const items = taxonomies[kind] || [];
 
               const updItem = (i, patch) => {
@@ -379,9 +388,10 @@ export default function AdminSettings() {
               };
               const delItem = async (i) => {
                 const it = items[i];
+                // Verifie l'usage
                 try {
                   const { data } = await api.get("/admin/taxonomies/usage");
-                  const usage = (kind === "genders" ? data.genders : data.sports)?.[it.value] || 0;
+                  const usage = data[kind]?.[it.value] || 0;
                   if (usage > 0) {
                     if (!window.confirm(`${usage} produit(s) utilisent cette valeur. Supprimer quand même ? Les produits garderont la valeur mais elle n'apparaitra plus dans les filtres.`)) return;
                   } else {
@@ -435,7 +445,7 @@ export default function AdminSettings() {
               );
             })}
             <p className="text-xs text-ink-muted">
-              Astuce : laissez l'image vide pour un style fond noir dégradé, ou collez une URL d'image (Unsplash, votre propre CDN, etc.).
+              Astuce : laissez l'image vide pour un style fond noir dégradé, ou collez une URL d'image (drapeau, Unsplash, votre CDN, etc.).
             </p>
           </div>
         </Card>
