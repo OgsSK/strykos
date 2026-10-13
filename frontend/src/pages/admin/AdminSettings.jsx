@@ -156,30 +156,28 @@ export default function AdminSettings() {
             />
           </Card>
 
-          {/* 
+          {/*
             ⚠️ Section éditoriale — MASQUÉE TEMPORAIREMENT
             Le composant <EditorialSection> n'est plus rendu sur la home actuelle.
             Pour réactiver :
               1. Décommenter le bloc <Card> ci-dessous
-              2. Réimporter EditorialSection dans src/pages/Home.jsx :
-                   import EditorialSection from "@/components/EditorialSection";
-              3. L'ajouter dans le rendu :
-                   <EditorialSection media={sec.editorial} />
-            
+              2. Réimporter EditorialSection dans src/pages/Home.jsx
+              3. L'ajouter dans le rendu : <EditorialSection media={sec.editorial} />
+
             Les données (s.sections.editorial) restent en base et ne sont pas perdues.
 
           <Card
             title="Section éditoriale (grande image + texte)"
             description="Bloc pleine largeur affiché sur la home. Idéal pour du storytelling ou mettre en avant une collection."
-            onSave={() => save("sections", { ...s.sections, editorial })}
+            onSave={() => save("sections", { ...s.sections, editorial: s.sections?.editorial || {} })}
             testid="settings-editorial"
           >
             <div className="space-y-4">
               <div>
                 <Label>Image de fond</Label>
                 <SingleMediaUploader
-                  value={editorial.image_url || ""}
-                  onChange={(v) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, image_url: v } } })}
+                  value={s.sections?.editorial?.image_url || ""}
+                  onChange={(v) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), image_url: v } } })}
                   label="une image"
                   testid="editorial-image"
                 />
@@ -192,16 +190,16 @@ export default function AdminSettings() {
                 <div>
                   <Label>Titre FR</Label>
                   <Input
-                    value={editorial.title_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, title_fr: e.target.value } } })}
+                    value={s.sections?.editorial?.title_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), title_fr: e.target.value } } })}
                     placeholder="L'ÉQUIPEMENT DES VRAIS JOUEURS"
                   />
                 </div>
                 <div>
                   <Label>Titre EN</Label>
                   <Input
-                    value={editorial.title_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, title_en: e.target.value } } })}
+                    value={s.sections?.editorial?.title_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), title_en: e.target.value } } })}
                     placeholder="GEAR FOR REAL PLAYERS"
                   />
                 </div>
@@ -209,8 +207,8 @@ export default function AdminSettings() {
                   <Label>Sous-titre FR</Label>
                   <Textarea
                     rows={2}
-                    value={editorial.subtitle_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, subtitle_fr: e.target.value } } })}
+                    value={s.sections?.editorial?.subtitle_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), subtitle_fr: e.target.value } } })}
                     placeholder="Maillots authentiques, chaussures et équipements des plus grandes marques."
                   />
                 </div>
@@ -218,39 +216,39 @@ export default function AdminSettings() {
                   <Label>Sous-titre EN</Label>
                   <Textarea
                     rows={2}
-                    value={editorial.subtitle_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, subtitle_en: e.target.value } } })}
+                    value={s.sections?.editorial?.subtitle_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), subtitle_en: e.target.value } } })}
                     placeholder="Authentic jerseys, boots and gear from the biggest brands."
                   />
                 </div>
                 <div>
                   <Label>Bouton FR</Label>
                   <Input
-                    value={editorial.cta_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_fr: e.target.value } } })}
+                    value={s.sections?.editorial?.cta_fr || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_fr: e.target.value } } })}
                     placeholder="Découvrir le catalogue"
                   />
                 </div>
                 <div>
                   <Label>Bouton EN</Label>
                   <Input
-                    value={editorial.cta_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_en: e.target.value } } })}
+                    value={s.sections?.editorial?.cta_en || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_en: e.target.value } } })}
                     placeholder="Shop now"
                   />
                 </div>
                 <div className="sm:col-span-2">
                   <Label>Lien du bouton</Label>
                   <Input
-                    value={editorial.cta_link || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...editorial, cta_link: e.target.value } } })}
+                    value={s.sections?.editorial?.cta_link || ""}
+                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_link: e.target.value } } })}
                     placeholder="/catalog"
                   />
                 </div>
               </div>
 
               <p className="text-xs text-ink-muted bg-secondary/40 border border-border p-3">
-                <strong>Astuce</strong> : si l'image est vide, la section affichera un dégradé noir + brand en attendant. Une fois l'image uploadée, elle s'affichera automatiquement.
+                <strong>Astuce</strong> : si l'image est vide, la section affichera un dégradé noir + brand en attendant.
               </p>
             </div>
           </Card>
@@ -424,13 +422,7 @@ export default function AdminSettings() {
                         </div>
                         <div>
                           <Label className="text-xs">Image</Label>
-                          <SingleMediaUploader
-                            compact
-                            value={it.image_url || ""}
-                            onChange={(v) => updItem(i, { image_url: v })}
-                            label="une image"
-                            testid={`taxonomy-image-${kind}-${i}`}
-                          />
+                          <SingleMediaUploader compact value={it.image_url || ""} onChange={(v) => updItem(i, { image_url: v })} label="une image" testid={`taxonomy-image-${kind}-${i}`} />
                         </div>
                         <button type="button" onClick={() => delItem(i)} className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center" title="Supprimer">
                           <Trash2 className="w-4 h-4" />
@@ -458,12 +450,7 @@ export default function AdminSettings() {
         >
           <div className="space-y-4">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={cartReminders.enabled !== false}
-                onChange={(e) => upd("cart_reminders", { enabled: e.target.checked })}
-                data-testid="cart-enabled"
-              />
+              <input type="checkbox" checked={cartReminders.enabled !== false} onChange={(e) => upd("cart_reminders", { enabled: e.target.checked })} data-testid="cart-enabled" />
               <span className="font-medium">Activer les relances panier</span>
             </label>
 
