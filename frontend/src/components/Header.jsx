@@ -290,7 +290,6 @@ export default function Header() {
         <SheetContent side="left" className="w-80 p-0 overflow-auto">
           <div className="p-4 border-b flex items-center justify-between">
             <Brand size="sm" />
-            <button onClick={() => setMobileOpen(false)} aria-label="close"><X className="w-5 h-5" /></button>
           </div>
 
           <form onSubmit={doSearch} className="p-4 border-b">
