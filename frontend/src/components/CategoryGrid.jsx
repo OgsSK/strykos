@@ -3,44 +3,49 @@ import { Link } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { mediaSrc } from "@/lib/adminUtils";
 
-/* Grid of square category tiles (Nike-style) — uses settings.icons.items */
+/* "Nos essentiels" style Nike : titre centré + tuiles RONDES + labels en dessous */
 export default function CategoryGrid({ icons }) {
   const { t, lang } = useStore();
   const L = (o, k) => o?.[`${k}_${lang}`] || o?.[`${k}_fr`] || "";
   const items = (icons?.items || []).filter((i) => i.image_url && L(i, "label"));
-  if (!items.length) return null;
+  const columns = icons?.columns || [];
+  if (!items.length && !columns.length) return null;
 
   return (
-    <section className="max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-10 py-10 sm:py-14" data-testid="category-grid">
-      <h2 className="font-heading text-3xl sm:text-4xl lg:text-5xl font-extrabold uppercase tracking-tight text-center mb-8 sm:mb-12">
-        {t("shopByCategory")}
-      </h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-3">
-        {items.slice(0, 8).map((it, i) => (
-          <Link
-            key={i}
-            to={it.link || "/catalog"}
-            className="group relative aspect-square overflow-hidden bg-ink block"
-            data-testid={`category-tile-${i}`}
-          >
-            <img
-              src={mediaSrc(it.image_url)}
-              alt=""
-              loading="lazy"
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.06]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-5">
-              <div className="font-heading text-lg sm:text-xl lg:text-2xl font-extrabold uppercase tracking-tight text-white leading-tight drop-shadow">
-                {L(it, "label")}
+    <section className="max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-10 py-14 sm:py-20" data-testid="category-grid">
+      {L(icons, "title") && (
+        <h2 className="font-heading text-4xl sm:text-6xl lg:text-7xl font-extrabold uppercase tracking-tight text-center leading-[0.95] mb-12 sm:mb-16" data-testid="iconic-title">
+          {L(icons, "title")}
+        </h2>
+      )}
+
+      {items.length > 0 && (
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-8 gap-x-3 gap-y-8 max-w-6xl mx-auto mb-16" data-testid="iconic-grid">
+          {items.slice(0, 16).map((it, i) => (
+            <Link key={i} to={it.link || "/catalog"} className="group flex flex-col items-center text-center" data-testid={`iconic-item-${i}`}>
+              <div className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 overflow-hidden rounded-full bg-secondary ring-1 ring-border group-hover:ring-ink transition-all group-hover:scale-105">
+                <img src={mediaSrc(it.image_url)} alt="" loading="lazy" className="w-full h-full object-cover" />
               </div>
-              <div className="mt-2 inline-flex items-center gap-1 text-xs font-bold uppercase text-white/90 opacity-0 group-hover:opacity-100 transition-opacity">
-                {t("all")} →
-              </div>
+              <span className="mt-4 text-xs sm:text-sm font-medium leading-tight group-hover:text-brand transition-colors">{L(it, "label")}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {columns.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-8 gap-y-12 max-w-5xl mx-auto pt-12 border-t border-border" data-testid="iconic-columns">
+          {columns.slice(0, 4).map((col, i) => (
+            <div key={i}>
+              <h3 className="font-heading text-base sm:text-lg font-semibold mb-5">{L(col, "title")}</h3>
+              <ul className="space-y-3">
+                {(col.links || []).map((lk, j) => (
+                  <li key={j}><Link to={lk.link || "/catalog"} className="text-sm text-ink-soft hover:text-ink transition-colors line-clamp-1">{L(lk, "label")}</Link></li>
+                ))}
+              </ul>
             </div>
-          </Link>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

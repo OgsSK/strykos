@@ -2,27 +2,9 @@ import React, { useEffect, useState } from "react";
 import { useStore } from "@/context/StoreProvider";
 import { swrGetShared } from "@/lib/cache";
 import HeroCarousel from "@/components/HeroCarousel";
-import CategoryGrid from "@/components/CategoryGrid";
-import TaxonomyGrid from "@/components/TaxonomyGrid";
-import EditorialSection from "@/components/EditorialSection";
+import SectionBanner from "@/components/SectionBanner";
 import StoryCards from "@/components/StoryCards";
-import ProductCarousel from "@/components/ProductCarousel";
-
-function Section({ id, title, link, products, media, allLabel, subTitle }) {
-  if (!products || products.length === 0) return null;
-  const cards = media?.cards || [];
-  return (
-    <section className="max-w-[1500px] mx-auto px-3 sm:px-6 lg:px-10 py-8 sm:py-12" data-testid={`home-section-${id}`}>
-      {cards.length > 0 && (
-        <div className="mb-8 sm:mb-10">
-          <h2 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight mb-4 sm:mb-6">{title}</h2>
-          <StoryCards cards={cards} testid={`story-cards-${id}`} />
-        </div>
-      )}
-      <ProductCarousel title={cards.length > 0 ? subTitle : title} link={link} allLabel={allLabel} products={products} testid={`carousel-${id}`} />
-    </section>
-  );
-}
+import CategoryGrid from "@/components/CategoryGrid";
 
 export default function Home() {
   const { t, settings } = useStore();
@@ -37,61 +19,26 @@ export default function Home() {
       {/* 1. Hero plein écran */}
       <HeroCarousel hero={settings?.hero} />
 
-      {/* 2. Grille de catégories (tuiles carrées) */}
+      {/* 2+3. Bloc continu : Nouveautés + Promotions collés, full-bleed (Nike-style) */}
+      <div className="py-1 sm:py-2">
+        {(sec.new_arrivals?.cards || []).length > 0 && (
+          <section data-testid="home-section-new_arrivals">
+            <StoryCards cards={sec.new_arrivals.cards} testid="story-cards-new_arrivals" />
+          </section>
+        )}
+
+        {(sec.promotions?.cards || []).length > 0 && (
+          <section className="pt-1 sm:pt-2" data-testid="home-section-promotions">
+            <StoryCards cards={sec.promotions.cards} testid="story-cards-promotions" />
+          </section>
+        )}
+      </div>
+
+      {/* 4. Bannière pleine largeur */}
+      <SectionBanner media={sec.categories} title={t("shopByCategory")} testid="section-banner-categories" />
+
+      {/* 5. Nos essentiels — tuiles rondes */}
       <CategoryGrid icons={settings?.icons} />
-
-      {/* 3. Acheter par genre (Homme / Femme / Enfant / Unisexe) */}
-      <TaxonomyGrid type="gender" />
-
-      {/* 4. Nouveautés */}
-      <Section
-        id="new_arrivals"
-        title={t("newArrivals")}
-        link="/catalog?is_new=true"
-        products={data?.new_arrivals}
-        media={sec.new_arrivals}
-        allLabel={t("all")}
-        subTitle={t("dontMiss")}
-      />
-
-      {/* 5. Section éditoriale (grande image + texte) */}
-      <EditorialSection media={sec.editorial} />
-
-      {/* 6. Promotions */}
-      <Section
-        id="promotions"
-        title={t("promotions")}
-        link="/catalog?on_sale=true"
-        products={data?.promotions}
-        media={sec.promotions}
-        allLabel={t("all")}
-        subTitle={t("dontMiss")}
-      />
-
-      {/* 7. Acheter par sport */}
-      <TaxonomyGrid type="sport" />
-
-      {/* 8. Best-sellers */}
-      <Section
-        id="best_sellers"
-        title={t("bestSellers")}
-        link="/catalog?sort=best_sellers"
-        products={data?.best_sellers}
-        media={sec.best_sellers}
-        allLabel={t("all")}
-        subTitle={t("dontMiss")}
-      />
-
-      {/* 9. Sélection STRYKOS */}
-      <Section
-        id="featured"
-        title={t("featured")}
-        link="/catalog"
-        products={data?.featured}
-        media={sec.featured}
-        allLabel={t("all")}
-        subTitle={t("dontMiss")}
-      />
     </div>
   );
 }

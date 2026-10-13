@@ -41,7 +41,7 @@ export default function AdminSettings() {
     try { await api.put("/admin/settings", { key, value: value ?? s[key] }); toast.success("Parametres enregistres"); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {}, editorial = s.sections?.editorial || {};
+  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {};
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
   const setOrigin = (i, patch) => upd("shipping", { origins: origins.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
   const tabs = [["site", "Coordonnees"], ["hero", "Accueil & videos"], ["shipping", "Livraison"], ["taxonomies", "Taxonomies"], ["cart", "Relances panier"], ["currency", "Devises"], ["payments", "Paiements"]];
@@ -79,46 +79,23 @@ export default function AdminSettings() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Nom — partie 1 (noire)</Label>
-                  <Input
-                    value={site.brand_part1 || ""}
-                    onChange={(e) => upd("site", { brand_part1: e.target.value })}
-                    placeholder="STRY"
-                    data-testid="site-brand-part1"
-                  />
+                  <Input value={site.brand_part1 || ""} onChange={(e) => upd("site", { brand_part1: e.target.value })} placeholder="STRY" data-testid="site-brand-part1" />
                 </div>
                 <div>
                   <Label>Nom — partie 2 (rouge)</Label>
-                  <Input
-                    value={site.brand_part2 || ""}
-                    onChange={(e) => upd("site", { brand_part2: e.target.value })}
-                    placeholder="KOS"
-                    data-testid="site-brand-part2"
-                  />
+                  <Input value={site.brand_part2 || ""} onChange={(e) => upd("site", { brand_part2: e.target.value })} placeholder="KOS" data-testid="site-brand-part2" />
                 </div>
                 <div>
                   <Label>Tagline FR</Label>
-                  <Input
-                    value={site.brand_tagline || ""}
-                    onChange={(e) => upd("site", { brand_tagline: e.target.value })}
-                    placeholder="Multimarque. Authentique. Livré chez vous."
-                  />
+                  <Input value={site.brand_tagline || ""} onChange={(e) => upd("site", { brand_tagline: e.target.value })} placeholder="Multimarque. Authentique. Livré chez vous." />
                 </div>
                 <div>
                   <Label>Tagline EN</Label>
-                  <Input
-                    value={site.brand_tagline_en || ""}
-                    onChange={(e) => upd("site", { brand_tagline_en: e.target.value })}
-                    placeholder="Multi-brand. Authentic. Delivered to you."
-                  />
+                  <Input value={site.brand_tagline_en || ""} onChange={(e) => upd("site", { brand_tagline_en: e.target.value })} placeholder="Multi-brand. Authentic. Delivered to you." />
                 </div>
                 <div className="sm:col-span-2">
                   <Label>Nom complet (utilisé dans les e-mails, CGV, mentions légales)</Label>
-                  <Input
-                    value={site.name || ""}
-                    onChange={(e) => upd("site", { name: e.target.value })}
-                    placeholder="STRYKOS"
-                    data-testid="site-name"
-                  />
+                  <Input value={site.name || ""} onChange={(e) => upd("site", { name: e.target.value })} placeholder="STRYKOS" data-testid="site-name" />
                   <p className="text-[11px] text-ink-muted mt-1">
                     Le texte "STRYKOS" dans les CGV / e-mails sera automatiquement remplacé par cette valeur.
                   </p>
@@ -152,8 +129,8 @@ export default function AdminSettings() {
           </Card>
 
           <Card
-            title="Section « Nos essentiels » (vignettes + liens, style Nike)"
-            description="Grand titre, vignettes rondes (jusqu'a 16) puis colonnes de liens. Utilisez le bouton compact pour changer une image rapidement."
+            title="Section « Nos essentiels » (vignettes rondes, style Nike)"
+            description="Grille de vignettes rondes (jusqu'à 16) affichée sur la home, avec images + liens vers les catégories."
             onSave={() => save("icons")}
             testid="settings-icons"
           >
@@ -162,16 +139,38 @@ export default function AdminSettings() {
 
           <Card
             title="Cartes editoriales des sections"
-            description="Cartes qui apparaissent au-dessus des produits dans chaque section (Nouveautes, Promotions, etc.). Chaque section a sa propre carte repliable."
+            description="Cartes éditoriales affichées sur la page d'accueil (2 grandes cartes côte à côte par section)."
             onSave={() => save("sections")}
             testid="settings-sections"
           >
-            <SectionsEditor sections={s.sections || {}} onChange={(v) => setS({ ...s, sections: v })} />
+            {/*
+              only= : sections visibles dans cet éditeur.
+              Pour afficher d'autres sections plus tard, ajoutez leur clé
+              ("best_sellers", "featured") dans le tableau ci-dessous.
+              Pour tout afficher : retirez la prop "only".
+            */}
+            <SectionsEditor
+              sections={s.sections || {}}
+              onChange={(v) => setS({ ...s, sections: v })}
+              only={["new_arrivals", "promotions", "categories"]}
+            />
           </Card>
+
+          {/* 
+            ⚠️ Section éditoriale — MASQUÉE TEMPORAIREMENT
+            Le composant <EditorialSection> n'est plus rendu sur la home actuelle.
+            Pour réactiver :
+              1. Décommenter le bloc <Card> ci-dessous
+              2. Réimporter EditorialSection dans src/pages/Home.jsx :
+                   import EditorialSection from "@/components/EditorialSection";
+              3. L'ajouter dans le rendu :
+                   <EditorialSection media={sec.editorial} />
+            
+            Les données (s.sections.editorial) restent en base et ne sont pas perdues.
 
           <Card
             title="Section éditoriale (grande image + texte)"
-            description="Bloc pleine largeur affiché sur la home entre les Nouveautés et les Promotions. Idéal pour du storytelling ou mettre en avant une collection."
+            description="Bloc pleine largeur affiché sur la home. Idéal pour du storytelling ou mettre en avant une collection."
             onSave={() => save("sections", { ...s.sections, editorial })}
             testid="settings-editorial"
           >
@@ -255,6 +254,7 @@ export default function AdminSettings() {
               </p>
             </div>
           </Card>
+          */}
 
           <Card title="Barre d'information" onSave={() => save("info_bar")} testid="settings-infobar">
             <label className="flex items-center gap-2 text-sm mb-3">
@@ -381,7 +381,6 @@ export default function AdminSettings() {
               };
               const delItem = async (i) => {
                 const it = items[i];
-                // Verifie l'usage
                 try {
                   const { data } = await api.get("/admin/taxonomies/usage");
                   const usage = (kind === "genders" ? data.genders : data.sports)?.[it.value] || 0;
@@ -471,51 +470,23 @@ export default function AdminSettings() {
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label>Délai avant le 1er email (heures)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={72}
-                  value={cartReminders.delay_1_hours ?? 4}
-                  onChange={(e) => upd("cart_reminders", { delay_1_hours: parseInt(e.target.value) || 4 })}
-                  className="mt-1"
-                  data-testid="cart-delay-1"
-                />
+                <Input type="number" min={1} max={72} value={cartReminders.delay_1_hours ?? 4} onChange={(e) => upd("cart_reminders", { delay_1_hours: parseInt(e.target.value) || 4 })} className="mt-1" data-testid="cart-delay-1" />
                 <p className="text-[11px] text-ink-muted mt-1">Recommandé : 4h</p>
               </div>
               <div>
                 <Label>Délai avant le 2e email (heures)</Label>
-                <Input
-                  type="number"
-                  min={6}
-                  max={168}
-                  value={cartReminders.delay_2_hours ?? 24}
-                  onChange={(e) => upd("cart_reminders", { delay_2_hours: parseInt(e.target.value) || 24 })}
-                  className="mt-1"
-                  data-testid="cart-delay-2"
-                />
+                <Input type="number" min={6} max={168} value={cartReminders.delay_2_hours ?? 24} onChange={(e) => upd("cart_reminders", { delay_2_hours: parseInt(e.target.value) || 24 })} className="mt-1" data-testid="cart-delay-2" />
                 <p className="text-[11px] text-ink-muted mt-1">Recommandé : 24h</p>
               </div>
               <div>
                 <Label>Nombre minimum d'articles</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={cartReminders.min_items ?? 1}
-                  onChange={(e) => upd("cart_reminders", { min_items: parseInt(e.target.value) || 1 })}
-                  className="mt-1"
-                />
+                <Input type="number" min={1} max={10} value={cartReminders.min_items ?? 1} onChange={(e) => upd("cart_reminders", { min_items: parseInt(e.target.value) || 1 })} className="mt-1" />
               </div>
             </div>
 
             <div className="border-t border-border pt-4">
               <label className="flex items-center gap-2 text-sm mb-3">
-                <input
-                  type="checkbox"
-                  checked={cartReminders.promo_on_second_email !== false}
-                  onChange={(e) => upd("cart_reminders", { promo_on_second_email: e.target.checked })}
-                  data-testid="cart-promo-enabled"
-                />
+                <input type="checkbox" checked={cartReminders.promo_on_second_email !== false} onChange={(e) => upd("cart_reminders", { promo_on_second_email: e.target.checked })} data-testid="cart-promo-enabled" />
                 <span className="font-medium">Offrir un code promo dans le 2e email</span>
               </label>
 
@@ -523,42 +494,24 @@ export default function AdminSettings() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div>
                     <Label>Code promo</Label>
-                    <Input
-                      value={cartReminders.promo_code || "REVIENS5"}
-                      onChange={(e) => upd("cart_reminders", { promo_code: e.target.value.toUpperCase() })}
-                      className="mt-1 font-mono"
-                      placeholder="REVIENS5"
-                      data-testid="cart-promo-code"
-                    />
+                    <Input value={cartReminders.promo_code || "REVIENS5"} onChange={(e) => upd("cart_reminders", { promo_code: e.target.value.toUpperCase() })} className="mt-1 font-mono" placeholder="REVIENS5" data-testid="cart-promo-code" />
                     <p className="text-[11px] text-ink-muted mt-1">Sera créé automatiquement s'il n'existe pas</p>
                   </div>
                   <div>
                     <Label>Remise (%)</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={cartReminders.promo_discount_percent ?? 5}
-                      onChange={(e) => upd("cart_reminders", { promo_discount_percent: parseInt(e.target.value) || 5 })}
-                      className="mt-1"
-                      data-testid="cart-promo-percent"
-                    />
+                    <Input type="number" min={1} max={50} value={cartReminders.promo_discount_percent ?? 5} onChange={(e) => upd("cart_reminders", { promo_discount_percent: parseInt(e.target.value) || 5 })} className="mt-1" data-testid="cart-promo-percent" />
                   </div>
                 </div>
               )}
             </div>
 
             <div className="bg-secondary/40 border border-border p-3 text-xs text-ink-soft">
-              <p>
-                <strong>Comment ça marche :</strong> les clients connectés avec un panier non finalisé reçoivent automatiquement :
-              </p>
+              <p><strong>Comment ça marche :</strong> les clients connectés avec un panier non finalisé reçoivent automatiquement :</p>
               <ol className="list-decimal ml-5 mt-1 space-y-0.5">
                 <li>Un 1er email de rappel après {cartReminders.delay_1_hours ?? 4}h</li>
                 <li>Un 2e email avec code promo après {cartReminders.delay_2_hours ?? 24}h</li>
               </ol>
-              <p className="mt-2">
-                Les relances s'arrêtent dès qu'une commande est passée ou si le client s'est désinscrit.
-              </p>
+              <p className="mt-2">Les relances s'arrêtent dès qu'une commande est passée ou si le client s'est désinscrit.</p>
             </div>
           </div>
         </Card>

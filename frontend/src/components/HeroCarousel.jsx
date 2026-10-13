@@ -18,7 +18,8 @@ function Slide({ slide, active }) {
         <video ref={ref} src={mediaSrc(slide.video_url)} poster={slide.image_url ? mediaSrc(slide.image_url) : undefined} muted loop playsInline preload={active ? "auto" : "metadata"} onError={(e) => { e.currentTarget.style.display = "none"; }}
           className="absolute inset-0 w-full h-full object-cover" data-testid="hero-video" />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-ink/10" />
+      {/* Overlay léger pour la lisibilité du texte (Nike style) */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
     </div>
   );
 }
@@ -44,35 +45,41 @@ export default function HeroCarousel({ hero }) {
   const L = (k) => s[`${k}_${lang}`] || s[`${k}_fr`] || "";
 
   return (
-    <section className="relative h-[78vh] min-h-[500px] bg-ink text-white overflow-hidden select-none" data-testid="hero-banner"
+    <section className="relative h-[80vh] min-h-[520px] bg-ink text-white overflow-hidden select-none" data-testid="hero-banner"
       onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
       onTouchStart={(e) => (touchX.current = e.touches[0].clientX)}
       onTouchEnd={(e) => { if (touchX.current == null) return; const dx = e.changedTouches[0].clientX - touchX.current; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); touchX.current = null; }}>
       {slides.map((sl, i) => <Slide key={i} slide={sl} active={i === idx} />)}
 
-      <div className="relative max-w-7xl mx-auto px-4 h-full flex flex-col justify-end pb-20">
-        <div key={idx} className="max-w-2xl animate-fade-up">
-          <h1 className="font-heading text-4xl sm:text-5xl lg:text-6xl font-extrabold uppercase tracking-tight leading-none" data-testid="hero-title">{L("title")}</h1>
-          <p className="mt-4 text-base sm:text-lg text-white/80 max-w-lg">{L("subtitle")}</p>
-          <div className="mt-7 flex flex-wrap gap-3">
+      {/* Contenu centré façon Nike */}
+      <div className="relative h-full flex flex-col items-center justify-end pb-16 sm:pb-20 text-center px-4">
+        <div key={idx} className="max-w-3xl animate-fade-up">
+          {L("overline") && (
+            <div className="text-xs sm:text-sm uppercase tracking-[0.2em] mb-3 opacity-90">{L("overline")}</div>
+          )}
+          <h1 className="font-heading text-4xl sm:text-6xl lg:text-7xl font-extrabold uppercase tracking-tight leading-[0.95] mb-4" data-testid="hero-title">{L("title")}</h1>
+          <p className="text-base sm:text-lg text-white/90 max-w-xl mx-auto mb-7">{L("subtitle")}</p>
+          <div className="flex flex-wrap gap-3 justify-center">
             <Link to={s.cta_link || "/catalog"} data-testid="hero-cta-primary"
-              className="bg-brand hover:bg-brand-dark text-white px-7 py-3 text-sm font-bold uppercase tracking-wide transition-colors">{L("cta") || t("shopNow")}</Link>
-            <Link to="/catalog?is_new=true" className="bg-white/10 hover:bg-white/20 backdrop-blur border border-white/30 text-white px-7 py-3 text-sm font-bold uppercase tracking-wide transition-colors">{t("heroCta2")}</Link>
+              className="bg-white text-ink hover:bg-ink hover:text-white px-7 py-3 text-sm font-bold uppercase tracking-wide rounded-full transition-colors">
+              {L("cta") || t("shopNow")}
+            </Link>
+            <Link to="/catalog?is_new=true" className="bg-transparent border border-white/60 hover:bg-white hover:text-ink text-white px-7 py-3 text-sm font-bold uppercase tracking-wide rounded-full transition-colors">
+              {t("heroCta2")}
+            </Link>
           </div>
         </div>
       </div>
 
+      {/* Arrows */}
       {n > 1 && (
         <>
-          <button onClick={() => go(-1)} aria-label="previous" data-testid="hero-prev" className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 hidden sm:flex items-center justify-center bg-black/30 hover:bg-black/60 backdrop-blur transition-colors"><ChevronLeft className="w-5 h-5" /></button>
-          <button onClick={() => go(1)} aria-label="next" data-testid="hero-next" className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 hidden sm:flex items-center justify-center bg-black/30 hover:bg-black/60 backdrop-blur transition-colors"><ChevronRight className="w-5 h-5" /></button>
-          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-3" data-testid="hero-dots">
+          <button onClick={() => go(-1)} aria-label="previous" data-testid="hero-prev" className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 hidden sm:flex items-center justify-center bg-white/10 hover:bg-white/30 backdrop-blur rounded-full transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+          <button onClick={() => go(1)} aria-label="next" data-testid="hero-next" className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 hidden sm:flex items-center justify-center bg-white/10 hover:bg-white/30 backdrop-blur rounded-full transition-colors"><ChevronRight className="w-5 h-5" /></button>
+          <div className="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-2" data-testid="hero-dots">
             {slides.map((_, i) => (
-              <button key={i} onClick={() => setIdx(i)} aria-label={`slide ${i + 1}`} className="h-1 w-10 bg-white/30 overflow-hidden">
-                <span className={`block h-full bg-white ${i === idx ? "animate-progress" : i < idx ? "w-full" : "w-0"}`} style={i === idx && !paused ? { animationDuration: `${interval}ms` } : { animation: "none", width: i === idx ? "100%" : undefined }} />
-              </button>
+              <button key={i} onClick={() => setIdx(i)} aria-label={`slide ${i + 1}`} className={`h-1.5 rounded-full transition-all ${i === idx ? "bg-white w-6" : "bg-white/40 w-1.5"}`} />
             ))}
-            <button onClick={() => setPaused((p) => !p)} aria-label="pause" className="ml-2 text-white/70 hover:text-white">{paused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}</button>
           </div>
         </>
       )}

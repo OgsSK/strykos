@@ -90,9 +90,14 @@ function CardEditor({ card, onChange, onRemove, testid, index }) {
   );
 }
 
-export function SectionsEditor({ sections, onChange }) {
-  const keys = ["categories", "new_arrivals", "promotions", "best_sellers", "featured"];
+export function SectionsEditor({ sections, onChange, only = null }) {
+  // Liste maîtresse de toutes les sections supportées (ordre d'affichage par défaut)
+  const ALL_KEYS = ["categories", "new_arrivals", "promotions", "best_sellers", "featured"];
+  // Filtre selon la prop "only" si fournie (permet de masquer certaines sections dans l'admin)
+  const keys = only ? ALL_KEYS.filter((k) => only.includes(k)) : ALL_KEYS;
+
   const upd = (k, patch) => onChange({ ...sections, [k]: { ...(sections?.[k] || {}), ...patch } });
+
   return (
     <div className="space-y-3" data-testid="sections-editor">
       <p className="text-xs text-ink-muted">
