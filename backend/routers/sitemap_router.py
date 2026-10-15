@@ -6,7 +6,7 @@ from models import Product, Brand, Category
 
 router = APIRouter(tags=["seo"])
 
-BASE_URL = "https://strykos.actoos.com"
+BASE_URL = "https://cakes.actoos.com"
 
 
 def _url(loc: str, changefreq: str = "weekly", priority: str = "0.5", lastmod: str | None = None) -> str:
@@ -35,7 +35,7 @@ async def sitemap(db: AsyncSession = Depends(get_db)):
     urls.append(_url(f"{BASE_URL}/page/cookies", "yearly", "0.2"))
     urls.append(_url(f"{BASE_URL}/page/legal", "yearly", "0.2"))
 
-    # Produits
+    # Produits (gâteaux)
     res = await db.execute(
         select(Product).where(Product.published == True).order_by(Product.created_at.desc())
     )
@@ -43,12 +43,12 @@ async def sitemap(db: AsyncSession = Depends(get_db)):
         lm = p.created_at.strftime("%Y-%m-%d") if p.created_at else None
         urls.append(_url(f"{BASE_URL}/product/{p.slug}", "weekly", "0.7", lm))
 
-    # Catégories
+    # Catégories (Anniversaires, Mariages, Enfants, Personnalisés, Événements)
     res = await db.execute(select(Category).where(Category.published == True))
     for c in res.scalars().all():
         urls.append(_url(f"{BASE_URL}/catalog?category={c.slug}", "weekly", "0.6"))
 
-    # Marques
+    # Marques / Pâtisseries partenaires
     res = await db.execute(select(Brand).where(Brand.published == True))
     for b in res.scalars().all():
         urls.append(_url(f"{BASE_URL}/catalog?brand={b.slug}", "weekly", "0.6"))

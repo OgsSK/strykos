@@ -31,3 +31,31 @@ export const REGISTER = {
 export const LOGOUT = {
 	button: 'logout-button',
 };
+
+// ⭐ NOUVEAU — flux de confirmation d'email après inscription
+export const EMAIL_CONFIRMATION = {
+	// Page /login affichée juste après l'inscription (?registered=1)
+	registeredBanner: 'auth-registered-banner',
+	registeredBannerEmail: 'auth-registered-banner-email',
+
+	// Page /confirm-email (traitement du lien reçu par email)
+	page: 'confirm-email-page',
+	loading: 'confirm-email-loading',
+	success: 'confirm-email-success',
+	error: 'confirm-email-error',
+	goToAccountButton: 'confirm-email-go-to-account-button',
+	loginLink: 'confirm-email-login-link',
+	registerLink: 'confirm-email-register-link',
+};
+
+// ⭐ NOUVEAU — mot de passe oublié / réinitialisation
+export const PASSWORD_RESET = {
+	forgotEmailInput: 'forgot-password-email-input',
+	forgotSubmitButton: 'forgot-password-submit-button',
+	forgotBackToLoginLink: 'forgot-password-back-to-login-link',
+
+	newPasswordInput: 'reset-password-new-input',
+	confirmPasswordInput: 'reset-password-confirm-input',
+	resetSubmitButton: 'reset-password-submit-button',
+	resetBackToLoginLink: 'reset-password-back-to-login-link',
+};

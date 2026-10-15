@@ -1,14 +1,16 @@
+// Motifs de RÉCLAMATION (pas de retour) — gâteaux uniquement
 export const RETURN_REASONS = [
-  { value: "defect", label_fr: "Produit défectueux", label_en: "Defective product" },
-  { value: "wrong_size", label_fr: "Mauvaise taille", label_en: "Wrong size" },
-  { value: "not_as_described", label_fr: "Ne correspond pas à la description", label_en: "Not as described" },
-  { value: "damaged", label_fr: "Endommagé pendant le transport", label_en: "Damaged in transit" },
-  { value: "wrong_item", label_fr: "Mauvais article reçu", label_en: "Wrong item received" },
-  { value: "changed_mind", label_fr: "Changement d'avis", label_en: "Change of mind" },
-  { value: "other", label_fr: "Autre", label_en: "Other" },
+  { value: "damaged", label_fr: "Gâteau endommagé à la réception", label_en: "Cake damaged on arrival" },
+  { value: "not_conforme", label_fr: "Ne correspond pas à ma commande", label_en: "Does not match my order" },
+  { value: "quality", label_fr: "Problème de qualité ou de fraîcheur", label_en: "Quality or freshness issue" },
+  { value: "missing", label_fr: "Éléments manquants (bougies, décorations...)", label_en: "Missing items (candles, decorations...)" },
+  { value: "late", label_fr: "Livré trop tard / hors délai", label_en: "Delivered too late" },
+  { value: "other", label_fr: "Autre problème", label_en: "Other issue" },
 ];
 
-// Raisons ou les frais de retour sont PRIS EN CHARGE par STRYKOS
-export const REASONS_AT_STRYKOS_EXPENSE = ["defect", "not_as_described", "damaged", "wrong_item"];
+// Aucun frais de retour applicable (le gâteau est perdu, pas de renvoi)
+export const REASONS_AT_CAKESSHOP_EXPENSE = [];
+export const isStrykosExpense = () => false;
 
-export const isStrykosExpense = (reason) => REASONS_AT_STRYKOS_EXPENSE.includes(reason);
+// Délai de réclamation : 24h après livraison
+export const CLAIM_WINDOW_HOURS = 24;

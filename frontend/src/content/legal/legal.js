@@ -1,12 +1,12 @@
 export default {
   fr: {
     title: "Mentions légales",
-    subtitle: "Informations légales relatives à l'éditeur du site STRYKOS.",
+    subtitle: "Informations légales relatives à l'éditeur du site CAKESSHOP.",
     lastUpdate: "Dernière mise à jour : octobre 2026",
     sections: [
       {
         title: "1. Éditeur du site",
-        content: "Le site STRYKOS est édité et exploité par un vendeur indépendant spécialisé dans la vente en ligne d'équipements et accessoires de football. Pour toute question relative au site ou à son contenu, le contact est disponible à l'adresse suivante : contact@actoos.com.",
+        content: "Le site CAKESSHOP est édité et exploité par un artisan pâtissier indépendant spécialisé dans la fabrication et la vente en ligne de gâteaux, pâtisseries et créations sur mesure. Pour toute question relative au site ou à son contenu, le contact est disponible à l'adresse suivante : contact@actoos.com.",
       },
       {
         title: "2. Responsable de la publication",
@@ -14,23 +14,23 @@ export default {
       },
       {
         title: "3. Hébergement",
-        content: "Le site STRYKOS est hébergé par des prestataires techniques reconnus, sélectionnés pour leurs garanties en matière de sécurité, de disponibilité et de protection des données. Les coordonnées complètes de l'hébergeur peuvent être obtenues sur demande à contact@actoos.com.",
+        content: "Le site CAKESSHOP est hébergé par des prestataires techniques reconnus, sélectionnés pour leurs garanties en matière de sécurité, de disponibilité et de protection des données. Les coordonnées complètes de l'hébergeur peuvent être obtenues sur demande à contact@actoos.com.",
       },
       {
         title: "4. Propriété intellectuelle",
-        content: "L'ensemble des éléments composant le site STRYKOS (textes, images, logos, chartes graphiques, structure, code source, bases de données) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation, adaptation, modification ou exploitation, totale ou partielle, par quelque procédé que ce soit, sans autorisation écrite préalable de l'éditeur, est interdite et constitue une contrefaçon.",
+        content: "L'ensemble des éléments composant le site CAKESSHOP (textes, images, logos, chartes graphiques, structure, code source, bases de données) est protégé par le droit de la propriété intellectuelle. Toute reproduction, représentation, adaptation, modification ou exploitation, totale ou partielle, par quelque procédé que ce soit, sans autorisation écrite préalable de l'éditeur, est interdite et constitue une contrefaçon.",
         subsections: [
-          { title: "4.1 Marques citées", content: "Les marques commerciales, logos et noms de produits cités sur le site appartiennent à leurs propriétaires respectifs et sont mentionnés à titre purement informatif. STRYKOS n'est ni le site officiel, ni le revendeur agréé exclusif de ces marques." },
-          { title: "4.2 Photos produits", content: "Les photographies illustrant les produits sont fournies à titre indicatif. Elles ne sont pas contractuelles et peuvent différer légèrement du produit livré (couleur, finition, packaging)." },
+          { title: "4.1 Marques citées", content: "Les marques commerciales, logos et noms de produits cités sur le site appartiennent à leurs propriétaires respectifs et sont mentionnés à titre purement informatif. CAKESSHOP est une pâtisserie artisanale indépendante, non affiliée à une franchise ou à une enseigne nationale." },
+          { title: "4.2 Photos produits", content: "Les photographies illustrant les gâteaux et créations sont fournies à titre indicatif. Elles ne sont pas contractuelles : chaque gâteau étant fait main, de légères variations de couleur, de décor ou de finition sont possibles." },
         ],
       },
       {
         title: "5. Liens hypertextes",
-        content: "Le site STRYKOS peut contenir des liens vers des sites tiers. L'éditeur n'exerce aucun contrôle sur ces sites et décline toute responsabilité quant à leur contenu, leurs pratiques ou leurs politiques de confidentialité.",
+        content: "Le site CAKESSHOP peut contenir des liens vers des sites tiers. L'éditeur n'exerce aucun contrôle sur ces sites et décline toute responsabilité quant à leur contenu, leurs pratiques ou leurs politiques de confidentialité.",
       },
       {
         title: "6. Responsabilité",
-        content: "L'éditeur s'efforce d'assurer l'exactitude et la mise à jour des informations diffusées sur le site, sans pouvoir garantir qu'elles soient exemptes d'erreurs. L'éditeur ne saurait être tenu responsable des dommages directs ou indirects résultant de l'utilisation du site ou de l'impossibilité d'y accéder.",
+        content: "L'éditeur s'efforce d'assurer l'exactitude et la mise à jour des informations diffusées sur le site, sans pouvoir garantir qu'elles soient exemptes d'erreurs. L'éditeur ne saurait être tenu responsable des dommages directs ou indirects résultant de l'utilisation du site ou de l'impossibilité d'y accéder. Les allergènes et ingrédients sont listés sur chaque fiche produit ; il appartient au client de vérifier la compatibilité avec son régime alimentaire avant commande.",
       },
       {
         title: "7. Données personnelles et cookies",
@@ -48,12 +48,12 @@ export default {
   },
   en: {
     title: "Legal notice",
-    subtitle: "Legal information about the publisher of the STRYKOS website.",
+    subtitle: "Legal information about the publisher of the CAKESSHOP website.",
     lastUpdate: "Last updated: October 2026",
     sections: [
       {
         title: "1. Site publisher",
-        content: "The STRYKOS website is published and operated by an independent seller specialized in the online sale of football equipment and accessories. For any question relating to the site or its content, contact is available at: contact@actoos.com.",
+        content: "The CAKESSHOP website is published and operated by an independent artisan baker specialized in the making and online sale of cakes, pastries and custom creations. For any question relating to the site or its content, contact is available at: contact@actoos.com.",
       },
       {
         title: "2. Publication manager",
@@ -61,23 +61,23 @@ export default {
       },
       {
         title: "3. Hosting",
-        content: "The STRYKOS website is hosted by recognized technical providers, selected for their guarantees regarding security, availability and data protection. The host's full contact details can be obtained on request at contact@actoos.com.",
+        content: "The CAKESSHOP website is hosted by recognized technical providers, selected for their guarantees regarding security, availability and data protection. The host's full contact details can be obtained on request at contact@actoos.com.",
       },
       {
         title: "4. Intellectual property",
-        content: "All elements making up the STRYKOS website (texts, images, logos, graphic charters, structure, source code, databases) are protected by intellectual property law. Any reproduction, representation, adaptation, modification or exploitation, in whole or in part, by any means, without prior written authorization from the publisher, is prohibited and constitutes infringement.",
+        content: "All elements making up the CAKESSHOP website (texts, images, logos, graphic charters, structure, source code, databases) are protected by intellectual property law. Any reproduction, representation, adaptation, modification or exploitation, in whole or in part, by any means, without prior written authorization from the publisher, is prohibited and constitutes infringement.",
         subsections: [
-          { title: "4.1 Trademarks mentioned", content: "The trademarks, logos and product names mentioned on the site belong to their respective owners and are mentioned for purely informational purposes. STRYKOS is neither the official website nor the exclusive authorized reseller of these brands." },
-          { title: "4.2 Product photos", content: "Photographs illustrating the products are provided for illustrative purposes. They are not contractually binding and may differ slightly from the delivered product (color, finish, packaging)." },
+          { title: "4.1 Trademarks mentioned", content: "The trademarks, logos and product names mentioned on the site belong to their respective owners and are mentioned for purely informational purposes. CAKESSHOP is an independent artisan bakery, not affiliated with any franchise or national chain." },
+          { title: "4.2 Product photos", content: "Photographs illustrating the cakes and creations are provided for illustrative purposes. They are not contractually binding: each cake is handmade, so slight variations in color, decoration or finish are possible." },
         ],
       },
       {
         title: "5. Hyperlinks",
-        content: "The STRYKOS website may contain links to third-party sites. The publisher has no control over these sites and disclaims any responsibility for their content, practices or privacy policies.",
+        content: "The CAKESSHOP website may contain links to third-party sites. The publisher has no control over these sites and disclaims any responsibility for their content, practices or privacy policies.",
       },
       {
         title: "6. Liability",
-        content: "The publisher strives to ensure the accuracy and updating of the information published on the site, without being able to guarantee that it is free of errors. The publisher cannot be held liable for direct or indirect damages resulting from the use of the site or the inability to access it.",
+        content: "The publisher strives to ensure the accuracy and updating of the information published on the site, without being able to guarantee that it is free of errors. The publisher cannot be held liable for direct or indirect damages resulting from the use of the site or the inability to access it. Allergens and ingredients are listed on each product page; it is the customer's responsibility to verify compatibility with their diet before ordering.",
       },
       {
         title: "7. Personal data and cookies",

@@ -1,4 +1,7 @@
 import os
+import random
+import logging
+import secrets
 import stripe
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -9,14 +12,25 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import (Product, ProductImage, ProductVariant, Brand, Category, Order, Payment, Setting,
-                    Profile, PromoCode, EmailLog)
-from auth import get_current_admin
-from utils import get_rates, serialize_product, get_settings, normalize_media
+                    Profile, PromoCode, EmailLog,
+                    # ⭐ NOUVEAU : messagerie réclamation
+                    ClaimMessage)
+from auth import get_current_admin, create_driver_invite_token
+# ⭐ AJOUT : get_rates + convert_from_eur pour le fix FCFA
+from utils import get_rates, serialize_product, get_settings, normalize_media, convert_from_eur
 from emails import (send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO,
                     ADMIN_NOTIFY_EMAIL, send_templated,
-                    tpl_cancellation_approved, tpl_cancellation_refused)
+                    tpl_cancellation_approved, tpl_cancellation_refused,
+                    # ⭐ NOUVEAU : templates réclamation
+                    tpl_claim_approved, tpl_claim_refused, tpl_claim_refunded,
+                    tpl_claim_info_request,
+                    # ⭐ NOUVEAU : template invitation livreur
+                    tpl_driver_invitation)
 from routers.commerce_router import push_history
 from sqlalchemy import select, func, delete
+
+# ⭐ NOUVEAU : logger pour les warnings
+logger = logging.getLogger("cakes.admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
@@ -38,7 +52,6 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     for o in orders:
         by_status[o.status] = by_status.get(o.status, 0) + 1
 
-    # 14-day series (paid orders count + EUR-equivalent charge totals)
     series = []
     for i in range(13, -1, -1):
         day = (now - timedelta(days=i)).date()
@@ -116,6 +129,8 @@ class ProductIn(BaseModel):
     colors: list = []
     customizable: bool = False
     customization_price_eur: float = 0
+    customization_fields: list = []
+    cta_label: str = ""
     video_url: str = ""
     published: bool = True
     images: list[str] = []
@@ -131,10 +146,84 @@ async def admin_list_products(db: AsyncSession = Depends(get_db)):
     return [serialize_product(p, rates, full=True) for p in res.scalars().unique().all()]
 
 
+def _clean_customization_fields(fields: list) -> list:
+    VALID_TYPES = {"text", "textarea", "number", "select", "color", "date"}
+    cleaned = []
+    seen_keys = set()
+
+    for f in (fields or []):
+        if not isinstance(f, dict):
+            continue
+        key = (f.get("key") or "").strip().lower()
+        key = "".join(c for c in key if c.isalnum() or c in "-_")
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+
+        typ = (f.get("type") or "text").strip().lower()
+        if typ not in VALID_TYPES:
+            typ = "text"
+
+        try:
+            price = max(0.0, float(f.get("price_eur") or 0))
+        except (TypeError, ValueError):
+            price = 0.0
+
+        try:
+            max_len = max(1, int(f.get("max_length") or 200))
+        except (TypeError, ValueError):
+            max_len = 200
+
+        cleaned_options = []
+        if typ == "select":
+            for o in (f.get("options") or []):
+                if not isinstance(o, dict):
+                    continue
+                oval = (o.get("value") or "").strip().lower()
+                oval = "".join(c for c in oval if c.isalnum() or c in "-_")
+                if not oval:
+                    continue
+                try:
+                    oprice = max(0.0, float(o.get("price_eur") or 0))
+                except (TypeError, ValueError):
+                    oprice = 0.0
+                cleaned_options.append({
+                    "value": oval,
+                    "label_fr": (o.get("label_fr") or "").strip(),
+                    "label_en": (o.get("label_en") or "").strip(),
+                    "price_eur": oprice,
+                })
+
+        cleaned.append({
+            "key": key,
+            "type": typ,
+            "label_fr": (f.get("label_fr") or "").strip(),
+            "label_en": (f.get("label_en") or "").strip(),
+            "placeholder_fr": (f.get("placeholder_fr") or "").strip(),
+            "placeholder_en": (f.get("placeholder_en") or "").strip(),
+            "required": bool(f.get("required", False)),
+            "max_length": max_len,
+            "price_eur": price,
+            "default_value": (f.get("default_value") or ""),
+            "options": cleaned_options,
+        })
+    return cleaned
+
+
+_VALID_CTA_LABELS = {"", "auto", "add_to_cart", "choose", "customize", "order", "view"}
+
+
+def _clean_cta_label(raw: str) -> str:
+    v = (raw or "").strip().lower()[:40]
+    return v if v in _VALID_CTA_LABELS else ""
+
+
 def _product_fields(data: ProductIn):
     d = {k: v for k, v in data.model_dump().items() if k not in ("images", "variants")}
     d["video_url"] = normalize_media(d.get("video_url", ""))
     d["slug"] = d["slug"].strip().lower()
+    d["customization_fields"] = _clean_customization_fields(d.get("customization_fields") or [])
+    d["cta_label"] = _clean_cta_label(d.get("cta_label", ""))
     return d
 
 
@@ -367,7 +456,6 @@ VALID_STATUSES = ["pending_payment", "paid", "preparing", "shipped", "in_transit
 
 @router.get("/orders/counts")
 async def admin_orders_counts(db: AsyncSession = Depends(get_db)):
-    """Compteurs par groupe pour la barre d'accès rapides."""
     from sqlalchemy import func as _f
     res = await db.execute(select(Order.status, _f.count(Order.id)).group_by(Order.status))
     by_status = {s: c for s, c in res.all()}
@@ -392,20 +480,11 @@ async def admin_orders_counts(db: AsyncSession = Depends(get_db)):
 async def admin_orders(status: Optional[str] = None, payment_status: Optional[str] = None,
                        q: Optional[str] = None, country: Optional[str] = None,
                        period: Optional[str] = None, sort: str = "recent",
+                       scheduled: Optional[str] = None,
                        limit: int = 200, db: AsyncSession = Depends(get_db)):
-    """Liste des commandes avec filtres avancés.
-
-    - status : un ou plusieurs statuts separes par virgule (ex: "paid,preparing")
-    - payment_status : paid | pending | refunded
-    - q : recherche texte
-    - country : code pays (BE, ML...) - cherche dans shipping_address
-    - period : all | 7d | 30d | 90d
-    - sort : recent (defaut) | oldest | amount_desc | amount_asc
-    """
     query = select(Order)
     query = query.limit(min(limit, 500))
 
-    # Statut(s) : support du multi-valeur
     if status:
         statuses = [s.strip() for s in status.split(",") if s.strip()]
         if len(statuses) == 1:
@@ -423,7 +502,6 @@ async def admin_orders(status: Optional[str] = None, payment_status: Optional[st
                                 Order.tracking_number.ilike(term)))
 
     if country:
-        # country est stocke dans le JSON shipping_address sous la cle "country"
         query = query.where(Order.shipping_address["country"].astext == country.upper())
 
     if period and period != "all":
@@ -431,8 +509,15 @@ async def admin_orders(status: Optional[str] = None, payment_status: Optional[st
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         query = query.where(Order.created_at >= cutoff)
 
-    # Tri
-    if sort == "oldest":
+    if scheduled == "upcoming":
+        query = query.where(Order.scheduled_date.isnot(None))
+        query = query.where(Order.scheduled_date >= datetime.now(timezone.utc).date())
+    elif scheduled == "all":
+        query = query.where(Order.scheduled_date.isnot(None))
+
+    if sort == "scheduled":
+        query = query.order_by(Order.scheduled_date.asc().nullslast())
+    elif sort == "oldest":
         query = query.order_by(Order.created_at.asc())
     elif sort == "amount_desc":
         query = query.order_by(Order.total.desc())
@@ -480,6 +565,14 @@ async def update_order_status(order_id: str, data: OrderStatusIn, admin=Depends(
     now = datetime.now(timezone.utc)
     if data.status == "shipped" and not o.shipped_at:
         o.shipped_at = now
+        # ⭐ NOUVEAU : génère un code OTP pour la livraison
+        if not o.delivery_otp:
+            otp = f"{random.randint(0, 999999):06d}"
+            o.delivery_otp = otp
+            o.delivery_otp_expires_at = now + timedelta(days=7)
+            o.delivery_otp_attempts = 0
+            o.delivery_otp_locked = False
+            o.driver_assigned_at = now
     if data.status == "delivered":
         o.delivered_at = now
     if data.status == "refunded":
@@ -494,6 +587,18 @@ async def update_order_status(order_id: str, data: OrderStatusIn, admin=Depends(
             email_log = await send_order_email(db, o, "order_delivered")
         elif data.status in ("cancelled", "refunded"):
             email_log = await send_order_email(db, o, "order_cancelled", refunded=(data.status == "refunded"))
+
+    # ⭐ Envoi OTP au client si on vient de passer en "expédiée"
+    if data.status == "shipped" and o.delivery_otp and o.email:
+        try:
+            from emails import tpl_delivery_otp_client
+            lang = o.lang if o.lang in ("fr", "en") else "fr"
+            subject, html = tpl_delivery_otp_client(o.to_dict(), o.delivery_otp, lang)
+            await send_templated(db, to=o.email, subject=subject, html=html,
+                                 template="delivery_otp", order_id=o.id)
+        except Exception:
+            pass
+
     return {"ok": True, "email": email_log.to_dict() if email_log else None}
 
 
@@ -501,7 +606,7 @@ class SegmentIn(BaseModel):
     carrier: str = ""
     tracking_number: str = ""
     tracking_url: str = ""
-    status: str = "pending"     # pending | in_transit | delivered | failed
+    status: str = "pending"
     note: str = ""
 
 
@@ -511,7 +616,6 @@ class TrackingIn(BaseModel):
     tracking_url: str = ""
     mark_shipped: bool = True
     notify: bool = True
-    # Nouveaux champs (V1 origines + segments)
     shipping_origin_country: str = ""
     segments: list[SegmentIn] = []
 
@@ -523,14 +627,12 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
 
     o = await _get_order(db, order_id)
 
-    # Si le client envoie des segments, on les remplace entierement
     if data.segments:
         segments = []
         for s in data.segments:
             carrier = (s.carrier or "").strip()
             num = (s.tracking_number or "").strip()
             url = (s.tracking_url or "").strip()
-            # Auto-generation du lien si non fourni
             if not url and carrier and num:
                 url = carrier_url(carrier, num)
             if url and not url.lower().startswith("https://"):
@@ -544,7 +646,6 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
                 "at": datetime.now(timezone.utc).isoformat(),
             })
         o.shipping_segments = segments
-        # On met aussi a jour les champs plats (compat + affichage client)
         if segments:
             first = segments[0]
             o.tracking_carrier = first["carrier"]
@@ -552,7 +653,6 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
             o.tracking_url = first["tracking_url"]
 
     else:
-        # Ancien comportement (1 seul segment)
         url = data.tracking_url.strip()
         if url and not url.lower().startswith("https://"):
             raise HTTPException(status_code=400, detail="Le lien de suivi doit commencer par https://")
@@ -567,6 +667,14 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
     if data.mark_shipped and o.status in ("paid", "preparing"):
         o.status = "shipped"
         o.shipped_at = datetime.now(timezone.utc)
+        # ⭐ NOUVEAU : génère un code OTP pour la livraison
+        if not o.delivery_otp:
+            otp = f"{random.randint(0, 999999):06d}"
+            o.delivery_otp = otp
+            o.delivery_otp_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+            o.delivery_otp_attempts = 0
+            o.delivery_otp_locked = False
+            o.driver_assigned_at = datetime.now(timezone.utc)
         note = f"{o.tracking_carrier} {o.tracking_number}".strip()
         if data.segments and len(data.segments) > 1:
             note = f"{len(data.segments)} segments d'expedition"
@@ -574,6 +682,16 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
         await db.commit()
         if data.notify and o.email:
             sent = await send_order_email(db, o, "order_shipped")
+        # ⭐ Envoi OTP au client
+        if o.delivery_otp and o.email:
+            try:
+                from emails import tpl_delivery_otp_client
+                lang = o.lang if o.lang in ("fr", "en") else "fr"
+                subject, html = tpl_delivery_otp_client(o.to_dict(), o.delivery_otp, lang)
+                await send_templated(db, to=o.email, subject=subject, html=html,
+                                     template="delivery_otp", order_id=o.id)
+            except Exception:
+                pass
     else:
         note = f"Suivi mis a jour: {o.tracking_carrier} {o.tracking_number}".strip()
         if data.segments:
@@ -587,7 +705,7 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
 
 class SegmentStatusIn(BaseModel):
     index: int
-    status: str       # pending | in_transit | delivered | failed
+    status: str
     note: str = ""
     notify: bool = True
 
@@ -595,7 +713,6 @@ class SegmentStatusIn(BaseModel):
 @router.put("/orders/{order_id}/segments/{index}/status")
 async def update_segment_status(order_id: str, index: int, data: SegmentStatusIn,
                                 admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Met a jour le statut d'un segment (utile pour les coursiers sans tracking)."""
     if data.status not in ("pending", "in_transit", "delivered", "failed"):
         raise HTTPException(status_code=400, detail="Statut invalide.")
 
@@ -608,7 +725,6 @@ async def update_segment_status(order_id: str, index: int, data: SegmentStatusIn
     segs[index]["at"] = datetime.now(timezone.utc).isoformat()
     o.shipping_segments = segs
 
-    # Si tous les segments sont delivered -> statut commande delivered
     if all(s.get("status") == "delivered" for s in segs):
         if o.status not in ("delivered", "refunded", "cancelled", "returned"):
             o.status = "delivered"
@@ -638,7 +754,7 @@ async def update_notes(order_id: str, data: NotesIn, db: AsyncSession = Depends(
 
 
 class ResendIn(BaseModel):
-    template: str  # order_confirmed | order_shipped | order_delivered
+    template: str
 
 
 @router.post("/orders/{order_id}/resend-email")
@@ -657,9 +773,9 @@ async def resend_email(order_id: str, data: ResendIn, db: AsyncSession = Depends
 
 
 class RefundIn(BaseModel):
-    amount: Optional[float] = None  # in charge currency; None = full
-    restock: bool = True
+    amount: Optional[float] = None
     notify: bool = True
+    message: str = ""
 
 
 @router.post("/orders/{order_id}/refund")
@@ -667,6 +783,9 @@ async def refund_order(order_id: str, data: RefundIn, admin=Depends(get_current_
     o = await _get_order(db, order_id)
     if o.payment_status != "paid":
         raise HTTPException(status_code=400, detail="Seule une commande payee peut etre remboursee")
+
+    o.refund_message = (data.message or "").strip()[:1000]
+
     pres = await db.execute(
         select(Payment).where(
             Payment.order_id == o.id,
@@ -697,26 +816,19 @@ async def refund_order(order_id: str, data: RefundIn, admin=Depends(get_current_
     if full:
         o.payment_status = "refunded"
         o.status = "refunded"
-        if data.restock:
-            for item in (o.items or []):
-                vr = await db.execute(select(ProductVariant).where(ProductVariant.id == item["variant_id"]))
-                v = vr.scalar_one_or_none()
-                if v:
-                    v.stock += item["quantity"]
     push_history(o, o.status, by=admin.email, note=f"Remboursement Stripe {refund.id} ({refund.amount / 100:.2f} {o.charge_currency})")
     await db.commit()
     if data.notify and full and o.email:
-                await send_order_email(db, o, "order_refunded")
+        await send_order_email(db, o, "order_refunded")
     return {"ok": True, "refund_id": refund.id, "full": full, "order": o.to_dict()}
+
 
 @router.post("/orders/{order_id}/approve-cancellation")
 async def approve_cancellation(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """L'admin valide une demande d'annulation + rembourse automatiquement via Stripe."""
     o = await _get_order(db, order_id)
     if o.status != "cancellation_requested":
         raise HTTPException(status_code=400, detail="Aucune demande d'annulation en cours.")
 
-    # Remboursement Stripe (meme logique que refund_order)
     pres = await db.execute(
         select(Payment).where(
             Payment.order_id == o.id,
@@ -747,7 +859,6 @@ async def approve_cancellation(order_id: str, admin=Depends(get_current_admin), 
     push_history(o, "cancelled", by=admin.email, note=f"Annulation validee : {o.cancellation_reason[:100]}")
     await db.commit()
 
-    # Email client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
         subject, html = tpl_cancellation_approved(o.to_dict(), lang)
@@ -761,19 +872,17 @@ async def approve_cancellation(order_id: str, admin=Depends(get_current_admin), 
 
 @router.post("/orders/{order_id}/refuse-cancellation")
 async def refuse_cancellation(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """L'admin refuse une demande d'annulation."""
     o = await _get_order(db, order_id)
     if o.status != "cancellation_requested":
         raise HTTPException(status_code=400, detail="Aucune demande d'annulation en cours.")
 
     reason = (data.get("reason") or "").strip()[:500]
-    o.status = "paid"  # on revient a l'etat precedent
+    o.status = "paid"
     o.cancellation_refused_reason = reason
     o.cancellation_decided_at = datetime.now(timezone.utc)
     push_history(o, "paid", by=admin.email, note=f"Annulation refusee : {reason[:100]}")
     await db.commit()
 
-    # Email client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
         subject, html = tpl_cancellation_refused(o.to_dict(), lang)
@@ -971,9 +1080,13 @@ class SettingIn(BaseModel):
     value: Any
 
 
-# AJOUT : "taxonomies" + "cart_reminders" pour autoriser ces cles depuis le frontend
-ALLOWED_SETTING_KEYS = {"currency", "info_bar", "hero", "sections", "icons", "shipping",
-                        "site", "payment_providers", "taxonomies", "cart_reminders"}
+ALLOWED_SETTING_KEYS = {
+    "currency", "info_bar", "hero", "sections", "icons", "shipping",
+    "site", "payment_providers", "taxonomies", "cart_reminders",
+    "features", "testimonials",
+    "cta_banner", "story", "steps", "gallery",
+    "orders",
+}
 
 
 @router.put("/settings")
@@ -991,7 +1104,6 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
                      "cards": [{**c, "video_url": normalize_media(c.get("video_url", "")), "image_url": normalize_media(c.get("image_url", ""))} for c in (v.get("cards") or [])]}
                  for k, v in value.items()}
     if data.key == "taxonomies" and isinstance(value, dict):
-        # Normalise les URLs d'images des taxonomies
         def _clean_items(items):
             return [{**it,
                      "value": (it.get("value") or "").strip().lower(),
@@ -1005,6 +1117,47 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
             "teams": _clean_items(value.get("teams")),
             "clubs": _clean_items(value.get("clubs")),
         }
+    if data.key == "cta_banner" and isinstance(value, dict):
+        value = {
+            **value,
+            "image_url": normalize_media(value.get("image_url", "")),
+            "video_url": normalize_media(value.get("video_url", "")),
+        }
+    if data.key == "story" and isinstance(value, dict):
+        value = {**value, "image_url": normalize_media(value.get("image_url", ""))}
+    if data.key == "gallery" and isinstance(value, dict):
+        value = {
+            **value,
+            "items": [
+                {**it, "image_url": normalize_media(it.get("image_url", ""))}
+                for it in (value.get("items") or [])
+            ],
+        }
+    # ⭐ ORDERS : normalisation + nouveaux champs réclamation
+    if data.key == "orders" and isinstance(value, dict):
+        try:
+            value = {
+                **value,
+                "min_lead_hours": max(0, int(value.get("min_lead_hours", 48))),
+                "max_advance_days": max(1, int(value.get("max_advance_days", 180))),
+                # ⭐ NOUVEAU : réclamations
+                "claim_window_hours": max(1, int(value.get("claim_window_hours", 48))),
+                "claim_media_max_photos": max(1, int(value.get("claim_media_max_photos", 3))),
+                "claim_media_max_videos": max(0, int(value.get("claim_media_max_videos", 1))),
+                "claim_media_max_photo_mb": max(1, int(value.get("claim_media_max_photo_mb", 5))),
+                "claim_media_max_video_mb": max(1, int(value.get("claim_media_max_video_mb", 20))),
+                "time_slots": [
+                    {
+                        "value": (slot.get("value") or "").strip().lower(),
+                        "label_fr": (slot.get("label_fr") or "").strip(),
+                        "label_en": (slot.get("label_en") or "").strip(),
+                    }
+                    for slot in (value.get("time_slots") or [])
+                    if (slot.get("value") or "").strip()
+                ],
+            }
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Paramètres de commande invalides")
     res = await db.execute(select(Setting).where(Setting.key == data.key))
     s = res.scalar_one_or_none()
     if s:
@@ -1013,6 +1166,7 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         db.add(Setting(key=data.key, value=value))
     await db.commit()
     return {"ok": True}
+
 
 # ---------------- CSV exports ----------------
 import csv
@@ -1046,10 +1200,15 @@ async def export_orders(status: Optional[str] = None, payment_status: Optional[s
                      f"{o.first_name} {o.last_name}", o.email, o.phone, a.get("address_line", ""), a.get("postal_code", ""), a.get("city", ""), a.get("country", ""),
                      o.currency, float(o.subtotal or 0), float(o.discount or 0), o.promo_code, float(o.shipping_cost or 0), float(o.total or 0),
                      o.charge_currency, float(o.charge_total or 0), (o.shipping_method or {}).get("name_fr", ""),
-                     o.tracking_carrier, o.tracking_number, items])
+                     o.tracking_carrier, o.tracking_number, o.customer_note or "",
+                     o.scheduled_date.isoformat() if o.scheduled_date else "",
+                     o.scheduled_time_slot or "",
+                     items])
     header = ["Numero", "Date", "Statut", "Paiement", "Client", "Email", "Telephone", "Adresse", "CP", "Ville", "Pays",
               "Devise", "Sous-total", "Remise", "Code promo", "Livraison", "Total", "Devise facturee", "Total facture",
-              "Mode livraison", "Transporteur", "N suivi", "Articles"]
+              "Mode livraison", "Transporteur", "N suivi", "Note client",
+              "Date prevue", "Creneau",
+              "Articles"]
     return _csv_response(rows, header, f"strykos-commandes-{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv")
 
 
@@ -1119,29 +1278,27 @@ async def reply_review(review_id: str, data: ReplyIn, db: AsyncSession = Depends
     return {"ok": True, "review": r.to_dict(admin=True)}
 
 
-# ---------------- Returns / RMA (admin) ----------------
-from emails import (tpl_return_approved, tpl_return_refused,
-                    tpl_return_received, tpl_return_refunded)
-
+# ================================================================
+# ⭐ RÉCLAMATIONS (ex "retours") — avec messagerie
+# ================================================================
 
 @router.post("/orders/{order_id}/approve-return")
 async def approve_return(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Admin valide une demande de retour. Passe au statut return_approved."""
+    """Accepte une réclamation client. Le remboursement sera fait séparément."""
     o = await _get_order(db, order_id)
     if o.status != "return_requested":
-        raise HTTPException(status_code=400, detail="Aucune demande de retour en cours.")
+        raise HTTPException(status_code=400, detail="Aucune réclamation en cours.")
 
     o.status = "return_approved"
     o.return_decided_at = datetime.now(timezone.utc)
-    push_history(o, "return_approved", by=admin.email, note=f"RMA {o.return_rma_code}")
+    push_history(o, "return_approved", by=admin.email, note=f"Réclamation acceptée — {o.return_rma_code}")
     await db.commit()
 
-    # Email client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
-        subject, html = tpl_return_approved(o.to_dict(), lang, o.return_rma_code or "")
+        subject, html = tpl_claim_approved(o.to_dict(), lang, o.return_rma_code or "")
         await send_templated(db, to=o.email, subject=subject, html=html,
-                             template="return_approved", order_id=o.id)
+                             template="claim_approved", order_id=o.id)
     except Exception:
         pass
 
@@ -1150,166 +1307,193 @@ async def approve_return(order_id: str, admin=Depends(get_current_admin), db: As
 
 @router.post("/orders/{order_id}/refuse-return")
 async def refuse_return(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Admin refuse une demande de retour. Statut repasse a delivered."""
+    """Refuse une réclamation. Le statut repasse à delivered."""
     o = await _get_order(db, order_id)
-    if o.status not in ("return_requested", "return_approved", "return_shipped", "return_received"):
-        raise HTTPException(status_code=400, detail="Aucune demande de retour active.")
+    if o.status not in ("return_requested", "return_approved", "return_received"):
+        raise HTTPException(status_code=400, detail="Aucune réclamation active.")
 
     reason = (data.get("reason") or "").strip()[:500]
     o.status = "delivered"
     o.return_refused_reason = reason
     o.return_decided_at = datetime.now(timezone.utc)
-    push_history(o, "delivered", by=admin.email, note=f"Retour refuse : {reason[:120]}")
+    push_history(o, "delivered", by=admin.email, note=f"Réclamation refusée : {reason[:120]}")
     await db.commit()
 
-    # Email client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
-        subject, html = tpl_return_refused(o.to_dict(), lang)
+        subject, html = tpl_claim_refused(o.to_dict(), lang)
         await send_templated(db, to=o.email, subject=subject, html=html,
-                             template="return_refused", order_id=o.id)
+                             template="claim_refused", order_id=o.id)
     except Exception:
         pass
 
     return {"ok": True, "status": o.status}
 
 
-@router.post("/orders/{order_id}/mark-return-received")
-async def mark_return_received(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Admin marque le colis retour comme recu (controle en cours)."""
+# ⭐ NOUVELLE ROUTE : Admin demande des infos complémentaires
+class ClaimRequestInfoIn(BaseModel):
+    message: str = ""
+    requested_types: list = []  # ["photo","video"]
+
+
+@router.post("/orders/{order_id}/claim/request-info")
+async def claim_request_info(order_id: str, data: ClaimRequestInfoIn,
+                              admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """⭐ Admin demande au client des informations complémentaires (photos/vidéos)."""
     o = await _get_order(db, order_id)
-    if o.status not in ("return_approved", "return_shipped"):
-        raise HTTPException(status_code=400, detail="Le retour doit etre approuve ou expedie pour etre marque recu.")
+    if o.status not in ("return_requested", "return_approved"):
+        raise HTTPException(status_code=400, detail="Aucune réclamation active.")
 
-    o.status = "return_received"
-    o.return_received_at = datetime.now(timezone.utc)
-    push_history(o, "return_received", by=admin.email, note=f"RMA {o.return_rma_code}")
+    text = (data.message or "").strip()[:1000]
+    if not text:
+        raise HTTPException(status_code=400, detail="Écrivez un message au client.")
+
+    requested = [t for t in (data.requested_types or []) if t in ("photo", "video")] or ["photo"]
+
+    # Stocke la demande sur la commande
+    o.claim_info_requested_at = datetime.now(timezone.utc)
+    o.claim_info_request_message = text
+    o.claim_info_request_types = requested
+
+    # Crée un message admin dans la conversation
+    db.add(ClaimMessage(
+        order_id=o.id,
+        sender="admin",
+        sender_email=admin.email,
+        text=text,
+        media_urls=[],
+        requested_types=requested,
+    ))
+
+    push_history(o, o.status, by=admin.email, note=f"Demande d'infos complémentaires : {text[:80]}")
     await db.commit()
 
-    # Email client
+    # ⭐ Envoie le mail au client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
-        subject, html = tpl_return_received(o.to_dict(), lang)
+        subject, html = tpl_claim_info_request(o.to_dict(), lang, text, requested)
         await send_templated(db, to=o.email, subject=subject, html=html,
-                             template="return_received", order_id=o.id)
-    except Exception:
-        pass
+                             template="claim_info_request", order_id=o.id)
+    except Exception as e:
+        logger.warning(f"[CLAIM] Email info request échoué: {e}")
 
     return {"ok": True, "status": o.status}
+
+
+# ⭐ NOUVELLE ROUTE : Récupère la conversation de la réclamation
+@router.get("/orders/{order_id}/claim/messages")
+async def claim_messages(order_id: str, db: AsyncSession = Depends(get_db)):
+    """⭐ Récupère toute la conversation de la réclamation."""
+    o = await _get_order(db, order_id)
+    res = await db.execute(
+        select(ClaimMessage)
+        .where(ClaimMessage.order_id == o.id)
+        .order_by(ClaimMessage.created_at.asc())
+    )
+    return [m.to_dict() for m in res.scalars().all()]
+
+
+class RefundReturnIn(BaseModel):
+    message: str = ""
+    amount: Optional[float] = None   # None = remboursement total (en EUR côté Stripe)
 
 
 @router.post("/orders/{order_id}/refund-return")
-async def refund_return(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Admin rembourse (ou valide l'echange) apres controle du retour recu."""
+async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Rembourse une réclamation (total ou partiel) — accept + refund en un seul appel."""
     o = await _get_order(db, order_id)
-    if o.status != "return_received":
-        raise HTTPException(status_code=400, detail="Le colis doit d'abord etre marque recu.")
+    if o.status not in ("return_requested", "return_approved", "return_received"):
+        raise HTTPException(status_code=400, detail="Aucune réclamation active pour cette commande.")
 
-    is_exchange = (o.return_type or "refund") == "exchange"
-
-    # Remboursement Stripe (sauf en cas d'echange)
-    refund_amount = 0
-    if not is_exchange:
-        pres = await db.execute(
-            select(Payment).where(
-                Payment.order_id == o.id,
-                Payment.status.in_(["succeeded", "pending"])
-            ).order_by(Payment.created_at.desc())
-        )
-        pay = pres.scalars().first()
-        if pay:
-            pi = pay.payment_intent
-            if not pi and pay.session_id:
-                try:
-                    s = stripe.checkout.Session.retrieve(pay.session_id)
-                    pi = s.payment_intent
-                except stripe.error.StripeError:
-                    pi = None
-            if pi:
-                try:
-                    refund = stripe.Refund.create(payment_intent=pi)
-                    pay.status = "refunded"
-                    pay.payment_intent = pi
-                    pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
-                    refund_amount = (refund.amount or 0) / 100
-                except stripe.error.StripeError as e:
-                    raise HTTPException(status_code=502, detail=f"Stripe refund: {e.user_message or str(e)}")
-
-    # Restock : remet en stock les produits retournes
-    for rp in (o.return_products or []):
-        variant_id = rp.get("variant_id")
-        qty = rp.get("quantity", 1) or 1
-        if variant_id:
-            vr = await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id))
-            variant = vr.scalar_one_or_none()
-            if variant:
-                variant.stock = (variant.stock or 0) + qty
-
-    if is_exchange:
-        # Si la diff de prix est negative, STRYKOS rembourse la difference
-        diff = float(o.exchange_price_diff or 0)
-        if diff < 0:
-            # Rembourse abs(diff) via Stripe (si paiement initial existe)
-            pres_pay = await db.execute(
-                select(Payment).where(
-                    Payment.order_id == o.id,
-                    Payment.status.in_(["succeeded", "pending"]),
-                ).order_by(Payment.created_at.desc())
-            )
-            initial_pay = pres_pay.scalars().first()
-            if initial_pay:
-                pi = initial_pay.payment_intent
-                if not pi and initial_pay.session_id:
-                    try:
-                        s = stripe.checkout.Session.retrieve(initial_pay.session_id)
-                        pi = s.payment_intent
-                    except stripe.error.StripeError:
-                        pi = None
-                if pi:
-                    try:
-                        refund = stripe.Refund.create(
-                            payment_intent=pi,
-                            amount=int(round(abs(diff) * 100)),
-                        )
-                        refund_amount = (refund.amount or 0) / 100
-                        o.exchange_payment_status = "refunded"
-                    except stripe.error.StripeError as e:
-                        raise HTTPException(status_code=502, detail=f"Stripe refund diff: {e.user_message or str(e)}")
-
-        o.status = "exchange_sent"
+    # ⭐ Si la réclamation était juste "requested", on l'approuve au passage
+    if o.status == "return_requested":
+        o.status = "return_approved"
         o.return_decided_at = datetime.now(timezone.utc)
-        note = f"RMA {o.return_rma_code} · echange"
-        if diff < 0:
-            note += f" · rembourse diff {abs(diff):.2f} EUR"
-        elif diff > 0:
-            note += f" · complement paye {diff:.2f} EUR"
-        push_history(o, "exchange_sent", by=admin.email, note=note)
+        push_history(o, "return_approved", by=admin.email, note=f"Réclamation acceptée — {o.return_rma_code}")
+
+    # Stocke le message admin
+    if data and data.message:
+        o.refund_message = data.message.strip()[:1000]
+
+    # ⭐ Nettoie la demande d'infos (obsolète après remboursement)
+    o.claim_info_requested_at = None
+    o.claim_info_request_message = ""
+    o.claim_info_request_types = []
+
+    # Récupère le Payment Stripe
+    pres = await db.execute(
+        select(Payment).where(
+            Payment.order_id == o.id,
+            Payment.status.in_(["succeeded", "pending"])
+        ).order_by(Payment.created_at.desc())
+    )
+    pay = pres.scalars().first()
+
+    refund_amount_eur = 0.0
+    is_partial = False
+
+    if pay:
+        pi = pay.payment_intent
+        if not pi and pay.session_id:
+            try:
+                s = stripe.checkout.Session.retrieve(pay.session_id)
+                pi = s.payment_intent
+            except stripe.error.StripeError:
+                pi = None
+
+        if pi:
+            # ⭐ Détection robuste du partiel par comparaison au montant original
+            stripe_kwargs = {"payment_intent": pi}
+            if data and data.amount is not None and data.amount > 0:
+                stripe_kwargs["amount"] = int(round(float(data.amount) * 100))
+                original_amount_eur = float(pay.amount or 0)
+                if abs(float(data.amount) - original_amount_eur) > 0.01:
+                    is_partial = True
+
+            try:
+                refund = stripe.Refund.create(**stripe_kwargs)
+                refund_amount_eur = (refund.amount or 0) / 100  # ⭐ en EUR
+                pay.status = "refunded" if not is_partial else "partially_refunded"
+                pay.payment_intent = pi
+                pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
+            except stripe.error.StripeError as e:
+                raise HTTPException(status_code=502, detail=f"Stripe refund: {e.user_message or str(e)}")
+
+    # Statut final
+    o.status = "refunded"
+    o.payment_status = "partially_refunded" if is_partial else "refunded"
+    o.return_decided_at = datetime.now(timezone.utc)
+
+    # ⭐ Historique — affiche EUR + équivalent FCFA si applicable
+    xof_equivalent = round(refund_amount_eur * 655.957) if o.currency == "XOF" else None
+    amount_label = f"{refund_amount_eur:.2f} {o.charge_currency}"
+    if xof_equivalent:
+        amount_label += f" (≈ {xof_equivalent:,} FCFA)".replace(",", " ")
+
+    if is_partial:
+        note = f"Réclamation {o.return_rma_code} · remboursé partiellement {amount_label}"
     else:
-        o.status = "returned"
-        o.payment_status = "refunded"
-        o.return_decided_at = datetime.now(timezone.utc)
-        push_history(o, "returned", by=admin.email,
-                     note=f"RMA {o.return_rma_code} · rembourse {refund_amount:.2f} {o.currency}")
-
+        note = f"Réclamation {o.return_rma_code} · remboursé {amount_label}"
+    push_history(o, "refunded", by=admin.email, note=note)
     await db.commit()
 
-    # Email client
+    # ⭐ Email client — convertit EUR → devise d'affichage
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
-        subject, html = tpl_return_refunded(o.to_dict(), lang, refund_amount, is_exchange=is_exchange)
+        rates = await get_rates(db)
+        display_amount = convert_from_eur(refund_amount_eur, o.currency, rates) or refund_amount_eur
+        subject, html = tpl_claim_refunded(o.to_dict(), lang, display_amount)
         await send_templated(db, to=o.email, subject=subject, html=html,
-                             template="return_refunded" if not is_exchange else "return_exchange_sent",
-                             order_id=o.id)
+                             template="claim_refunded", order_id=o.id)
     except Exception:
         pass
 
-    return {"ok": True, "status": o.status, "is_exchange": is_exchange, "refund_amount": refund_amount}
+    return {"ok": True, "status": o.status, "refund_amount": refund_amount_eur, "is_partial": is_partial}
 
 
 # ---------------- Taxonomies (usage) ----------------
 @router.get("/taxonomies/usage")
 async def taxonomies_usage(db: AsyncSession = Depends(get_db)):
-    """Verifie combien de produits utilisent chaque gender/sport/team (avant suppression)."""
     from sqlalchemy import func as _f
     g_res = await db.execute(select(Product.gender, _f.count(Product.id)).group_by(Product.gender))
     s_res = await db.execute(select(Product.sport, _f.count(Product.id)).group_by(Product.sport))
@@ -1321,3 +1505,185 @@ async def taxonomies_usage(db: AsyncSession = Depends(get_db)):
         "teams": {t or "": c for t, c in t_res.all()},
         "clubs": {c or "": n for c, n in c_res.all()},
     }
+
+
+# ================================================================
+# ⭐ GESTION DES LIVREURS (drivers)
+# ================================================================
+
+class DriverInviteIn(BaseModel):
+    first_name: str
+    last_name: str = ""
+    email: str
+    phone: str = ""
+    notes: str = ""  # interne admin
+
+
+@router.get("/drivers")
+async def list_drivers(db: AsyncSession = Depends(get_db)):
+    """Liste tous les livreurs (actifs + en attente d'activation)."""
+    from models import Profile
+    res = await db.execute(
+        select(Profile).where(Profile.role == "driver").order_by(Profile.created_at.desc())
+    )
+    drivers = res.scalars().all()
+
+    # Récupère les stats de livraison par livreur
+    stats_res = await db.execute(
+        select(Order.delivered_by_driver_id, func.count(Order.id))
+        .where(Order.status == "delivered", Order.delivered_via == "otp")
+        .group_by(Order.delivered_by_driver_id)
+    )
+    stats = dict(stats_res.all())
+
+    return [
+        {
+            **d.to_dict(),
+            "deliveries_count": stats.get(d.id, 0),
+            "invite_pending": not d.email_verified,
+        }
+        for d in drivers
+    ]
+
+
+@router.post("/drivers/invite")
+async def invite_driver(data: DriverInviteIn, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Crée un compte livreur + envoie l'email d'invitation."""
+    from models import Profile
+    email = data.email.lower().strip()
+
+    # Vérifie que l'email n'est pas déjà utilisé
+    existing = (await db.execute(select(Profile).where(Profile.email == email))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail="Un compte existe déjà avec cet e-mail")
+
+    # Crée le profil avec role=driver, email_verified=False
+    # password_hash temporaire (le livreur le créera via le lien)
+    from auth import hash_password
+    temp_hash = hash_password(secrets.token_urlsafe(32))
+
+    driver = Profile(
+        email=email,
+        password_hash=temp_hash,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        phone=data.phone,
+        role="driver",
+        email_verified=False,
+    )
+    db.add(driver)
+    await db.commit()
+    await db.refresh(driver)
+
+    # Génère le token d'invitation (7 jours)
+    token = create_driver_invite_token(driver.id, driver.email)
+
+    # Envoie l'email
+    try:
+        subject, html = tpl_driver_invitation(driver.to_dict(), token, lang="fr")
+        await send_templated(db, to=driver.email, subject=subject, html=html,
+                             template="driver_invitation")
+    except Exception as e:
+        import logging
+        logging.getLogger("cakes.drivers").warning(f"Email invitation échoué: {e}")
+
+    return {"ok": True, "driver_id": driver.id}
+
+
+@router.post("/drivers/{driver_id}/resend-invite")
+async def resend_driver_invite(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Renvoie une invitation à un livreur qui n'a pas encore activé son compte."""
+    from models import Profile
+    driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Livreur introuvable")
+    if driver.email_verified:
+        raise HTTPException(status_code=400, detail="Ce livreur a déjà activé son compte")
+
+    # Génère un nouveau token
+    token = create_driver_invite_token(driver.id, driver.email)
+
+    try:
+        subject, html = tpl_driver_invitation(driver.to_dict(), token, lang="fr")
+        await send_templated(db, to=driver.email, subject=subject, html=html,
+                             template="driver_invitation")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Envoi email échoué: {str(e)[:200]}")
+
+    return {"ok": True}
+
+
+@router.post("/drivers/{driver_id}/deactivate")
+async def deactivate_driver(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Désactive un livreur (empêche la connexion) sans le supprimer."""
+    from models import Profile
+    driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Livreur introuvable")
+
+    # Remplace le password_hash par une valeur aléatoire impossible à deviner
+    # (bloque la connexion tant que l'admin n'a pas réactivé)
+    from auth import hash_password
+    driver.password_hash = hash_password(secrets.token_urlsafe(48))
+
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/drivers/{driver_id}")
+async def delete_driver(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Supprime définitivement un livreur."""
+    from models import Profile
+    driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
+    if not driver:
+        raise HTTPException(status_code=404, detail="Livreur introuvable")
+
+    # Les commandes livrées restent liées (delivered_by_driver_id) mais pointent vers NULL
+    await db.delete(driver)
+    await db.commit()
+    return {"ok": True}
+
+
+# ⭐ OTP : régénérer / renvoyer pour une commande
+@router.post("/orders/{order_id}/regenerate-otp")
+async def regenerate_order_otp(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Génère un nouveau code OTP pour une commande expédiée."""
+    o = await _get_order(db, order_id)
+
+    if o.status not in ("shipped", "in_transit"):
+        raise HTTPException(status_code=400, detail="La commande doit être expédiée pour générer un OTP")
+
+    # ⭐ Nouveau code à 6 chiffres
+    otp = f"{random.randint(0, 999999):06d}"
+    o.delivery_otp = otp
+    o.delivery_otp_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    o.delivery_otp_attempts = 0
+    o.delivery_otp_locked = False
+    push_history(o, o.status, by=admin.email, note=f"Nouveau code OTP généré")
+    await db.commit()
+
+    return {"ok": True, "otp": otp}
+
+
+@router.post("/orders/{order_id}/resend-otp-email")
+async def resend_otp_email(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Renvoie l'email avec le code OTP au client."""
+    from emails import tpl_delivery_otp_client
+    o = await _get_order(db, order_id)
+
+    if not o.delivery_otp:
+        raise HTTPException(status_code=400, detail="Aucun code OTP actif pour cette commande")
+
+    lang = o.lang if o.lang in ("fr", "en") else "fr"
+    try:
+        subject, html = tpl_delivery_otp_client(o.to_dict(), o.delivery_otp, lang)
+        log = await send_templated(db, to=o.email, subject=subject, html=html,
+                                   template="delivery_otp", order_id=o.id)
+        if log.status == "failed":
+            raise HTTPException(status_code=502, detail=f"Envoi échoué: {log.error[:200]}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Erreur: {str(e)[:200]}")
+
+    return {"ok": True}

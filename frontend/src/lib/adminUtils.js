@@ -16,11 +16,18 @@ export const mediaSrc = (url) => {
   return url;
 };
 
+// ⭐ Formatage monétaire — FCFA-friendly (arrondi à la centaine pour FCFA)
 export const money = (v, cur) => {
   if (v == null) return "";
-  if (cur === "XOF") return `${Math.round(v).toLocaleString("fr-FR")} FCFA`;
-  if (cur === "USD") return `$${Number(v).toFixed(2)}`;
-  return `${Number(v).toFixed(2)} €`;
+  const num = Number(v);
+  if (isNaN(num)) return "";
+  if (cur === "XOF") {
+    // Arrondi à la centaine la plus proche : 26238 → 26 200
+    const rounded = Math.round(num / 100) * 100;
+    return `${rounded.toLocaleString("fr-FR")} FCFA`;
+  }
+  if (cur === "USD") return `$${num.toFixed(2)}`;
+  return `${num.toFixed(2)} €`;
 };
 
 export const fmtDate = (d, withTime = false) => {
@@ -29,27 +36,65 @@ export const fmtDate = (d, withTime = false) => {
   return withTime ? dt.toLocaleString("fr-FR") : dt.toLocaleDateString("fr-FR");
 };
 
-export const STATUSES = ["pending_payment", "paid", "preparing", "cancellation_requested", "shipped", "in_transit", "delivered", "return_requested", "return_approved", "return_shipped", "return_received", "exchange_sent", "cancelled", "returned", "refunded"];
+// ⭐ Statuts disponibles dans les flux CAKESSHOP
+// Note : "return_shipped" et "exchange_sent" sont gardés pour compat historique
+// mais ne sont plus utilisés dans les nouveaux flux.
+export const STATUSES = [
+  "pending_payment",
+  "paid",
+  "preparing",
+  "cancellation_requested",
+  "shipped",
+  "in_transit",
+  "delivered",
+  "return_requested",
+  "return_approved",
+  "return_received",
+  "cancelled",
+  "returned",
+  "refunded",
+];
+
 export const STATUS_LABELS = {
-  pending_payment: "En attente de paiement", paid: "Payee", preparing: "En preparation",
-  cancellation_requested: "Annulation demandee",
-  shipped: "Expediee",
-  in_transit: "En transit", delivered: "Livree",
-  return_requested: "Retour demande", return_approved: "Retour approuve",
-  return_shipped: "Retour expedie", return_received: "Retour recu",
-  exchange_sent: "Echange envoye",
-  cancelled: "Annulee", returned: "Retournee", refunded: "Remboursee",
+  // Flux principal
+  pending_payment: "En attente de paiement",
+  paid: "Payée",
+  preparing: "En préparation",
+  cancellation_requested: "Annulation demandée",
+  shipped: "Expédiée",
+  in_transit: "En transit",
+  delivered: "Livrée",
+  cancelled: "Annulée",
+  // ⭐ Réclamation client (ex "retour")
+  return_requested: "Réclamation reçue",
+  return_approved: "Réclamation acceptée",
+  return_received: "Réclamation en traitement",
+  // Compat ancien flux (legacy)
+  return_shipped: "Réclamation en cours",
+  exchange_sent: "Échange envoyé",
+  // Finaux
+  returned: "Retournée",
+  refunded: "Remboursée",
 };
+
 export const STATUS_COLORS = {
-  pending_payment: "bg-amber-100 text-amber-800", paid: "bg-blue-100 text-blue-800", preparing: "bg-indigo-100 text-indigo-800",
+  // Flux principal
+  pending_payment: "bg-amber-100 text-amber-800",
+  paid: "bg-blue-100 text-blue-800",
+  preparing: "bg-indigo-100 text-indigo-800",
   cancellation_requested: "bg-red-100 text-red-800 ring-1 ring-red-300",
-  shipped: "bg-cyan-100 text-cyan-800", in_transit: "bg-cyan-100 text-cyan-800", delivered: "bg-green-100 text-green-800",
+  shipped: "bg-cyan-100 text-cyan-800",
+  in_transit: "bg-cyan-100 text-cyan-800",
+  delivered: "bg-green-100 text-green-800",
+  cancelled: "bg-gray-200 text-gray-700",
+  // Réclamation (ex "retour") — orange pour attirer l'attention
   return_requested: "bg-orange-100 text-orange-800 ring-1 ring-orange-300",
   return_approved: "bg-orange-100 text-orange-800",
-  return_shipped: "bg-orange-100 text-orange-800",
   return_received: "bg-orange-200 text-orange-900",
+  return_shipped: "bg-orange-100 text-orange-800",
   exchange_sent: "bg-purple-100 text-purple-800",
-  cancelled: "bg-gray-200 text-gray-700", returned: "bg-gray-200 text-gray-700",
+  // Finaux
+  returned: "bg-gray-200 text-gray-700",
   refunded: "bg-red-100 text-red-800",
 };
 

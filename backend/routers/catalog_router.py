@@ -186,46 +186,76 @@ async def product_detail(slug: str, db: AsyncSession = Depends(get_db)):
 
 @router.get("/nav")
 async def nav_menu(db: AsyncSession = Depends(get_db)):
-    """Retourne les éléments de navigation DYNAMIQUES : uniquement ceux qui ont
-    au moins 1 produit publié. Utilisé par le header pour afficher les menus."""
-    from sqlalchemy import func as _f, distinct
+    """Retourne la navigation DYNAMIQUE : 4 catégories mères + leurs sous-catégories.
+    Seules celles avec ≥1 produit sont affichées."""
+    from sqlalchemy import func as _f
+    from collections import Counter
 
-    # Récupère tous les produits publiés (léger : juste les champs utiles)
+    # Tous les produits publiés
     prod_res = await db.execute(
-        select(Product.category_id, Product.gender, Product.sport, Product.national_team, Product.club, Product.brand_id)
+        select(Product.category_id, Product.brand_id, Product.is_new, Product.sale_price_eur, Product.customizable, Product.gender, Product.sport)
         .where(Product.published == True)
     )
     rows = prod_res.all()
 
-    # Compte par dimension
-    from collections import Counter
     cat_counts = Counter()
+    brand_counts = Counter()
     gender_counts = Counter()
     sport_counts = Counter()
-    team_counts = Counter()
-    club_counts = Counter()
-    brand_counts = Counter()
-    for cat_id, gender, sport, team, club, brand_id in rows:
+    is_new_count = 0
+    on_sale_count = 0
+    customizable_count = 0
+    for cat_id, brand_id, is_new, sale, custom, gender, sport in rows:
         if cat_id: cat_counts[cat_id] += 1
+        if brand_id: brand_counts[brand_id] += 1
         if gender: gender_counts[gender] += 1
         if sport: sport_counts[sport] += 1
-        if team: team_counts[team] += 1
-        if club: club_counts[club] += 1
-        if brand_id: brand_counts[brand_id] += 1
+        if is_new: is_new_count += 1
+        if sale is not None: on_sale_count += 1
+        if custom: customizable_count += 1
 
-    # Catégories (seulement celles avec ≥1 produit)
-    cat_ids = [k for k in cat_counts.keys() if k]
-    cats = []
-    if cat_ids:
-        c_res = await db.execute(
-            select(Category).where(Category.id.in_(cat_ids), Category.published == True).order_by(Category.position)
-        )
-        cats = [
-            {"slug": c.slug, "name_fr": c.name_fr, "name_en": c.name_en, "count": cat_counts[c.id]}
-            for c in c_res.scalars().all()
+    # Récupère TOUTES les catégories publiées (mères ET enfants)
+    all_cats_res = await db.execute(
+        select(Category).where(Category.published == True).order_by(Category.position)
+    )
+    all_cats = all_cats_res.scalars().all()
+
+    # Sépare mères et enfants
+    parents = [c for c in all_cats if not c.parent_id]
+    children_by_parent = {}
+    for c in all_cats:
+        if c.parent_id:
+            children_by_parent.setdefault(c.parent_id, []).append(c)
+
+    # Construit la hiérarchie
+    categories_tree = []
+    for parent in parents:
+        children = children_by_parent.get(parent.id, [])
+        # Enfants qui ont des produits
+        visible_children = [
+            {
+                "id": child.id,
+                "slug": child.slug,
+                "name_fr": child.name_fr,
+                "name_en": child.name_en,
+                "count": cat_counts[child.id],
+            }
+            for child in children
+            if cat_counts[child.id] > 0
         ]
+        # Le parent s'affiche s'il a des produits OU des enfants avec produits
+        parent_count = cat_counts[parent.id] + sum(ch["count"] for ch in visible_children)
+        if parent_count > 0:
+            categories_tree.append({
+                "id": parent.id,
+                "slug": parent.slug,
+                "name_fr": parent.name_fr,
+                "name_en": parent.name_en,
+                "count": parent_count,
+                "children": visible_children,
+            })
 
-    # Marques (seulement celles avec ≥1 produit)
+    # Marques
     brand_ids = [k for k in brand_counts.keys() if k]
     brands = []
     if brand_ids:
@@ -237,48 +267,25 @@ async def nav_menu(db: AsyncSession = Depends(get_db)):
             for b in b_res.scalars().all()
         ]
 
-    # Taxonomies (filtre celles qui n'ont pas de produit)
+    # Taxonomies
     s = await get_settings(db)
     tx = s.get("taxonomies", {}) if s else {}
     genders = [{"value": g["value"], "name_fr": g["name_fr"], "name_en": g["name_en"], "count": gender_counts[g["value"]]}
                for g in tx.get("genders", []) if gender_counts[g["value"]] > 0]
     sports = [{"value": sp["value"], "name_fr": sp["name_fr"], "name_en": sp["name_en"], "count": sport_counts[sp["value"]]}
               for sp in tx.get("sports", []) if sport_counts[sp["value"]] > 0]
-    teams = [{"value": tm["value"], "name_fr": tm["name_fr"], "name_en": tm["name_en"], "count": team_counts[tm["value"]]}
-             for tm in tx.get("teams", []) if team_counts[tm["value"]] > 0]
-    clubs = [{"value": cl["value"], "name_fr": cl["name_fr"], "name_en": cl["name_en"], "count": club_counts[cl["value"]]}
-             for cl in tx.get("clubs", []) if club_counts[cl["value"]] > 0]
-
-    # --- Compteurs additionnels pour filtres "essentiels" ---
-    extra_res = await db.execute(
-        select(Product.is_new, Product.sale_price_eur, Product.customizable, Product.product_type, Product.surface)
-        .where(Product.published == True)
-    )
-    is_new_count = 0
-    on_sale_count = 0
-    customizable_count = 0
-    product_type_counts = Counter()
-    surface_counts = Counter()
-    for is_new, sale, custom, ptype, surface in extra_res.all():
-        if is_new: is_new_count += 1
-        if sale is not None: on_sale_count += 1
-        if custom: customizable_count += 1
-        if ptype: product_type_counts[ptype] += 1
-        if surface: surface_counts[surface] += 1
 
     return {
-        "categories": cats,
+        "categories": categories_tree,   # ← NOUVEAU : hiérarchie
         "brands": brands,
         "genders": genders,
         "sports": sports,
-        "teams": teams,
-        "clubs": clubs,
+        "teams": [],
+        "clubs": [],
         "filters": {
             "is_new": is_new_count,
             "on_sale": on_sale_count,
             "customizable": customizable_count,
-            "product_type": dict(product_type_counts),
-            "surface": dict(surface_counts),
         },
     }
 

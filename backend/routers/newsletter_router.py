@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, AsyncSessionLocal
 from models import NewsletterSubscriber, NewsletterCampaign, Product
 from auth import get_current_user, get_optional_user, get_current_admin
-from emails import send_templated, _layout, PUBLIC_BASE_URL, ADMIN_NOTIFY_EMAIL
+from emails import send_templated, _layout, PUBLIC_BASE_URL, ADMIN_NOTIFY_EMAIL, _money
 from utils import get_rates, serialize_product
 
 logger = logging.getLogger("strykos.newsletter")
@@ -31,17 +31,17 @@ def _unsub_footer(sub: NewsletterSubscriber, lang: str) -> str:
 def tpl_welcome(sub: NewsletterSubscriber):
     lang = sub.lang if sub.lang in ("fr", "en") else "fr"
     if lang == "en":
-        subject = "Welcome to the STRYKOS newsletter"
-        body = ("<p>You're in! You'll be the first to know when new jerseys, boots and limited drops land on STRYKOS, "
+        subject = "Welcome to the CAKESSHOP newsletter"
+        body = ("<p>You're in! You'll be the first to know when new cakes, cupcakes and limited creations land on CAKESSHOP, "
                 "plus exclusive promo codes for subscribers.</p>")
-        cta = "Discover the latest arrivals"
+        cta = "Discover our latest creations"
     else:
-        subject = "Bienvenue dans la newsletter STRYKOS"
-        body = ("<p>C'est fait ! Vous serez prévenu en premier des nouveaux maillots, chaussures et éditions limitées sur STRYKOS, "
+        subject = "Bienvenue dans la newsletter CAKESSHOP"
+        body = ("<p>C'est fait ! Vous serez prévenu en premier des nouveaux gâteaux, cupcakes et éditions limitées sur CAKESSHOP, "
                 "avec des codes promo réservés aux abonnés.</p>")
-        cta = "Découvrir les nouveautés"
+        cta = "Découvrir nos nouveautés"
     if PUBLIC_BASE_URL.startswith("https://"):
-        body += (f'<p style="margin:22px 0"><a href="{PUBLIC_BASE_URL}/catalog?is_new=true" style="background:#e4002b;color:#fff;text-decoration:none;'
+        body += (f'<p style="margin:22px 0"><a href="{PUBLIC_BASE_URL}/catalog?is_new=true" style="background:#C58B58;color:#fff;text-decoration:none;'
                  f'padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">{cta}</a></p>')
     body += _unsub_footer(sub, lang)
     return subject, _layout("Newsletter" if lang == "en" else "Newsletter", body, lang)
@@ -56,20 +56,22 @@ def tpl_campaign(camp: NewsletterCampaign, sub: NewsletterSubscriber, products: 
         cells = ""
         for p in products[:6]:
             name = p["name_en"] if lang == "en" else p["name_fr"]
-            price = p["prices"]["EUR"]["price"]
+            # ⭐ Prix en FCFA (fallback EUR si XOF absent)
+            price_block = p["prices"].get("XOF") or p["prices"].get("EUR") or {"price": 0}
+            price_str = _money(price_block["price"], "XOF" if p["prices"].get("XOF") else "EUR")
             img = p["images"][0] if p.get("images") else ""
             url = f"{PUBLIC_BASE_URL}/product/{p['slug']}"
-            cells += (f'<td width="33%" valign="top" style="padding:6px"><a href="{url}" style="text-decoration:none;color:#141416">'
-                      + (f'<img src="{escape(img)}" width="170" alt="" style="width:100%;display:block;background:#eee">' if img.startswith("https://") else "")
+            cells += (f'<td width="33%" valign="top" style="padding:6px"><a href="{url}" style="text-decoration:none;color:#4A2C25">'
+                      + (f'<img src="{escape(img)}" width="170" alt="" style="width:100%;display:block;background:#eee;border-radius:8px">' if img.startswith("https://") else "")
                       + f'<div style="font-size:13px;font-weight:bold;margin-top:6px">{escape(name)}</div>'
-                      f'<div style="font-size:13px;color:#e4002b">{price:.2f} €</div></a></td>')
+                      f'<div style="font-size:13px;color:#C58B58;font-weight:bold;margin-top:4px">{price_str}</div></a></td>')
         body += '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:16px 0"><tr>' + cells + "</tr></table>"
     cta = (camp.cta_en if lang == "en" else camp.cta_fr) or "Découvrir"
     link = camp.cta_link or "/catalog"
     if not link.startswith("http"):
         link = f"{PUBLIC_BASE_URL}{link}"
     if link.startswith("https://"):
-        body += (f'<p style="margin:22px 0"><a href="{escape(link)}" style="background:#e4002b;color:#fff;text-decoration:none;'
+        body += (f'<p style="margin:22px 0"><a href="{escape(link)}" style="background:#C58B58;color:#fff;text-decoration:none;'
                  f'padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">{escape(cta)}</a></p>')
     body += _unsub_footer(sub, lang)
     return subject, _layout(subject, body, lang)
@@ -204,7 +206,7 @@ class CampaignIn(BaseModel):
     body_en: str = ""
     product_slugs: list[str] = []
     cta_link: str = "/catalog?is_new=true"
-    cta_fr: str = "Decouvrir"
+    cta_fr: str = "Découvrir"
     cta_en: str = "Shop now"
 
 

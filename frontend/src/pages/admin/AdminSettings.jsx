@@ -4,10 +4,33 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { HeroSlidesEditor, SectionsEditor, IconsEditor } from "@/components/admin/HomeMediaEditors";
+import {
+  HeroSlidesEditor,
+  SectionsEditor,
+  IconsEditor,
+  FeaturesEditor,
+  TestimonialsEditor,
+  CtaBannerEditor,
+  StoryBlockEditor,
+  StepsEditor,
+  GalleryEditor,
+} from "@/components/admin/HomeMediaEditors";
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Calendar } from "lucide-react";
+
+// ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
+const XOF_RATE = 655.957;
+const xofToEur = (xof) => {
+  if (xof === "" || xof === null || xof === undefined) return "";
+  const n = parseFloat(xof);
+  if (isNaN(n)) return "";
+  return Math.round((n / XOF_RATE) * 100) / 100;
+};
+const eurToXof = (eur) => {
+  if (eur === "" || eur === null || eur === undefined) return "";
+  return Math.round(parseFloat(eur) * XOF_RATE);
+};
 
 const Card = ({ title, children, onSave, testid, description }) => (
   <div className="bg-white border border-border" data-testid={testid}>
@@ -41,7 +64,7 @@ export default function AdminSettings() {
     try { await api.put("/admin/settings", { key, value: value ?? s[key] }); toast.success("Parametres enregistres"); }
     catch (e) { toast.error(apiError(e)); }
   };
-  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {};
+  const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {}, features = s.features || { items: [] }, testimonials = s.testimonials || { items: [] };
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
   const setOrigin = (i, patch) => upd("shipping", { origins: origins.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
   const tabs = [["site", "Coordonnees"], ["hero", "Accueil & videos"], ["shipping", "Livraison"], ["taxonomies", "Taxonomies"], ["cart", "Relances panier"], ["currency", "Devises"], ["payments", "Paiements"]];
@@ -71,33 +94,33 @@ export default function AdminSettings() {
               <div className="mb-4 flex items-center gap-3 border border-border bg-white p-3">
                 <span className="text-xs uppercase tracking-wider text-ink-muted">Aperçu :</span>
                 <span className="font-heading font-extrabold text-2xl tracking-tight">
-                  {site.brand_part1 || "STRY"}
-                  <span className="text-brand">{site.brand_part2 || "KOS"}</span>
+                  {site.brand_part1 || "CAKES"}
+                  <span className="text-brand">{site.brand_part2 || "SHOP"}</span>
                 </span>
               </div>
 
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
-                  <Label>Nom — partie 1 (noire)</Label>
-                  <Input value={site.brand_part1 || ""} onChange={(e) => upd("site", { brand_part1: e.target.value })} placeholder="STRY" data-testid="site-brand-part1" />
+                  <Label>Nom — partie 1 (principale)</Label>
+                  <Input value={site.brand_part1 || ""} onChange={(e) => upd("site", { brand_part1: e.target.value })} placeholder="CAKES" data-testid="site-brand-part1" />
                 </div>
                 <div>
-                  <Label>Nom — partie 2 (rouge)</Label>
-                  <Input value={site.brand_part2 || ""} onChange={(e) => upd("site", { brand_part2: e.target.value })} placeholder="KOS" data-testid="site-brand-part2" />
+                  <Label>Nom — partie 2 (colorée)</Label>
+                  <Input value={site.brand_part2 || ""} onChange={(e) => upd("site", { brand_part2: e.target.value })} placeholder="SHOP" data-testid="site-brand-part2" />
                 </div>
                 <div>
                   <Label>Tagline FR</Label>
-                  <Input value={site.brand_tagline || ""} onChange={(e) => upd("site", { brand_tagline: e.target.value })} placeholder="Multimarque. Authentique. Livré chez vous." />
+                  <Input value={site.brand_tagline || ""} onChange={(e) => upd("site", { brand_tagline: e.target.value })} placeholder="Gâteaux artisanaux. Livrés chez vous." />
                 </div>
                 <div>
                   <Label>Tagline EN</Label>
-                  <Input value={site.brand_tagline_en || ""} onChange={(e) => upd("site", { brand_tagline_en: e.target.value })} placeholder="Multi-brand. Authentic. Delivered to you." />
+                  <Input value={site.brand_tagline_en || ""} onChange={(e) => upd("site", { brand_tagline_en: e.target.value })} placeholder="Artisan cakes. Delivered to you." />
                 </div>
                 <div className="sm:col-span-2">
                   <Label>Nom complet (utilisé dans les e-mails, CGV, mentions légales)</Label>
-                  <Input value={site.name || ""} onChange={(e) => upd("site", { name: e.target.value })} placeholder="STRYKOS" data-testid="site-name" />
+                  <Input value={site.name || ""} onChange={(e) => upd("site", { name: e.target.value })} placeholder="Cakes Shop" data-testid="site-name" />
                   <p className="text-[11px] text-ink-muted mt-1">
-                    Le texte "STRYKOS" dans les CGV / e-mails sera automatiquement remplacé par cette valeur.
+                    Ce nom remplacera automatiquement l'ancien nom dans les CGV / e-mails / mentions légales.
                   </p>
                 </div>
               </div>
@@ -120,8 +143,8 @@ export default function AdminSettings() {
       {tab === "hero" && (
         <div className="space-y-5">
           <Card
-            title="Banniere d'accueil - carrousel video (style Nike)"
-            description="Faites defiler les slides qui s'affichent en haut de la page d'accueil. Cliquez sur un slide pour le deplier et le modifier."
+            title="Banniere d'accueil - carrousel"
+            description="Faites défiler les slides qui s'affichent en haut de la page d'accueil. Cliquez sur un slide pour le déplier et le modifier. Ajoutez une accroche au-dessus du titre et un badge sur l'image pour un rendu premium."
             onSave={() => save("hero")}
             testid="settings-hero"
           >
@@ -129,8 +152,8 @@ export default function AdminSettings() {
           </Card>
 
           <Card
-            title="Section « Nos essentiels » (vignettes rondes, style Nike)"
-            description="Grille de vignettes rondes (jusqu'à 16) affichée sur la home, avec images + liens vers les catégories."
+            title="Section « Nos catégories » (tuiles)"
+            description="Grille de tuiles carrées affichée sur la home, avec images + liens vers les catégories. Recommandé : 6 items pour un bel alignement 3×2 ou 6×1."
             onSave={() => save("icons")}
             testid="settings-icons"
           >
@@ -138,17 +161,11 @@ export default function AdminSettings() {
           </Card>
 
           <Card
-            title="Cartes editoriales des sections"
-            description="Cartes éditoriales affichées sur la page d'accueil (2 grandes cartes côte à côte par section)."
+            title="Cartes éditoriales des sections"
+            description="Cartes éditoriales affichées sur la page d'accueil (jusqu'à 4 cartes alternées : image à gauche/texte à droite, puis inverse). Idéal pour la personnalisation, les anniversaires, etc."
             onSave={() => save("sections")}
             testid="settings-sections"
           >
-            {/*
-              only= : sections visibles dans cet éditeur.
-              Pour afficher d'autres sections plus tard, ajoutez leur clé
-              ("best_sellers", "featured") dans le tableau ci-dessous.
-              Pour tout afficher : retirez la prop "only".
-            */}
             <SectionsEditor
               sections={s.sections || {}}
               onChange={(v) => setS({ ...s, sections: v })}
@@ -156,103 +173,486 @@ export default function AdminSettings() {
             />
           </Card>
 
-          {/*
-            ⚠️ Section éditoriale — MASQUÉE TEMPORAIREMENT
-            Le composant <EditorialSection> n'est plus rendu sur la home actuelle.
-            Pour réactiver :
-              1. Décommenter le bloc <Card> ci-dessous
-              2. Réimporter EditorialSection dans src/pages/Home.jsx
-              3. L'ajouter dans le rendu : <EditorialSection media={sec.editorial} />
-
-            Les données (s.sections.editorial) restent en base et ne sont pas perdues.
+          <Card
+            title="Bannière CTA pleine largeur"
+            description="Grande bannière image + texte + bouton, pleine largeur. Idéal pour une promo ou « Commandez votre gâteau personnalisé »."
+            onSave={() => save("cta_banner")}
+            testid="settings-cta-banner"
+          >
+            <CtaBannerEditor banner={s.cta_banner} onChange={(v) => setS({ ...s, cta_banner: v })} />
+          </Card>
 
           <Card
-            title="Section éditoriale (grande image + texte)"
-            description="Bloc pleine largeur affiché sur la home. Idéal pour du storytelling ou mettre en avant une collection."
-            onSave={() => save("sections", { ...s.sections, editorial: s.sections?.editorial || {} })}
-            testid="settings-editorial"
+            title="Bloc « Notre histoire »"
+            description="Image + texte côte à côte. Racontez votre savoir-faire, votre parcours ou votre atelier."
+            onSave={() => save("story")}
+            testid="settings-story"
           >
-            <div className="space-y-4">
-              <div>
-                <Label>Image de fond</Label>
-                <SingleMediaUploader
-                  value={s.sections?.editorial?.image_url || ""}
-                  onChange={(v) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), image_url: v } } })}
-                  label="une image"
-                  testid="editorial-image"
+            <StoryBlockEditor story={s.story} onChange={(v) => setS({ ...s, story: v })} />
+          </Card>
+
+          <Card
+            title="Section « Comment ça marche »"
+            description="3 étapes numérotées pour expliquer le parcours de commande (choix, personnalisation, livraison)."
+            onSave={() => save("steps")}
+            testid="settings-steps"
+          >
+            <StepsEditor steps={s.steps} onChange={(v) => setS({ ...s, steps: v })} />
+          </Card>
+
+          <Card
+            title="Galerie / Instagram"
+            description="Grille d'images (max 8) pour montrer vos créations. Lien Instagram optionnel."
+            onSave={() => save("gallery")}
+            testid="settings-gallery"
+          >
+            <GalleryEditor gallery={s.gallery} onChange={(v) => setS({ ...s, gallery: v })} />
+          </Card>
+
+          <Card
+            title="Les 4 avantages"
+            description="Les 4 petits blocs affichés en bas de la home (icône + titre + sous-titre). Ex. Livraison rapide, Paiement sécurisé, etc."
+            onSave={() => save("features")}
+            testid="settings-features"
+          >
+            <FeaturesEditor features={features} onChange={(v) => setS({ ...s, features: v })} />
+          </Card>
+
+          <Card
+            title="Témoignages clients"
+            description="Les avis affichés dans la section « Ils nous font confiance » en bas de la home."
+            onSave={() => save("testimonials")}
+            testid="settings-testimonials"
+          >
+            <TestimonialsEditor testimonials={testimonials} onChange={(v) => setS({ ...s, testimonials: v })} />
+          </Card>
+
+          {/* ⭐ Commandes programmées — version complète */}
+          <Card
+            title="Commandes programmées"
+            description="Contrôlez le délai minimum, les créneaux, les jours de fermeture et les jours spéciaux (fêtes, événements)."
+            onSave={() => save("orders", s.orders || {})}
+            testid="settings-orders"
+          >
+            <div className="space-y-6">
+
+              {/* ---- Délai ---- */}
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label>Délai minimum de préparation (heures)</Label>
+                  <Input
+                    type="number" min={1} max={720}
+                    value={(s.orders?.min_lead_hours) ?? 48}
+                    onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), min_lead_hours: parseInt(e.target.value) || 48 } })}
+                    className="mt-1"
+                    data-testid="orders-min-lead-hours"
+                  />
+                  <p className="text-[11px] text-ink-muted mt-1">Recommandé : 48h</p>
+                </div>
+                <div>
+                  <Label>Réservation maximale (jours)</Label>
+                  <Input
+                    type="number" min={1} max={730}
+                    value={(s.orders?.max_advance_days) ?? 180}
+                    onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), max_advance_days: parseInt(e.target.value) || 180 } })}
+                    className="mt-1"
+                    data-testid="orders-max-advance-days"
+                  />
+                  <p className="text-[11px] text-ink-muted mt-1">Recommandé : 180 jours</p>
+                </div>
+              </div>
+
+              {/* ---- Créneaux par défaut ---- */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Label>Créneaux par défaut</Label>
+                  <button type="button"
+                    onClick={() => {
+                      const slots = [...(s.orders?.time_slots || [])];
+                      slots.push({ value: "", label_fr: "", label_en: "" });
+                      setS({ ...s, orders: { ...(s.orders || {}), time_slots: slots } });
+                    }}
+                    className="text-xs border border-border px-2 py-1 hover:bg-secondary inline-flex items-center gap-1"
+                    data-testid="add-time-slot">
+                    <Plus className="w-3 h-3" /> Ajouter
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {((s.orders?.time_slots) || []).map((slot, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_1.5fr_1.5fr_32px] gap-2 items-end" data-testid={`time-slot-${i}`}>
+                      <Input value={slot.value || ""} placeholder="matin"
+                        onChange={(e) => {
+                          const slots = [...(s.orders?.time_slots || [])];
+                          slots[i] = { ...slot, value: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") };
+                          setS({ ...s, orders: { ...(s.orders || {}), time_slots: slots } });
+                        }} className="h-9 font-mono" />
+                      <Input value={slot.label_fr || ""} placeholder="Matin (9h-12h)"
+                        onChange={(e) => {
+                          const slots = [...(s.orders?.time_slots || [])];
+                          slots[i] = { ...slot, label_fr: e.target.value };
+                          setS({ ...s, orders: { ...(s.orders || {}), time_slots: slots } });
+                        }} className="h-9" />
+                      <Input value={slot.label_en || ""} placeholder="Morning (9am-12pm)"
+                        onChange={(e) => {
+                          const slots = [...(s.orders?.time_slots || [])];
+                          slots[i] = { ...slot, label_en: e.target.value };
+                          setS({ ...s, orders: { ...(s.orders || {}), time_slots: slots } });
+                        }} className="h-9" />
+                      <button type="button"
+                        onClick={() => {
+                          const slots = (s.orders?.time_slots || []).filter((_, idx) => idx !== i);
+                          setS({ ...s, orders: { ...(s.orders || {}), time_slots: slots } });
+                        }}
+                        className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center"
+                        data-testid={`remove-time-slot-${i}`}>
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {((s.orders?.time_slots) || []).length === 0 && (
+                    <p className="text-xs text-ink-muted italic">Aucun créneau. Cliquez sur Ajouter.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ---- Jours de fermeture hebdo ---- */}
+              <div className="border-t border-border pt-4">
+                <Label>Jours de fermeture hebdomadaire</Label>
+                <p className="text-[11px] text-ink-muted mb-3">
+                  Cochez les jours de la semaine où vous êtes fermé (impossible de commander).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { v: 1, l: "Lundi" }, { v: 2, l: "Mardi" }, { v: 3, l: "Mercredi" },
+                    { v: 4, l: "Jeudi" }, { v: 5, l: "Vendredi" }, { v: 6, l: "Samedi" }, { v: 0, l: "Dimanche" },
+                  ].map((d) => {
+                    const closed = (s.orders?.weekly_closed_days || []).includes(d.v);
+                    return (
+                      <button key={d.v} type="button"
+                        onClick={() => {
+                          const list = [...(s.orders?.weekly_closed_days || [])];
+                          const idx = list.indexOf(d.v);
+                          if (idx >= 0) list.splice(idx, 1);
+                          else list.push(d.v);
+                          setS({ ...s, orders: { ...(s.orders || {}), weekly_closed_days: list } });
+                        }}
+                        className={`px-3 py-1.5 text-xs font-medium border ${closed ? "bg-red-100 border-red-400 text-red-800" : "border-border hover:bg-secondary"}`}
+                        data-testid={`closed-day-${d.v}`}>
+                        {d.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* ---- Dates fermées ---- */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Label>Dates fermées (fêtes, événements)</Label>
+                  <button type="button"
+                    onClick={() => {
+                      const list = [...(s.orders?.closed_dates || []), ""];
+                      setS({ ...s, orders: { ...(s.orders || {}), closed_dates: list } });
+                    }}
+                    className="text-xs border border-border px-2 py-1 hover:bg-secondary inline-flex items-center gap-1"
+                    data-testid="add-closed-date">
+                    <Plus className="w-3 h-3" /> Ajouter
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {((s.orders?.closed_dates) || []).map((dt, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_32px] gap-2" data-testid={`closed-date-${i}`}>
+                      <Input type="date" value={dt}
+                        onChange={(e) => {
+                          const list = [...(s.orders?.closed_dates || [])];
+                          list[i] = e.target.value;
+                          setS({ ...s, orders: { ...(s.orders || {}), closed_dates: list } });
+                        }} className="h-9" />
+                      <button type="button"
+                        onClick={() => {
+                          const list = (s.orders?.closed_dates || []).filter((_, idx) => idx !== i);
+                          setS({ ...s, orders: { ...(s.orders || {}), closed_dates: list } });
+                        }}
+                        className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                  {((s.orders?.closed_dates) || []).length === 0 && (
+                    <p className="text-xs text-ink-muted italic">Aucune date fermée. Cliquez sur Ajouter.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ---- Périodes de fermeture ---- */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Label>Périodes de fermeture (vacances)</Label>
+                  <button type="button"
+                    onClick={() => {
+                      const list = [...(s.orders?.closed_ranges || []), { start: "", end: "", reason_fr: "", reason_en: "" }];
+                      setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                    }}
+                    className="text-xs border border-border px-2 py-1 hover:bg-secondary inline-flex items-center gap-1"
+                    data-testid="add-closed-range">
+                    <Plus className="w-3 h-3" /> Ajouter une période
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {((s.orders?.closed_ranges) || []).map((r, i) => (
+                    <div key={i} className="border border-border p-3 grid sm:grid-cols-2 gap-2 bg-secondary/30" data-testid={`closed-range-${i}`}>
+                      <div>
+                        <Label className="text-xs">Du</Label>
+                        <Input type="date" value={r.start || ""}
+                          onChange={(e) => {
+                            const list = [...(s.orders?.closed_ranges || [])];
+                            list[i] = { ...r, start: e.target.value };
+                            setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                          }} className="h-9" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Au</Label>
+                        <Input type="date" value={r.end || ""}
+                          onChange={(e) => {
+                            const list = [...(s.orders?.closed_ranges || [])];
+                            list[i] = { ...r, end: e.target.value };
+                            setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                          }} className="h-9" />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Raison FR</Label>
+                        <Input value={r.reason_fr || ""} placeholder="Congés annuels"
+                          onChange={(e) => {
+                            const list = [...(s.orders?.closed_ranges || [])];
+                            list[i] = { ...r, reason_fr: e.target.value };
+                            setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                          }} className="h-9" />
+                      </div>
+                      <div className="grid grid-cols-[1fr_32px] gap-2 items-end">
+                        <div>
+                          <Label className="text-xs">Raison EN</Label>
+                          <Input value={r.reason_en || ""} placeholder="Summer break"
+                            onChange={(e) => {
+                              const list = [...(s.orders?.closed_ranges || [])];
+                              list[i] = { ...r, reason_en: e.target.value };
+                              setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                            }} className="h-9" />
+                        </div>
+                        <button type="button"
+                          onClick={() => {
+                            const list = (s.orders?.closed_ranges || []).filter((_, idx) => idx !== i);
+                            setS({ ...s, orders: { ...(s.orders || {}), closed_ranges: list } });
+                          }}
+                          className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {((s.orders?.closed_ranges) || []).length === 0 && (
+                    <p className="text-xs text-ink-muted italic">Aucune période. Cliquez sur Ajouter.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ---- Jours spéciaux ---- */}
+              <div className="border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-3">
+                  <Label>Jours spéciaux (horaires personnalisés)</Label>
+                  <button type="button"
+                    onClick={() => {
+                      const list = [...(s.orders?.special_days || []), {
+                        date: "", time_slots: [{ value: "special", label_fr: "", label_en: "" }],
+                        reason_fr: "", reason_en: ""
+                      }];
+                      setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                    }}
+                    className="text-xs border border-border px-2 py-1 hover:bg-secondary inline-flex items-center gap-1"
+                    data-testid="add-special-day">
+                    <Plus className="w-3 h-3" /> Ajouter un jour spécial
+                  </button>
+                </div>
+                <p className="text-[11px] text-ink-muted mb-3">
+                  Ex : 24 décembre ouvert jusqu'à minuit, Saint-Valentin avec créneaux dédiés, etc.
+                </p>
+                <div className="space-y-3">
+                  {((s.orders?.special_days) || []).map((sp, i) => (
+                    <div key={i} className="border border-amber-300 bg-amber-50 p-3 space-y-2" data-testid={`special-day-${i}`}>
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs uppercase tracking-wider font-semibold">Jour spécial {i + 1}</span>
+                        <button type="button"
+                          onClick={() => {
+                            const list = (s.orders?.special_days || []).filter((_, idx) => idx !== i);
+                            setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                          }}
+                          className="text-red-600 hover:bg-red-50 p-1">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <div className="grid sm:grid-cols-3 gap-2">
+                        <div>
+                          <Label className="text-xs">Date</Label>
+                          <Input type="date" value={sp.date || ""}
+                            onChange={(e) => {
+                              const list = [...(s.orders?.special_days || [])];
+                              list[i] = { ...sp, date: e.target.value };
+                              setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                            }} className="h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Raison FR</Label>
+                          <Input value={sp.reason_fr || ""} placeholder="Réveillon de Noël"
+                            onChange={(e) => {
+                              const list = [...(s.orders?.special_days || [])];
+                              list[i] = { ...sp, reason_fr: e.target.value };
+                              setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                            }} className="h-9" />
+                        </div>
+                        <div>
+                          <Label className="text-xs">Raison EN</Label>
+                          <Input value={sp.reason_en || ""} placeholder="Christmas Eve"
+                            onChange={(e) => {
+                              const list = [...(s.orders?.special_days || [])];
+                              list[i] = { ...sp, reason_en: e.target.value };
+                              setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                            }} className="h-9" />
+                        </div>
+                      </div>
+
+                      {/* Créneaux custom */}
+                      <div className="border-t border-amber-200 pt-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <Label className="text-xs">Créneaux pour ce jour</Label>
+                          <button type="button"
+                            onClick={() => {
+                              const list = [...(s.orders?.special_days || [])];
+                              const slots = [...(sp.time_slots || []), { value: "", label_fr: "", label_en: "" }];
+                              list[i] = { ...sp, time_slots: slots };
+                              setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                            }}
+                            className="text-xs text-brand hover:underline">+ Créneau</button>
+                        </div>
+                        {(sp.time_slots || []).map((slot, j) => (
+                          <div key={j} className="grid grid-cols-[1fr_1.5fr_1.5fr_32px] gap-2 mb-1">
+                            <Input value={slot.value || ""} placeholder="noel"
+                              onChange={(e) => {
+                                const list = [...(s.orders?.special_days || [])];
+                                const slots = [...(sp.time_slots || [])];
+                                slots[j] = { ...slot, value: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") };
+                                list[i] = { ...sp, time_slots: slots };
+                                setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                              }} className="h-8 text-xs font-mono" />
+                            <Input value={slot.label_fr || ""} placeholder="10h-minuit"
+                              onChange={(e) => {
+                                const list = [...(s.orders?.special_days || [])];
+                                const slots = [...(sp.time_slots || [])];
+                                slots[j] = { ...slot, label_fr: e.target.value };
+                                list[i] = { ...sp, time_slots: slots };
+                                setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                              }} className="h-8 text-xs" />
+                            <Input value={slot.label_en || ""} placeholder="10am-midnight"
+                              onChange={(e) => {
+                                const list = [...(s.orders?.special_days || [])];
+                                const slots = [...(sp.time_slots || [])];
+                                slots[j] = { ...slot, label_en: e.target.value };
+                                list[i] = { ...sp, time_slots: slots };
+                                setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                              }} className="h-8 text-xs" />
+                            <button type="button"
+                              onClick={() => {
+                                const list = [...(s.orders?.special_days || [])];
+                                const slots = (sp.time_slots || []).filter((_, idx) => idx !== j);
+                                list[i] = { ...sp, time_slots: slots };
+                                setS({ ...s, orders: { ...(s.orders || {}), special_days: list } });
+                              }}
+                              className="h-8 text-red-600 hover:bg-red-50 flex items-center justify-center">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {(sp.time_slots || []).length === 0 && (
+                          <p className="text-[11px] text-red-700 italic">
+                            ⚠️ Aucun créneau → ce jour sera considéré comme fermé.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {((s.orders?.special_days) || []).length === 0 && (
+                    <p className="text-xs text-ink-muted italic">Aucun jour spécial. Cliquez sur Ajouter.</p>
+                  )}
+                </div>
+              </div>
+
+              {/* ⭐ NOUVEAU : Délai de réclamation */}
+              <div className="border-t border-border pt-4">
+                <Label className="text-xs">Délai de réclamation (heures)</Label>
+                <Input
+                  type="number" min={1} max={168}
+                  value={(s.orders?.claim_window_hours) ?? 48}
+                  onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_window_hours: parseInt(e.target.value) || 48 } })}
+                  className="mt-1 max-w-xs"
+                  data-testid="orders-claim-window-hours"
                 />
                 <p className="text-[11px] text-ink-muted mt-1">
-                  Recommandé : image paysage 1200×800 minimum. Format JPG ou WEBP.
+                  Délai après la livraison pour signaler un problème. Recommandé : 48h.
                 </p>
               </div>
 
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div>
-                  <Label>Titre FR</Label>
-                  <Input
-                    value={s.sections?.editorial?.title_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), title_fr: e.target.value } } })}
-                    placeholder="L'ÉQUIPEMENT DES VRAIS JOUEURS"
-                  />
+              {/* ⭐ NOUVEAU : Limites des médias de réclamation */}
+              <div className="border-t border-border pt-4">
+                <Label className="text-xs uppercase tracking-wider text-ink-muted mb-3 block">
+                  Limites des médias de réclamation
+                </Label>
+                <div className="grid sm:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs">Max photos</Label>
+                    <Input
+                      type="number" min={1} max={10}
+                      value={(s.orders?.claim_media_max_photos) ?? 3}
+                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_photos: parseInt(e.target.value) || 3 } })}
+                      className="mt-1"
+                      data-testid="orders-claim-media-max-photos"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Max vidéos</Label>
+                    <Input
+                      type="number" min={0} max={5}
+                      value={(s.orders?.claim_media_max_videos) ?? 1}
+                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_videos: parseInt(e.target.value) || 0 } })}
+                      className="mt-1"
+                      data-testid="orders-claim-media-max-videos"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Taille photo (Mo)</Label>
+                    <Input
+                      type="number" min={1} max={20}
+                      value={(s.orders?.claim_media_max_photo_mb) ?? 5}
+                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_photo_mb: parseInt(e.target.value) || 5 } })}
+                      className="mt-1"
+                      data-testid="orders-claim-media-max-photo-mb"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Taille vidéo (Mo)</Label>
+                    <Input
+                      type="number" min={1} max={200}
+                      value={(s.orders?.claim_media_max_video_mb) ?? 20}
+                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_video_mb: parseInt(e.target.value) || 20 } })}
+                      className="mt-1"
+                      data-testid="orders-claim-media-max-video-mb"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label>Titre EN</Label>
-                  <Input
-                    value={s.sections?.editorial?.title_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), title_en: e.target.value } } })}
-                    placeholder="GEAR FOR REAL PLAYERS"
-                  />
-                </div>
-                <div>
-                  <Label>Sous-titre FR</Label>
-                  <Textarea
-                    rows={2}
-                    value={s.sections?.editorial?.subtitle_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), subtitle_fr: e.target.value } } })}
-                    placeholder="Maillots authentiques, chaussures et équipements des plus grandes marques."
-                  />
-                </div>
-                <div>
-                  <Label>Sous-titre EN</Label>
-                  <Textarea
-                    rows={2}
-                    value={s.sections?.editorial?.subtitle_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), subtitle_en: e.target.value } } })}
-                    placeholder="Authentic jerseys, boots and gear from the biggest brands."
-                  />
-                </div>
-                <div>
-                  <Label>Bouton FR</Label>
-                  <Input
-                    value={s.sections?.editorial?.cta_fr || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_fr: e.target.value } } })}
-                    placeholder="Découvrir le catalogue"
-                  />
-                </div>
-                <div>
-                  <Label>Bouton EN</Label>
-                  <Input
-                    value={s.sections?.editorial?.cta_en || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_en: e.target.value } } })}
-                    placeholder="Shop now"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <Label>Lien du bouton</Label>
-                  <Input
-                    value={s.sections?.editorial?.cta_link || ""}
-                    onChange={(e) => setS({ ...s, sections: { ...s.sections, editorial: { ...(s.sections?.editorial || {}), cta_link: e.target.value } } })}
-                    placeholder="/catalog"
-                  />
-                </div>
+                <p className="text-[11px] text-ink-muted mt-1">
+                  💡 Recommandé : 3 photos max (5 Mo) · 1 vidéo max (20 Mo ≈ 30 secondes en 1080p)
+                </p>
               </div>
 
-              <p className="text-xs text-ink-muted bg-secondary/40 border border-border p-3">
-                <strong>Astuce</strong> : si l'image est vide, la section affichera un dégradé noir + brand en attendant.
-              </p>
             </div>
           </Card>
-          */}
 
           <Card title="Barre d'information" onSave={() => save("info_bar")} testid="settings-infobar">
             <label className="flex items-center gap-2 text-sm mb-3">
@@ -280,15 +680,39 @@ export default function AdminSettings() {
                     </select></div>
                   <div><Label className="text-xs">Nom FR</Label><Input value={m.name_fr} onChange={(e) => setMethod(i, { name_fr: e.target.value })} className="h-9" /></div>
                   <div><Label className="text-xs">Nom EN</Label><Input value={m.name_en} onChange={(e) => setMethod(i, { name_en: e.target.value })} className="h-9" /></div>
-                  <div><Label className="text-xs">Cout EUR</Label><Input type="number" step="0.5" value={m.cost_eur} onChange={(e) => setMethod(i, { cost_eur: parseFloat(e.target.value) || 0 })} className="h-9" /></div>
+
+                  <div>
+                    <Label className="text-xs">Coût FCFA</Label>
+                    <Input
+                      type="number"
+                      step="100"
+                      value={m.cost_xof || eurToXof(m.cost_eur) || ""}
+                      onChange={(e) => {
+                        const xof = e.target.value;
+                        setMethod(i, {
+                          cost_xof: xof,
+                          cost_eur: xofToEur(xof),
+                        });
+                      }}
+                      className="h-9"
+                    />
+                    {m.cost_eur !== undefined && m.cost_eur !== "" && (
+                      <p className="text-[10px] text-ink-muted mt-0.5">
+                        ≈ {m.cost_eur} €
+                      </p>
+                    )}
+                  </div>
+
                   <div><Label className="text-xs">Delai FR / EN</Label><div className="flex gap-1"><Input value={m.delay_fr} onChange={(e) => setMethod(i, { delay_fr: e.target.value })} className="h-9" /><Input value={m.delay_en} onChange={(e) => setMethod(i, { delay_en: e.target.value })} className="h-9" /></div></div>
                   <button onClick={() => upd("shipping", { methods: methods.filter((_, idx) => idx !== i) })} className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
-              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { methods: [...methods, { country: "ML", country_name: "Mali", name_fr: "Nouveau mode", name_en: "New method", cost_eur: 5, delay_fr: "3-6 jours", delay_en: "3-6 days" }] })} data-testid="add-shipping-method">
+              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { methods: [...methods, { country: "ML", country_name: "Mali", name_fr: "Nouveau mode", name_en: "New method", cost_xof: 5000, cost_eur: xofToEur(5000), delay_fr: "3-6 jours", delay_en: "3-6 days" }] })} data-testid="add-shipping-method">
                 <Plus className="w-4 h-4 mr-1" /> Ajouter un mode
               </Button>
-              <p className="text-xs text-ink-muted">Les pays sans mode defini recoivent la livraison internationale (15 EUR, 7-14 jours).</p>
+              <p className="text-xs text-ink-muted">
+                Les pays sans mode défini reçoivent la livraison internationale (env. 10 000 FCFA, 7-14 jours).
+              </p>
             </div>
           </Card>
 
@@ -363,22 +787,18 @@ export default function AdminSettings() {
 
       {tab === "taxonomies" && (
         <Card
-          title="Taxonomies (genre, sport, sélections)"
+          title="Taxonomies (occasions, saveurs)"
           description="Les valeurs de ces listes alimentent les filtres du catalogue. Chaque valeur a un identifiant interne (non modifiable) et un libellé FR/EN."
           onSave={() => save("taxonomies", {
             genders: taxonomies.genders || [],
             sports: taxonomies.sports || [],
-            teams: taxonomies.teams || [],
-            clubs: taxonomies.clubs || [],
           })}
           testid="settings-taxonomies"
         >
           <div className="space-y-6">
             {[
-              { key: "genders", label: "Genres" },
-              { key: "sports", label: "Sports" },
-              { key: "teams", label: "Sélections nationales" },
-              { key: "clubs", label: "Clubs de football" },
+              { key: "genders", label: "Occasions" },
+              { key: "sports", label: "Saveurs / Régimes" },
             ].map(({ key: kind, label }) => {
               const items = taxonomies[kind] || [];
 
@@ -388,7 +808,6 @@ export default function AdminSettings() {
               };
               const delItem = async (i) => {
                 const it = items[i];
-                // Verifie l'usage
                 try {
                   const { data } = await api.get("/admin/taxonomies/usage");
                   const usage = data[kind]?.[it.value] || 0;
@@ -420,15 +839,15 @@ export default function AdminSettings() {
                       <div key={i} className="border border-border p-3 grid sm:grid-cols-[1fr_1fr_1fr_1.5fr_32px] gap-2 items-end bg-secondary/30">
                         <div>
                           <Label className="text-xs">Identifiant</Label>
-                          <Input value={it.value || ""} onChange={(e) => updItem(i, { value: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="homme" className="h-9 font-mono" />
+                          <Input value={it.value || ""} onChange={(e) => updItem(i, { value: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} placeholder="anniversaire" className="h-9 font-mono" />
                         </div>
                         <div>
                           <Label className="text-xs">Nom FR</Label>
-                          <Input value={it.name_fr || ""} onChange={(e) => updItem(i, { name_fr: e.target.value })} placeholder="Homme" className="h-9" />
+                          <Input value={it.name_fr || ""} onChange={(e) => updItem(i, { name_fr: e.target.value })} placeholder="Anniversaire" className="h-9" />
                         </div>
                         <div>
                           <Label className="text-xs">Nom EN</Label>
-                          <Input value={it.name_en || ""} onChange={(e) => updItem(i, { name_en: e.target.value })} placeholder="Men" className="h-9" />
+                          <Input value={it.name_en || ""} onChange={(e) => updItem(i, { name_en: e.target.value })} placeholder="Birthday" className="h-9" />
                         </div>
                         <div>
                           <Label className="text-xs">Image</Label>
@@ -445,7 +864,7 @@ export default function AdminSettings() {
               );
             })}
             <p className="text-xs text-ink-muted">
-              Astuce : laissez l'image vide pour un style fond noir dégradé, ou collez une URL d'image (drapeau, Unsplash, votre CDN, etc.).
+              Astuce : laissez l'image vide pour un style fond crème dégradé, ou collez une URL d'image (Unsplash, votre propre CDN, etc.).
             </p>
           </div>
         </Card>

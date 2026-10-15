@@ -1,7 +1,9 @@
 import os
 import asyncio
+import logging
+import secrets
 import stripe
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta, date as date_cls
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
@@ -9,18 +11,21 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, AsyncSessionLocal
-from models import Product, ProductVariant, Order, Payment, WishlistItem, PromoCode
+from models import Product, ProductVariant, Order, Payment, WishlistItem, PromoCode, ClaimMessage
 from auth import get_current_user, get_optional_user
 from utils import (
     get_rates, get_settings, product_prices, convert_from_eur, round_currency,
     serialize_product, gen_order_number, STRIPE_SUPPORTED, resolve_media,
-    PUBLIC_BASE_URL,
+    PUBLIC_BASE_URL, get_available_slots_for_date,
+    customization_price_eur, validate_customization,
 )
 from emails import (
     send_order_email, notify_admin_new_order, send_templated, ADMIN_NOTIFY_EMAIL,
     tpl_cancellation_requested, tpl_cancellation_admin_notify,
-    tpl_return_requested, tpl_return_admin_notify,
+    tpl_claim_requested, tpl_claim_admin_notify,
 )
+
+logger = logging.getLogger("cakes.commerce")
 
 router = APIRouter(tags=["commerce"])
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
@@ -29,7 +34,6 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 
 # ---------- Promo codes ----------
 async def resolve_promo(db, code: str | None, subtotal_eur: float, email: str | None, user):
-    """Returns (promo, error_key). error_key None when valid."""
     if not code:
         return None, None
     res = await db.execute(select(PromoCode).where(func.upper(PromoCode.code) == code.strip().upper()))
@@ -65,6 +69,38 @@ def promo_discount_eur(promo, subtotal_eur: float) -> float:
     if promo.discount_type == "percent":
         return round(subtotal_eur * float(promo.value or 0) / 100.0, 2)
     return round(min(float(promo.value or 0), subtotal_eur), 2)
+
+
+# ---------- Helpers réclamation ----------
+def _validate_claim_media(raw_media: list, orders_cfg: dict) -> list:
+    """
+    ⭐ Valide et normalise les médias d'une réclamation.
+    Limite le nombre de photos/vidéos selon settings.orders.claim_media_max_*.
+    Retourne une liste propre de {"type": "image"|"video", "url": "..."}.
+    """
+    max_photos = int(orders_cfg.get("claim_media_max_photos", 3))
+    max_videos = int(orders_cfg.get("claim_media_max_videos", 1))
+    media_urls = []
+    photo_count = 0
+    video_count = 0
+    # Garde-fou : limite d'entrées à traiter (évite les payloads abusifs)
+    for m in (raw_media or [])[: max_photos + max_videos + 2]:
+        if not isinstance(m, dict):
+            continue
+        url = (m.get("url") or "").strip()
+        typ = (m.get("type") or "").strip().lower()
+        if not url or typ not in ("image", "video"):
+            continue
+        if typ == "image" and photo_count >= max_photos:
+            continue
+        if typ == "video" and video_count >= max_videos:
+            continue
+        media_urls.append({"type": typ, "url": url})
+        if typ == "image":
+            photo_count += 1
+        else:
+            video_count += 1
+    return media_urls
 
 
 # ---------- Wishlist ----------
@@ -137,6 +173,9 @@ class CheckoutInput(BaseModel):
     origin_url: str
     promo_code: Optional[str] = None
     lang: str = "fr"
+    customer_note: Optional[str] = None
+    scheduled_date: Optional[str] = None
+    scheduled_time_slot: Optional[str] = None
 
 
 async def _compute_order(db, items, currency, shipping_country, shipping_method_index, promo_code=None, email=None, user=None):
@@ -171,19 +210,33 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
             continue
 
         has_custom = bool(line.customization) and product.customizable
+        custom_price_eur = 0.0
+        if has_custom:
+            try:
+                validate_customization(product, line.customization)
+            except ValueError as e:
+                issues.append({
+                    "product_id": line.product_id,
+                    "variant_id": variant.id,
+                    "reason": "invalid_customization",
+                    "message": str(e),
+                })
+                continue
+            custom_price_eur = customization_price_eur(product, line.customization)
+
         pp = product_prices(product, rates)
         extra_disp = convert_from_eur(variant.extra_price_eur, currency, rates) or 0
-        custom_disp = convert_from_eur(product.customization_price_eur, currency, rates) if has_custom else 0
+        custom_disp = convert_from_eur(custom_price_eur, currency, rates) if has_custom else 0
         unit_display = round_currency(pp[currency]["price"] + extra_disp + (custom_disp or 0), currency)
         line_display = round_currency(unit_display * line.quantity, currency)
         subtotal_display += line_display
 
         extra_chg = convert_from_eur(variant.extra_price_eur, charge_currency, rates) or 0
-        custom_chg = convert_from_eur(product.customization_price_eur, charge_currency, rates) if has_custom else 0
+        custom_chg = convert_from_eur(custom_price_eur, charge_currency, rates) if has_custom else 0
         unit_charge = round_currency(pp[charge_currency]["price"] + extra_chg + (custom_chg or 0), charge_currency)
         subtotal_charge += round_currency(unit_charge * line.quantity, charge_currency)
         subtotal_eur += (pp["EUR"]["price"] + float(variant.extra_price_eur or 0)
-                         + (float(product.customization_price_eur or 0) if has_custom else 0)) * line.quantity
+                         + (custom_price_eur if has_custom else 0)) * line.quantity
 
         img = product.images[0].url if product.images else ""
         order_items.append({
@@ -192,6 +245,8 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
             "variant_id": variant.id, "size": variant.size, "color": variant.color,
             "quantity": line.quantity, "unit_price": unit_display, "line_total": line_display,
             "customization": line.customization if has_custom else None,
+            "customization_price_eur": custom_price_eur if has_custom else 0,
+            "customization_fields": (product.customization_fields or []) if has_custom else [],
         })
         variant_map[variant.id] = (variant, line.quantity, product)
         stripe_line_items.append({
@@ -203,13 +258,11 @@ async def _compute_order(db, items, currency, shipping_country, shipping_method_
             "quantity": line.quantity,
         })
 
-    # promo
     promo, promo_error = await resolve_promo(db, promo_code, subtotal_eur, email, user)
     discount_eur = promo_discount_eur(promo, subtotal_eur)
     discount_display = convert_from_eur(discount_eur, currency, rates) or 0
     discount_charge = convert_from_eur(discount_eur, charge_currency, rates) or 0
 
-    # shipping
     methods = [m for m in settings["shipping"]["methods"] if m["country"] == shipping_country]
     if not methods:
         methods = [{"country": shipping_country, "country_name": shipping_country,
@@ -287,6 +340,81 @@ async def promo_check(data: PromoCheck, db: AsyncSession = Depends(get_db), user
     return {"valid": True, "promo": promo.to_dict(), "discount_eur": promo_discount_eur(promo, data.subtotal_eur)}
 
 
+@router.get("/orders/available-slots")
+async def available_slots(date: str, db: AsyncSession = Depends(get_db)):
+    settings = await get_settings(db)
+    orders_cfg = settings.get("orders", {}) or {}
+
+    try:
+        target = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date invalide (format AAAA-MM-JJ).")
+
+    now = datetime.now(timezone.utc)
+    min_lead_hours = int(orders_cfg.get("min_lead_hours", 48))
+    max_advance_days = int(orders_cfg.get("max_advance_days", 180))
+    min_date = (now + timedelta(hours=min_lead_hours)).date()
+    max_date = (now + timedelta(days=max_advance_days)).date()
+
+    if target < min_date:
+        return {
+            "available": False, "slots": [],
+            "reason_fr": f"Date trop proche. Commande possible à partir du {min_date.strftime('%d/%m/%Y')}.",
+            "reason_en": f"Date too soon. Order available from {min_date.strftime('%d/%m/%Y')}.",
+            "min_date": min_date.isoformat(), "max_date": max_date.isoformat(),
+        }
+    if target > max_date:
+        return {
+            "available": False, "slots": [],
+            "reason_fr": f"Date trop éloignée (max {max_advance_days} jours).",
+            "reason_en": f"Date too far ahead (max {max_advance_days} days).",
+            "min_date": min_date.isoformat(), "max_date": max_date.isoformat(),
+        }
+
+    available, slots, reason_fr, reason_en = get_available_slots_for_date(target, orders_cfg)
+    return {
+        "available": available, "slots": slots, "reason_fr": reason_fr, "reason_en": reason_en,
+        "min_date": min_date.isoformat(), "max_date": max_date.isoformat(),
+    }
+
+
+def _validate_scheduled(date_str: str | None, slot: str | None, settings: dict) -> tuple:
+    orders_cfg = settings.get("orders", {}) or {}
+    min_lead_hours = int(orders_cfg.get("min_lead_hours", 48))
+    max_advance_days = int(orders_cfg.get("max_advance_days", 180))
+
+    if not date_str:
+        raise HTTPException(status_code=400, detail="Choisissez une date de livraison.")
+    try:
+        target = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date invalide (format attendu : AAAA-MM-JJ).")
+
+    now = datetime.now(timezone.utc)
+    min_date = (now + timedelta(hours=min_lead_hours)).date()
+    max_date = (now + timedelta(days=max_advance_days)).date()
+
+    if target < min_date:
+        raise HTTPException(status_code=400,
+            detail=f"La date doit être au moins {min_lead_hours}h après la commande "
+                   f"(à partir du {min_date.strftime('%d/%m/%Y')}).")
+    if target > max_date:
+        raise HTTPException(status_code=400,
+            detail=f"Date trop éloignée (maximum {max_advance_days} jours à l'avance).")
+
+    available, slots, reason_fr, reason_en = get_available_slots_for_date(target, orders_cfg)
+    if not available:
+        raise HTTPException(status_code=400, detail=reason_fr or "Date non disponible.")
+
+    if not slot:
+        raise HTTPException(status_code=400, detail="Choisissez un créneau horaire.")
+    valid_values = {s.get("value") for s in slots}
+    if slot not in valid_values:
+        raise HTTPException(status_code=400, detail="Créneau horaire invalide pour cette date.")
+
+    return target, slot
+
+
 @router.post("/checkout/create")
 async def checkout_create(data: CheckoutInput, request: Request,
                           db: AsyncSession = Depends(get_db), user=Depends(get_optional_user)):
@@ -299,7 +427,14 @@ async def checkout_create(data: CheckoutInput, request: Request,
     if data.promo_code and calc["promo_error"]:
         raise HTTPException(status_code=400, detail={"message": "Code promo invalide", "promo_error": calc["promo_error"]})
 
+    settings = await get_settings(db)
+    scheduled_date, scheduled_slot = _validate_scheduled(
+        data.scheduled_date, data.scheduled_time_slot, settings
+    )
+
     notice = _notice(calc)
+    customer_note = (data.customer_note or "").strip()[:500]
+
     order = Order(
         order_number=gen_order_number(), user_id=user.id if user else None,
         email=data.shipping.email.lower().strip(), first_name=data.shipping.first_name,
@@ -311,13 +446,15 @@ async def checkout_create(data: CheckoutInput, request: Request,
         shipping_address=data.shipping.model_dump(), shipping_method=calc["shipping_method"],
         items=calc["items"], lang=data.lang if data.lang in ("fr", "en") else "fr",
         promo_code=calc["promo"].code if calc["promo"] else "",
+        customer_note=customer_note,
+        scheduled_date=scheduled_date,
+        scheduled_time_slot=scheduled_slot,
         status_history=[{"status": "pending_payment", "at": datetime.now(timezone.utc).isoformat(), "by": "system"}],
     )
     db.add(order)
     await db.commit()
     await db.refresh(order)
 
-    # Marque le panier du user comme recupere (pour stopper les relances)
     if user:
         try:
             from models import Cart
@@ -360,8 +497,15 @@ def push_history(order, status, by="system", note=""):
 async def _finalize_paid_inner(db, order_id, payment_intent=None):
     result = await db.execute(select(Order).where(Order.id == order_id))
     order = result.scalar_one_or_none()
-    if not order or order.payment_status == "paid":
+    if not order:
+        logger.error(f"[FINALIZE] Order {order_id} introuvable")
         return
+    if order.payment_status == "paid":
+        logger.info(f"[FINALIZE] Order {order_id} déjà payée, skip")
+        return
+
+    logger.info(f"[FINALIZE] Traitement order {order.order_number}")
+
     for item in (order.items or []):
         vr = await db.execute(select(ProductVariant).where(ProductVariant.id == item["variant_id"]))
         variant = vr.scalar_one_or_none()
@@ -378,7 +522,6 @@ async def _finalize_paid_inner(db, order_id, payment_intent=None):
             promo.used_count = (promo.used_count or 0) + 1
     order.payment_status = "paid"
     order.status = "paid"
-    # Mise a jour du Payment lie
     pres = await db.execute(select(Payment).where(Payment.order_id == order.id))
     for pay in pres.scalars().all():
         if pay.status == "pending":
@@ -387,15 +530,28 @@ async def _finalize_paid_inner(db, order_id, payment_intent=None):
                 pay.payment_intent = payment_intent
     push_history(order, "paid")
     await db.commit()
-    await send_order_email(db, order, "order_confirmed")
-    await notify_admin_new_order(db, order)
+    logger.info(f"[FINALIZE] Commit OK pour {order.order_number}")
+
+    try:
+        await send_order_email(db, order, "order_confirmed")
+        logger.info(f"[FINALIZE] ✅ Email client envoyé à {order.email}")
+    except Exception as e:
+        logger.error(f"[FINALIZE] ❌ Erreur email client : {e}", exc_info=True)
+
+    try:
+        await notify_admin_new_order(db, order)
+        logger.info(f"[FINALIZE] ✅ Email admin envoyé")
+    except Exception as e:
+        logger.error(f"[FINALIZE] ❌ Erreur email admin : {e}", exc_info=True)
 
 
 async def _finalize_paid(db, order_id, payment_intent=None):
     try:
         await asyncio.wait_for(_finalize_paid_inner(db, order_id, payment_intent), timeout=25)
     except asyncio.TimeoutError:
-        pass
+        logger.error(f"[FINALIZE] ❌ TIMEOUT pour order_id={order_id}")
+    except Exception as e:
+        logger.error(f"[FINALIZE] ❌ ERREUR pour order_id={order_id}: {e}", exc_info=True)
 
 
 @router.get("/payments/status/{session_id}")
@@ -410,16 +566,11 @@ async def payment_status(session_id: str, db: AsyncSession = Depends(get_db)):
             if s.payment_status == "paid" or s.status == "complete":
                 await _finalize_paid(db, order.id, s.payment_intent)
                 await db.refresh(order)
-        except stripe.error.StripeError:
-            pass
+        except stripe.error.StripeError as e:
+            logger.warning(f"[STATUS] Stripe error: {e}")
     return {"session_id": session_id, "order_number": order.order_number,
             "payment_status": order.payment_status, "status": order.status,
             "order": order.to_dict()}
-
-
-def order_exchange_amount(obj: dict) -> float:
-    """Extrait le montant total du complement d'echange depuis l'event Stripe."""
-    return float(obj.get("amount_total") or 0) / 100.0
 
 
 @router.post("/stripe/webhook")
@@ -428,29 +579,16 @@ async def stripe_webhook(request: Request):
     sig = request.headers.get("stripe-signature", "")
     try:
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[WEBHOOK] Invalid signature: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
     obj, t = event["data"]["object"], event["type"]
+    logger.info(f"[WEBHOOK] Event: {t}")
     async with AsyncSessionLocal() as db:
         if t == "checkout.session.completed":
             meta = obj.get("metadata") or {}
             oid = meta.get("order_id")
-            is_exchange = meta.get("type") == "exchange"
-            if oid and is_exchange:
-                # Paiement de complement d'echange
-                ores = await db.execute(select(Order).where(Order.id == oid))
-                o = ores.scalar_one_or_none()
-                if o:
-                    o.exchange_payment_status = "paid"
-                    # Enregistre le Payment du complement
-                    db.add(Payment(order_id=o.id, provider="stripe",
-                                   session_id=obj.get("id") or "",
-                                   payment_intent=obj.get("payment_intent") or "",
-                                   amount=order_exchange_amount(obj),
-                                   currency=(obj.get("currency") or "eur").upper(),
-                                   status="succeeded"))
-                    await db.commit()
-            elif oid:
+            if oid:
                 await _finalize_paid(db, oid, obj.get("payment_intent"))
         elif t == "charge.refunded":
             pi = obj.get("payment_intent")
@@ -497,13 +635,12 @@ async def track_order(data: TrackIn, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Commande introuvable. Verifiez le numero et l'e-mail.")
     return order.to_dict(public=True)
 
-# ---------- Client order actions (retry / cancel / delete) ----------
+
+# ---------- Client order actions ----------
 def _assert_pending(order: Order):
     if order.status != "pending_payment" or order.payment_status != "pending":
-        raise HTTPException(
-            status_code=400,
-            detail="Cette commande ne peut plus etre modifiee (deja payee ou traitee)."
-        )
+        raise HTTPException(status_code=400,
+            detail="Cette commande ne peut plus etre modifiee (deja payee ou traitee).")
 
 
 async def _get_my_order(db: AsyncSession, user, order_number: str) -> Order:
@@ -518,7 +655,6 @@ async def _get_my_order(db: AsyncSession, user, order_number: str) -> Order:
 
 @router.post("/orders/{order_number}/retry-payment")
 async def retry_payment(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Genere une nouvelle session Stripe pour une commande en attente de paiement."""
     order = await _get_my_order(db, user, order_number)
     _assert_pending(order)
 
@@ -526,11 +662,9 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
     if not origin:
         raise HTTPException(status_code=400, detail="origin_url requis")
 
-    # Recalcul des line_items Stripe depuis les donnees de la commande
     shipping_addr = order.shipping_address or {}
     shipping_country = shipping_addr.get("country", "")
 
-    # Retrouver l'index de la shipping method (par country + name_fr, fallback 0)
     method_name = (order.shipping_method or {}).get("name_fr", "")
     try:
         from utils import get_settings
@@ -557,8 +691,7 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
             email=order.email,
             user=user,
         )
-    except Exception as e:
-        # Fallback : une seule ligne avec le montant total
+    except Exception:
         calc = None
 
     if calc and calc.get("stripe_line_items"):
@@ -573,7 +706,6 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
             )
             discounts = [{"coupon": coupon.id}]
     else:
-        # Fallback : ligne unique avec le montant total
         line_items = [{
             "price_data": {
                 "currency": order.charge_currency.lower(),
@@ -601,9 +733,7 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
         raise HTTPException(status_code=400, detail=str(e))
 
     order.stripe_session_id = session.id
-    # Historique
     push_history(order, "pending_payment", by="client", note="Nouvelle session de paiement")
-    # Nouveau Payment pending (on garde l'ancien pour trace)
     db.add(Payment(order_id=order.id, provider="stripe", session_id=session.id,
                    amount=order.charge_total, currency=order.charge_currency, status="pending"))
     await db.commit()
@@ -613,10 +743,8 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
 
 @router.post("/orders/{order_number}/cancel")
 async def cancel_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Le client annule une commande en attente de paiement (suppression reelle car jamais payee)."""
     order = await _get_my_order(db, user, order_number)
     _assert_pending(order)
-    # Supprimer les Payment lies
     pays = (await db.execute(select(Payment).where(Payment.order_id == order.id))).scalars().all()
     for p in pays:
         await db.delete(p)
@@ -627,10 +755,8 @@ async def cancel_my_order(order_number: str, user=Depends(get_current_user), db:
 
 @router.delete("/orders/{order_number}")
 async def delete_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Suppression definitive d'une commande en attente de paiement (client)."""
     order = await _get_my_order(db, user, order_number)
     _assert_pending(order)
-    # Supprimer les Payment lies
     pays = (await db.execute(select(Payment).where(Payment.order_id == order.id))).scalars().all()
     for p in pays:
         await db.delete(p)
@@ -638,45 +764,54 @@ async def delete_my_order(order_number: str, user=Depends(get_current_user), db:
     await db.commit()
     return {"ok": True}
 
-# ---------- Retours / RMA (client) ----------
-import secrets
-from emails import (tpl_return_requested, tpl_return_admin_notify)
 
+# ================================================================
+# ⭐ RÉCLAMATION CLIENT (avec médias + messagerie)
+# ================================================================
 
 def _gen_rma_code(order_number: str) -> str:
-    """Genere un code RMA unique : RET-{order}-{4 chiffres}"""
-    suffix = str(secrets.randbelow(9000) + 1000)  # 1000-9999
+    suffix = str(secrets.randbelow(9000) + 1000)
     return f"RET-{order_number}-{suffix}"
 
 
 @router.post("/orders/{order_number}/request-return")
 async def request_return(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Le client demande un retour (total ou partiel) sur une commande livree."""
+    """
+    ⭐ Réclamation client — délai & médias configurables via settings.orders.claim_*.
+    Crée la commande en statut return_requested + un premier message ClaimMessage.
+    """
     order = await _get_my_order(db, user, order_number)
 
     if order.status != "delivered":
-        raise HTTPException(status_code=400, detail="Seule une commande livree peut faire l'objet d'un retour.")
+        raise HTTPException(status_code=400, detail="Seule une commande livree peut faire l'objet d'une reclamation.")
     if order.payment_status != "paid":
-        raise HTTPException(status_code=400, detail="Seule une commande payee peut faire l'objet d'un retour.")
+        raise HTTPException(status_code=400, detail="Seule une commande payee peut faire l'objet d'une reclamation.")
     if order.status in ("return_requested", "return_approved", "return_shipped", "return_received"):
-        raise HTTPException(status_code=400, detail="Une demande de retour est deja en cours.")
+        raise HTTPException(status_code=400, detail="Une reclamation est deja en cours.")
 
+    # ⭐ Paramètres configurables
+    settings = await get_settings(db)
+    orders_cfg = settings.get("orders", {}) or {}
+
+    # ⭐ Délai de réclamation configurable
+    claim_window_hours = int(orders_cfg.get("claim_window_hours", 48))
     if order.delivered_at:
         age = datetime.now(timezone.utc) - order.delivered_at
-        if age.days > 14:
-            raise HTTPException(status_code=403, detail="Le delai de retour de 14 jours est depasse. Contactez notre service client.")
+        if age.total_seconds() > claim_window_hours * 3600:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Le delai de reclamation de {claim_window_hours}h est depasse. Contactez notre service client.",
+            )
 
     selected = data.get("products") or []
     if not selected:
-        raise HTTPException(status_code=400, detail="Selectionnez au moins un article a retourner.")
-
-    return_type = data.get("return_type") or "refund"
-    if return_type not in ("refund", "exchange"):
-        raise HTTPException(status_code=400, detail="Type de retour invalide.")
+        raise HTTPException(status_code=400, detail="Selectionnez au moins un article concerne.")
 
     general_reason = (data.get("reason") or "").strip()[:500]
 
-    # Construit la liste finale des produits
+    # ⭐ Validation des médias
+    media_urls = _validate_claim_media(data.get("media_urls") or [], orders_cfg)
+
     items_map = {(it.get("product_id"), it.get("variant_id")): it for it in (order.items or [])}
     return_products = []
     for sel in selected:
@@ -701,72 +836,12 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     if not return_products:
         raise HTTPException(status_code=400, detail="Aucun article valide dans la selection.")
 
-    # ---- ECHANGE : calcul de la difference de prix ----
-    exchange_variant_id = data.get("exchange_variant_id")
-    exchange_product_id = None
-    exchange_price_diff = 0.0
-    exchange_charge_currency = "EUR"
-    exchange_line_item = None
-
-    if return_type == "exchange":
-        if not exchange_variant_id:
-            raise HTTPException(status_code=400, detail="Selectionnez la variante de remplacement pour l'echange.")
-
-        # La variante cible
-        vres = await db.execute(select(ProductVariant).where(ProductVariant.id == exchange_variant_id))
-        target_variant = vres.scalar_one_or_none()
-        if not target_variant:
-            raise HTTPException(status_code=404, detail="Variante de remplacement introuvable.")
-
-        pres = await db.execute(select(Product).where(Product.id == target_variant.product_id))
-        target_product = pres.scalar_one_or_none()
-        if not target_product:
-            raise HTTPException(status_code=404, detail="Produit de remplacement introuvable.")
-
-        # Verif : au moins une variante retournee doit appartenir au meme produit
-        returned_product_ids = {rp["product_id"] for rp in return_products}
-        if target_product.id not in returned_product_ids:
-            raise HTTPException(status_code=400,
-                detail="L'echange doit se faire vers une autre variante du meme produit.")
-
-        if target_variant.stock <= 0:
-            raise HTTPException(status_code=400, detail="Cette variante n'est pas disponible en stock.")
-
-        # Prix actuel du produit cible (EUR)
-        target_price_eur = float(target_product.sale_price_eur or target_product.price_eur or 0)
-        target_price_eur += float(target_variant.extra_price_eur or 0)
-
-        # Prix paye par le client pour le produit retourne (on prend le 1er retourne du meme produit)
-        paid_price_eur = 0.0
-        for rp in return_products:
-            if rp["product_id"] == target_product.id:
-                paid_price_eur = float(rp.get("unit_price") or 0)
-                break
-
-        diff = round(target_price_eur - paid_price_eur, 2)
-
-        exchange_product_id = target_product.id
-        exchange_price_diff = diff
-
-        # Convertit la diff en devise de charge si besoin (XOF client -> EUR facture)
-        if diff > 0:
-            # On facture en EUR (simplifie, Stripe ne supporte pas XOF)
-            exchange_line_item = {
-                "price_data": {
-                    "currency": "eur",
-                    "product_data": {"name": f"Echange - complement {target_product.name_fr}"},
-                    "unit_amount": int(round(diff * 100)),
-                },
-                "quantity": 1,
-            }
-
-    # Genere le code RMA
     rma_code = _gen_rma_code(order.order_number)
     now = datetime.now(timezone.utc)
 
     order.status = "return_requested"
     order.return_reason = general_reason
-    order.return_type = return_type
+    order.return_type = "refund"
     order.return_products = return_products
     order.return_rma_code = rma_code
     order.return_requested_at = now
@@ -774,44 +849,29 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     order.return_refused_reason = ""
     order.return_tracking_number = ""
     order.return_received_at = None
-    order.return_exchange_product_id = exchange_product_id
-    order.return_exchange_variant_id = exchange_variant_id if return_type == "exchange" else None
-    order.exchange_price_diff = exchange_price_diff
+    order.return_exchange_product_id = None
+    order.return_exchange_variant_id = None
+    order.exchange_price_diff = 0
     order.exchange_payment_status = ""
     order.exchange_stripe_session_id = ""
-    push_history(order, "return_requested", by=user.email, note=f"RMA {rma_code} — {general_reason[:120]}")
+    # ⭐ NOUVEAU : stocke les médias dans la commande
+    order.claim_media_urls = media_urls
+    push_history(order, "return_requested", by=user.email, note=f"Reclamation {rma_code} — {general_reason[:120]}")
+
+    # ⭐ NOUVEAU : crée le message initial du client dans la conversation
+    db.add(ClaimMessage(
+        order_id=order.id,
+        sender="client",
+        sender_email=user.email,
+        text=general_reason,
+        media_urls=media_urls,
+        requested_types=[],
+    ))
+
     await db.commit()
     await db.refresh(order)
 
-    # ---- Si echange avec diff > 0 : creer session Stripe ----
-    checkout_url = None
-    if return_type == "exchange" and exchange_price_diff > 0 and exchange_line_item:
-        origin = (data.get("origin_url") or "").rstrip("/")
-        if not origin:
-            raise HTTPException(status_code=400, detail="origin_url requis pour un echange avec complement.")
-        session_kwargs = dict(
-            line_items=[exchange_line_item],
-            mode="payment",
-            success_url=f"{origin}/order/confirmation?session_id={{CHECKOUT_SESSION_ID}}&exchange=1",
-            cancel_url=f"{origin}/account?cancel_exchange=1",
-            customer_email=order.email,
-            metadata={
-                "type": "exchange",
-                "order_id": order.id,
-                "order_number": order.order_number,
-                "rma_code": rma_code,
-            },
-        )
-        try:
-            session = stripe.checkout.Session.create(**session_kwargs)
-        except stripe.error.StripeError as e:
-            raise HTTPException(status_code=502, detail=f"Stripe: {e.user_message or str(e)}")
-        order.exchange_stripe_session_id = session.id
-        order.exchange_payment_status = "pending"
-        await db.commit()
-        checkout_url = session.url
-
-    # Emails
+    # ⭐ Email client — template claim_requested
     try:
         lang = order.lang if order.lang in ("fr", "en") else "fr"
         products_for_email = []
@@ -825,61 +885,120 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
                 "image_url": img,
                 "reason_label": rp.get("reason") or general_reason,
             })
-        subject, html = tpl_return_requested(order.to_dict(), lang, rma_code, products_for_email)
+        subject, html = tpl_claim_requested(order.to_dict(), lang, rma_code, products_for_email)
         await send_templated(db, to=order.email, subject=subject, html=html,
-                             template="return_requested", order_id=order.id)
-    except Exception:
-        pass
+                             template="claim_requested", order_id=order.id)
+    except Exception as e:
+        logger.warning(f"[CLAIM] Email client échoué: {e}")
 
+    # ⭐ Email admin
     try:
         if ADMIN_NOTIFY_EMAIL:
-            subject, html = tpl_return_admin_notify(order.to_dict(), rma_code)
+            subject, html = tpl_claim_admin_notify(order.to_dict(), rma_code)
             await send_templated(db, to=ADMIN_NOTIFY_EMAIL, subject=subject, html=html,
-                                 template="return_admin_notify", order_id=order.id)
-    except Exception:
-        pass
+                                 template="claim_admin_notify", order_id=order.id)
+    except Exception as e:
+        logger.warning(f"[CLAIM] Email admin échoué: {e}")
 
     return {
         "ok": True,
         "rma_code": rma_code,
         "status": order.status,
-        "checkout_url": checkout_url,
-        "exchange_price_diff": exchange_price_diff,
+        "checkout_url": None,
+        "exchange_price_diff": 0,
+        "media_count": len(media_urls),   # ⭐ NOUVEAU
     }
 
 
-@router.post("/orders/{order_number}/mark-return-shipped")
-async def mark_return_shipped(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Le client indique qu'il a envoye le colis retour + numero de suivi."""
+# ⭐ NOUVELLE ROUTE : réponse du client à une demande d'infos
+@router.post("/orders/{order_number}/claim/reply")
+async def claim_reply(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """
+    ⭐ Le client répond à une demande d'informations complémentaires de l'admin.
+    Body : { text, media_urls: [{"type","url"}] }
+    """
+    order = await _get_my_order(db, user, order_number)
+
+    if order.status not in ("return_requested", "return_approved", "return_received"):
+        raise HTTPException(status_code=400, detail="Aucune réclamation en cours.")
+
+    settings = await get_settings(db)
+    orders_cfg = settings.get("orders", {}) or {}
+    media_urls = _validate_claim_media(data.get("media_urls") or [], orders_cfg)
+
+    text = (data.get("text") or "").strip()[:2000]
+    if not text and not media_urls:
+        raise HTTPException(status_code=400, detail="Ajoutez un message ou des fichiers.")
+
+    # Enregistre le message
+    msg = ClaimMessage(
+        order_id=order.id,
+        sender="client",
+        sender_email=user.email,
+        text=text,
+        media_urls=media_urls,
+        requested_types=[],
+    )
+    db.add(msg)
+
+    # Ajoute les médias à la liste globale de la commande
+    existing = list(order.claim_media_urls or [])
+    order.claim_media_urls = existing + media_urls
+
+    # ⭐ Réinitialise la demande d'infos (elle a été honorée)
+    order.claim_info_requested_at = None
+    order.claim_info_request_message = ""
+    order.claim_info_request_types = []
+
+    push_history(order, order.status, by=user.email, note="Réponse du client à la demande d'infos")
+    await db.commit()
+    await db.refresh(msg)
+
+    # ⭐ Notifie l'admin (template optionnel — silencieux si absent)
+    try:
+        from emails import send_templated as _send, ADMIN_NOTIFY_EMAIL as _adm
+        try:
+            from emails import tpl_claim_client_replied
+        except ImportError:
+            tpl_claim_client_replied = None
+        if _adm and tpl_claim_client_replied:
+            subject, html = tpl_claim_client_replied(order.to_dict(), text, media_urls)
+            await _send(db, to=_adm, subject=subject, html=html,
+                        template="claim_client_replied", order_id=order.id)
+    except Exception as e:
+        logger.warning(f"[CLAIM] Notif admin échouée: {e}")
+
+    return {"ok": True, "message": msg.to_dict()}
+
+
+# ⭐ NOUVELLE ROUTE : annulation de la réclamation par le client
+@router.post("/orders/{order_number}/claim/cancel")
+async def claim_cancel(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """⭐ Le client annule sa propre réclamation (avant décision admin)."""
     order = await _get_my_order(db, user, order_number)
 
     if order.status not in ("return_requested", "return_approved"):
-        raise HTTPException(
-            status_code=400,
-            detail="Aucune demande de retour active pour cette commande."
-        )
+        raise HTTPException(status_code=400, detail="Impossible d'annuler à ce stade.")
 
-    tracking = (data.get("tracking_number") or "").strip()[:120]
-    if not tracking:
-        raise HTTPException(status_code=400, detail="Numero de suivi requis.")
-
-    order.return_tracking_number = tracking
-    order.status = "return_shipped"
-    push_history(order, "return_shipped", by=user.email, note=f"Suivi retour: {tracking}")
+    order.status = "delivered"
+    order.return_refused_reason = "Annulée par le client"
+    order.return_decided_at = datetime.now(timezone.utc)
+    order.claim_info_requested_at = None
+    order.claim_info_request_message = ""
+    order.claim_info_request_types = []
+    push_history(order, "delivered", by=user.email, note="Réclamation annulée par le client")
     await db.commit()
 
     return {"ok": True, "status": order.status}
 
+
 @router.post("/orders/{order_number}/request-cancellation")
 async def request_cancellation(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Le client demande l'annulation d'une commande deja payee (avant expedition)."""
     order = await _get_my_order(db, user, order_number)
 
     if order.status not in ("paid", "preparing"):
-        raise HTTPException(
-            status_code=400,
-            detail="Cette commande ne peut plus etre annulee (deja expediee ou livree). Utilisez la procedure de retour."
-        )
+        raise HTTPException(status_code=400,
+            detail="Cette commande ne peut plus etre annulee. Utilisez 'Signaler un probleme' dans vos commandes.")
     if order.payment_status != "paid":
         raise HTTPException(status_code=400, detail="Seule une commande payee peut etre annulee.")
     if order.status == "cancellation_requested":
@@ -894,7 +1013,6 @@ async def request_cancellation(order_number: str, data: dict, user=Depends(get_c
     push_history(order, "cancellation_requested", by=user.email, note=reason)
     await db.commit()
 
-    # Emails (client + admin)
     try:
         lang = order.lang if order.lang in ("fr", "en") else "fr"
         subject, html = tpl_cancellation_requested(order.to_dict(), lang)
@@ -912,15 +1030,13 @@ async def request_cancellation(order_number: str, data: dict, user=Depends(get_c
 
     return {"ok": True, "status": order.status}
 
+
 @router.post("/orders/{order_number}/hide")
 async def hide_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Masque une commande traitee de l'historique client (soft delete)."""
     order = await _get_my_order(db, user, order_number)
     if order.status == "pending_payment":
-        raise HTTPException(
-            status_code=400,
-            detail="Utilisez Annuler ou Supprimer pour les commandes en attente de paiement."
-        )
+        raise HTTPException(status_code=400,
+            detail="Utilisez Annuler ou Supprimer pour les commandes en attente de paiement.")
     order.hidden_by_customer = True
     await db.commit()
     return {"ok": True}
@@ -928,7 +1044,6 @@ async def hide_my_order(order_number: str, user=Depends(get_current_user), db: A
 
 @router.post("/orders/{order_number}/unhide")
 async def unhide_my_order(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Reaffiche une commande masquee dans l'historique client."""
     order = await _get_my_order(db, user, order_number)
     order.hidden_by_customer = False
     await db.commit()

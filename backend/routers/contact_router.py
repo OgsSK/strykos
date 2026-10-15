@@ -16,7 +16,7 @@ router = APIRouter(tags=["contact"])
 
 def tpl_contact_admin(msg: ContactMessage):
     """Notification envoyée à l'admin quand un nouveau message arrive."""
-    subject = f"[STRYKOS] Nouveau message — {msg.subject[:80]}"
+    subject = f"[CAKESSHOP] Nouveau message — {msg.subject[:80]}"
     body = (
         f"<p><strong>De :</strong> {escape(msg.name)} &lt;{escape(msg.email)}&gt;</p>"
         f"<p><strong>Sujet :</strong> {escape(msg.subject)}</p>"
@@ -33,7 +33,7 @@ def tpl_contact_ack(msg: ContactMessage):
     """Accusé de réception envoyé au client."""
     lang = msg.lang if msg.lang in ("fr", "en") else "fr"
     if lang == "en":
-        subject = "We received your message — STRYKOS"
+        subject = "We received your message — CAKESSHOP"
         body = (
             f"<p>Hi {escape(msg.name)},</p>"
             "<p>Thanks for reaching out. We have received your message and will reply within 24-48 business hours.</p>"
@@ -42,7 +42,7 @@ def tpl_contact_ack(msg: ContactMessage):
         )
         title = "Message received"
     else:
-        subject = "Nous avons reçu votre message — STRYKOS"
+        subject = "Nous avons reçu votre message — CAKESSHOP"
         body = (
             f"<p>Bonjour {escape(msg.name)},</p>"
             "<p>Merci de nous avoir contactés. Nous avons bien reçu votre message et vous répondrons sous 24 à 48 heures ouvrées.</p>"

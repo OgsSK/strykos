@@ -40,7 +40,8 @@ export default function OrderConfirmation() {
     if (v == null) return "";
     if (cur === "XOF") return `${Math.round(v).toLocaleString("fr-FR")} FCFA`;
     if (cur === "USD") return `$${v.toFixed(2)}`;
-    return `${v.toFixed(2)} €`;
+    // ⭐ Fallback : FCFA par défaut (devise principale CAKES)
+    return `${Math.round(v).toLocaleString("fr-FR")} FCFA`;
   };
 
   return (

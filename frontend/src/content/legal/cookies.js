@@ -1,7 +1,7 @@
 export default {
   fr: {
     title: "Politique relative aux cookies",
-    subtitle: "Comment et pourquoi STRYKOS utilise des cookies sur son site.",
+    subtitle: "Comment et pourquoi CAKESSHOP utilise des cookies sur son site.",
     lastUpdate: "Dernière mise à jour : octobre 2026",
     sections: [
       {
@@ -9,18 +9,18 @@ export default {
         content: "Un cookie est un petit fichier texte déposé sur votre appareil (ordinateur, téléphone, tablette) lors de la visite d'un site internet. Il permet au site de mémoriser des informations relatives à votre navigation, comme vos préférences de langue, le contenu de votre panier ou votre session de connexion. Les cookies ne contiennent aucune information permettant de vous identifier personnellement par eux-mêmes.",
       },
       {
-        title: "2. Cookies utilisés par STRYKOS",
-        content: "STRYKOS utilise uniquement des cookies techniques, strictement nécessaires au bon fonctionnement du site. Aucun cookie publicitaire ou de traçage tiers n'est déposé sans votre consentement explicite.",
+        title: "2. Cookies utilisés par CAKESSHOP",
+        content: "CAKESSHOP utilise uniquement des cookies techniques, strictement nécessaires au bon fonctionnement du site. Aucun cookie publicitaire ou de traçage tiers n'est déposé sans votre consentement explicite.",
         subsections: [
           { title: "2.1 Cookie de panier", content: "Permet de conserver les articles ajoutés à votre panier entre deux visites. Durée : 30 jours maximum. Cookie strictement nécessaire." },
           { title: "2.2 Cookie de session", content: "Permet de vous maintenir connecté à votre compte pendant votre navigation et de sécuriser vos actions. Durée : jusqu'à la déconnexion ou 7 jours. Cookie strictement nécessaire." },
-          { title: "2.3 Cookie de préférences", content: "Mémorise votre choix de langue (FR/EN) et de devise (EUR/USD/XOF) pour vous éviter de les resélectionner à chaque visite. Durée : 12 mois. Cookie fonctionnel." },
+          { title: "2.3 Cookie de préférences", content: "Mémorise votre choix de langue (FR/EN) et de devise (XOF) pour vous éviter de les resélectionner à chaque visite. Durée : 12 mois. Cookie fonctionnel." },
           { title: "2.4 Cookie de consentement", content: "Enregistre votre acceptation ou votre refus de la bannière cookies afin de ne pas vous la représenter à chaque visite. Durée : 12 mois. Cookie strictement nécessaire." },
         ],
       },
       {
         title: "3. Cookies tiers",
-        content: "STRYKOS ne dépose pas de cookies publicitaires (Google Ads, Meta Pixel, TikTok Pixel, etc.). Certains prestataires tiers peuvent toutefois déposer leurs propres cookies lors de transactions :",
+        content: "CAKESSHOP ne dépose pas de cookies publicitaires (Google Ads, Meta Pixel, TikTok Pixel, etc.). Certains prestataires tiers peuvent toutefois déposer leurs propres cookies lors de transactions :",
         list: [
           "Stripe : cookies techniques liés au traitement sécurisé des paiements par carte bancaire",
           "Prestataires d'hébergement et de sécurité : cookies de protection anti-fraude et anti-DDoS",
@@ -59,13 +59,13 @@ export default {
       },
       {
         title: "9. Contact",
-        content: "Pour toute question relative à l'utilisation des cookies sur STRYKOS, vous pouvez nous écrire à contact@actoos.com.",
+        content: "Pour toute question relative à l'utilisation des cookies sur CAKESSHOP, vous pouvez nous écrire à contact@actoos.com.",
       },
     ],
   },
   en: {
     title: "Cookies policy",
-    subtitle: "How and why STRYKOS uses cookies on its website.",
+    subtitle: "How and why CAKESSHOP uses cookies on its website.",
     lastUpdate: "Last updated: October 2026",
     sections: [
       {
@@ -73,18 +73,18 @@ export default {
         content: "A cookie is a small text file placed on your device (computer, phone, tablet) when you visit a website. It allows the site to remember information related to your browsing, such as your language preferences, the contents of your cart or your login session. Cookies do not by themselves contain any information that personally identifies you.",
       },
       {
-        title: "2. Cookies used by STRYKOS",
-        content: "STRYKOS uses only technical cookies, strictly necessary for the proper functioning of the site. No advertising or third-party tracking cookie is placed without your explicit consent.",
+        title: "2. Cookies used by CAKESSHOP",
+        content: "CAKESSHOP uses only technical cookies, strictly necessary for the proper functioning of the site. No advertising or third-party tracking cookie is placed without your explicit consent.",
         subsections: [
           { title: "2.1 Cart cookie", content: "Keeps the items added to your cart between two visits. Duration: 30 days maximum. Strictly necessary cookie." },
           { title: "2.2 Session cookie", content: "Keeps you logged into your account during browsing and secures your actions. Duration: until logout or 7 days. Strictly necessary cookie." },
-          { title: "2.3 Preferences cookie", content: "Remembers your language choice (FR/EN) and currency (EUR/USD/XOF) so you don't have to reselect them on each visit. Duration: 12 months. Functional cookie." },
+          { title: "2.3 Preferences cookie", content: "Remembers your language choice (FR/EN) and currency (XOF) so you don't have to reselect them on each visit. Duration: 12 months. Functional cookie." },
           { title: "2.4 Consent cookie", content: "Records your acceptance or refusal of the cookie banner so it is not shown on each visit. Duration: 12 months. Strictly necessary cookie." },
         ],
       },
       {
         title: "3. Third-party cookies",
-        content: "STRYKOS does not place advertising cookies (Google Ads, Meta Pixel, TikTok Pixel, etc.). However, some third-party providers may place their own cookies during transactions:",
+        content: "CAKESSHOP does not place advertising cookies (Google Ads, Meta Pixel, TikTok Pixel, etc.). However, some third-party providers may place their own cookies during transactions:",
         list: [
           "Stripe: technical cookies related to the secure processing of card payments",
           "Hosting and security providers: anti-fraud and anti-DDoS protection cookies",
@@ -123,7 +123,7 @@ export default {
       },
       {
         title: "9. Contact",
-        content: "For any question relating to the use of cookies on STRYKOS, you can write to us at contact@actoos.com.",
+        content: "For any question relating to the use of cookies on CAKESSHOP, you can write to us at contact@actoos.com.",
       },
     ],
   },

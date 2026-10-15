@@ -290,8 +290,8 @@ export default function ProductReviews({ slug }) {
               <span className="text-brand font-bold shrink-0">1.</span>
               <span>
                 {lang === "fr"
-                  ? applyBrand("Vous devez avoir passe une commande contenant ce produit sur STRYKOS.")
-                  : applyBrand("You must have placed an order containing this product on STRYKOS.")}
+                  ? applyBrand("Vous devez avoir passe une commande contenant ce produit sur CAKESSHOP.")
+                  : applyBrand("You must have placed an order containing this product on CAKESSHOP.")}
               </span>
             </li>
             <li className="flex gap-2">

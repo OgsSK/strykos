@@ -1,10 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0b0b0d"/>
-  <text x="256" y="310" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="200" font-weight="900" letter-spacing="-8">
-    <tspan fill="#ffffff">ST</tspan><tspan fill="#e4002b">RY</tspan>
+  <rect width="512" height="512" fill="#4A2C25"/>
+  <text x="256" y="290" text-anchor="middle" font-family="Outfit, Arial, Helvetica, sans-serif" font-size="180" font-weight="800" letter-spacing="-6" fill="#FAF5ED">
+    CAKE
   </text>
-  <text x="256" y="420" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="140" font-weight="900" letter-spacing="-6">
-    <tspan fill="#ffffff">K</tspan><tspan fill="#e4002b">OS</tspan>
+  <text x="256" y="420" text-anchor="middle" font-family="Outfit, Arial, Helvetica, sans-serif" font-size="140" font-weight="800" letter-spacing="-4" fill="#C58B58">
+    SHOP
   </text>
 </svg>
-

@@ -9,4 +9,4 @@ Disallow: /checkout
 Disallow: /order/
 
 # Sitemap
-Sitemap: https://strykos.actoos.com/sitemap.xml
+Sitemap: https://cakes.actoos.com/sitemap.xml

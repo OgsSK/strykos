@@ -46,7 +46,7 @@ export default function StaticPage() {
   if (!page) return (
     <div className="max-w-2xl mx-auto px-4 py-20 text-center">
       <h1 className="font-heading text-2xl font-bold">404</h1>
-      <Link to="/"><Button className="mt-4 rounded-none">{applyBrand("STRYKOS")}</Button></Link>
+      <Link to="/"><Button className="mt-4 rounded-none">{applyBrand("CAKESSHOP")}</Button></Link>
     </div>
   );
   const content = page[lang] || page.fr;

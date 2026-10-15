@@ -4,6 +4,7 @@ import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import NewsletterBox from "@/components/NewsletterBox";
 import CookieNotice from "@/components/CookieNotice";
+import WhatsAppButton from "@/components/WhatsAppButton";
 
 export default function Layout() {
   return (
@@ -15,6 +16,7 @@ export default function Layout() {
       <NewsletterBox />
       <Footer />
       <CookieNotice />
+      <WhatsAppButton />
     </div>
   );
 }

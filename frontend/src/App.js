@@ -24,6 +24,8 @@ import AdminOrderDetail from "@/pages/admin/AdminOrderDetail";
 import AdminBrands from "@/pages/admin/AdminBrands";
 import AdminCategories from "@/pages/admin/AdminCategories";
 import AdminCustomers, { AdminCustomerDetail } from "@/pages/admin/AdminCustomers";
+// ⭐ NOUVEAU : page admin livreurs
+import AdminDrivers from "@/pages/admin/AdminDrivers";
 import AdminPromos from "@/pages/admin/AdminPromos";
 import AdminEmails from "@/pages/admin/AdminEmails";
 import TrackOrder from "@/pages/TrackOrder";
@@ -32,6 +34,7 @@ import AdminReviews from "@/pages/admin/AdminReviews";
 import AdminNewsletter from "@/pages/admin/AdminNewsletter";
 import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
 import ConfirmEmailChange from "@/pages/ConfirmEmailChange";
+import ConfirmEmail from "@/pages/ConfirmEmail"; // ⭐ NOUVEAU
 import ScrollToTop from "@/components/ScrollToTop";
 
 function Protected({ children, admin }) {
@@ -64,6 +67,7 @@ function App() {
               <Route path="/register" element={<Auth mode="register" />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/confirm-email" element={<ConfirmEmail />} /> {/* ⭐ NOUVEAU */}
               <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route path="/newsletter/unsubscribe" element={<NewsletterUnsubscribe />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
@@ -81,6 +85,8 @@ function App() {
               <Route path="categories" element={<AdminCategories />} />
               <Route path="customers" element={<AdminCustomers />} />
               <Route path="customers/:id" element={<AdminCustomerDetail />} />
+              {/* ⭐ NOUVEAU : gestion des livreurs */}
+              <Route path="drivers" element={<AdminDrivers />} />
               <Route path="promos" element={<AdminPromos />} />
               <Route path="emails" element={<AdminEmails />} />
               <Route path="reviews" element={<AdminReviews />} />

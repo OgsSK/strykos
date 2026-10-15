@@ -5,13 +5,17 @@ import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Check, Tag, X, MapPin, Loader2, Save, Plus } from "lucide-react";
+import { Check, Tag, X, MapPin, Loader2, Save, Plus, Calendar, Minus, Trash2 } from "lucide-react";
 import { countryName, reverseGeocode } from "@/lib/countries";
 import { mediaSrc } from "@/lib/adminUtils";
 
 export default function Checkout() {
-  const { t, lang, currency, fmt, cart, cartSubtotal, user, settings, convertEur } = useStore();
+  const {
+    t, lang, currency, fmt, cart, cartSubtotal, cartUnitPrice, user, settings, convertEur,
+    updateQty, removeFromCart,
+  } = useStore();
   const nav = useNavigate();
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -35,19 +39,21 @@ export default function Checkout() {
     postal_code: "",
   });
 
-  // Pays disponibles = settings.shipping.methods (dédupliqués)
+  const [customerNote, setCustomerNote] = useState("");
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledSlot, setScheduledSlot] = useState("");
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [closureInfo, setClosureInfo] = useState(null);
+
   const availableCountries = useMemo(() => {
     const methods = settings?.shipping?.methods || [];
     const seen = new Map();
     methods.forEach((m) => {
-      if (m.country && !seen.has(m.country)) {
-        seen.set(m.country, { code: m.country });
-      }
+      if (m.country && !seen.has(m.country)) seen.set(m.country, { code: m.country });
     });
     return Array.from(seen.values());
   }, [settings]);
 
-  // Si le pays par défaut n'est pas dans la liste, prendre le 1er dispo
   useEffect(() => {
     if (availableCountries.length > 0 && !availableCountries.find((c) => c.code === form.country)) {
       setForm((f) => ({ ...f, country: availableCountries[0].code }));
@@ -60,7 +66,56 @@ export default function Checkout() {
   );
   const selectedMethod = shippingMethods[methodIndex] || { cost_eur: 15 };
 
-  // Charger les adresses du user connecté
+  const ordersCfg = settings?.orders || {};
+  const minLeadHours = ordersCfg.min_lead_hours ?? 48;
+  const maxAdvanceDays = ordersCfg.max_advance_days ?? 180;
+  const timeSlots = ordersCfg.time_slots || [
+    { value: "matin",      label_fr: "Matin (9h-12h)",       label_en: "Morning (9am-12pm)" },
+    { value: "apres-midi", label_fr: "Après-midi (14h-18h)", label_en: "Afternoon (2pm-6pm)" },
+    { value: "soir",       label_fr: "Soirée (18h-20h)",     label_en: "Evening (6pm-8pm)" },
+  ];
+
+  const { minDateStr, maxDateStr, minLeadHuman } = useMemo(() => {
+    const now = new Date();
+    const min = new Date(now.getTime() + minLeadHours * 3600 * 1000);
+    const max = new Date(now.getTime() + maxAdvanceDays * 24 * 3600 * 1000);
+    const fmtD = (d) => d.toISOString().slice(0, 10);
+    let human;
+    if (minLeadHours >= 24) {
+      const days = Math.ceil(minLeadHours / 24);
+      human = lang === "fr" ? `${days} jour${days > 1 ? "s" : ""}` : `${days} day${days > 1 ? "s" : ""}`;
+    } else {
+      human = lang === "fr" ? `${minLeadHours} heures` : `${minLeadHours} hours`;
+    }
+    return { minDateStr: fmtD(min), maxDateStr: fmtD(max), minLeadHuman: human };
+  }, [minLeadHours, maxAdvanceDays, lang]);
+
+  useEffect(() => {
+    if (timeSlots.length > 0 && !scheduledSlot) setScheduledSlot(timeSlots[0].value);
+    if (!scheduledDate && minDateStr) setScheduledDate(minDateStr);
+  }, [timeSlots, minDateStr]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!scheduledDate) return;
+    api.get(`/orders/available-slots?date=${scheduledDate}`)
+      .then(({ data }) => {
+        if (data.available) {
+          setAvailableSlots(data.slots || []);
+          setClosureInfo(null);
+          if (!data.slots.find((s) => s.value === scheduledSlot)) {
+            setScheduledSlot(data.slots[0]?.value || "");
+          }
+        } else {
+          setAvailableSlots([]);
+          setClosureInfo(data);
+        }
+      })
+      .catch(() => {
+        setAvailableSlots(timeSlots);
+        setClosureInfo(null);
+      });
+  }, [scheduledDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!user) { setAddressesLoaded(true); return; }
     api.get("/auth/addresses")
@@ -97,7 +152,15 @@ export default function Checkout() {
   const [promoInput, setPromoInput] = useState("");
   const [promo, setPromo] = useState(null);
   const [promoError, setPromoError] = useState("");
-  const subtotalEur = cart.reduce((s, i) => s + ((i.prices?.EUR?.price ?? 0) + (i.extra_price_eur || 0) + (i.customization ? (i.customization_price_eur || 0) : 0)) * i.quantity, 0);
+
+  // Sous-total EUR (utilisé pour validation promo)
+  const subtotalEur = cart.reduce((s, i) => {
+    const base = i.prices?.EUR?.price ?? 0;
+    const extra = i.extra_price_eur || 0;
+    const custom = i.customization_price_eur || 0;
+    return s + (base + extra + custom) * i.quantity;
+  }, 0);
+
   const discountEur = promo ? (promo.discount_type === "percent" ? Math.round(subtotalEur * promo.value) / 100 : Math.min(promo.value, subtotalEur)) : 0;
   const discountDisplay = Math.min(convertEur(discountEur), cartSubtotal);
   const shippingDisplay = promo?.free_shipping ? 0 : convertEur(selectedMethod.cost_eur);
@@ -114,21 +177,24 @@ export default function Checkout() {
   };
   const chargeDifferent = !["EUR", "USD"].includes(currency);
 
-  if (cart.length === 0) { nav("/cart"); return null; }
+  if (cart.length === 0) {
+    // Si on revient à l'étape 3 et que le panier est vide → retour au panier
+    if (step === 2) {
+      nav("/cart");
+    }
+    return null;
+  }
 
   const setF = (k, v) => setForm({ ...form, [k]: v });
 
-  // --- Géolocalisation ---
   const isSecureContext = typeof window !== "undefined" && window.isSecureContext;
 
   const useMyLocation = () => {
     if (!isSecureContext) {
-      toast.error(
-        lang === "fr"
-          ? "La géolocalisation n'est disponible qu'en HTTPS (ou sur localhost). Remplissez manuellement pour l'instant."
-          : "Geolocation is only available over HTTPS (or localhost). Please fill in manually for now.",
-        { duration: 6000 }
-      );
+      toast.error(lang === "fr"
+        ? "La géolocalisation n'est disponible qu'en HTTPS (ou localhost)."
+        : "Geolocation is only available over HTTPS (or localhost).",
+        { duration: 6000 });
       return;
     }
     if (!navigator.geolocation) {
@@ -147,12 +213,9 @@ export default function Checkout() {
           }
           const isAvailable = availableCountries.some((c) => c.code === country);
           if (!isAvailable) {
-            toast.error(
-              lang === "fr"
-                ? `Nous ne livrons pas encore en ${countryName(country, lang)}`
-                : `We don't ship to ${countryName(country, lang)} yet`,
-              { duration: 5000 }
-            );
+            toast.error(lang === "fr"
+              ? `Nous ne livrons pas encore en ${countryName(country, lang)}`
+              : `We don't ship to ${countryName(country, lang)} yet`, { duration: 5000 });
             setGeoLoading(false);
             return;
           }
@@ -167,9 +230,7 @@ export default function Checkout() {
       (err) => {
         let msg = lang === "fr" ? "Accès à la position refusé" : "Location access denied";
         if (err.code === err.PERMISSION_DENIED) {
-          msg = lang === "fr"
-            ? "Vous avez refusé l'accès. Autorisez-le dans les paramètres du navigateur."
-            : "You denied access. Allow it in browser settings.";
+          msg = lang === "fr" ? "Vous avez refusé l'accès." : "You denied access.";
         } else if (err.code === err.POSITION_UNAVAILABLE) {
           msg = lang === "fr" ? "Position indisponible" : "Position unavailable";
         } else if (err.code === err.TIMEOUT) {
@@ -200,41 +261,60 @@ export default function Checkout() {
       try {
         await api.post("/auth/addresses", {
           label: "",
-          first_name: form.first_name,
-          last_name: form.last_name,
-          phone: form.phone,
-          country: form.country,
-          city: form.city,
-          address_line: form.address_line,
-          postal_code: form.postal_code,
-          is_default: addresses.length === 0,
+          first_name: form.first_name, last_name: form.last_name, phone: form.phone,
+          country: form.country, city: form.city, address_line: form.address_line,
+          postal_code: form.postal_code, is_default: addresses.length === 0,
         });
         setSaveAddress(false);
-      } catch {
-        // Silencieux
-      }
+      } catch {}
     }
     setStep(1);
   };
 
-  // Compare 2 listes d'items (product_id + variant_id + quantity + customization)
   const itemsMatch = (a, b) => {
     if (!a || !b || a.length !== b.length) return false;
-    const key = (it) => `${it.product_id}|${it.variant_id || ""}|${it.quantity}|${it.customization?.name || ""}|${it.customization?.number || ""}`;
+    const key = (it) => `${it.product_id}|${it.variant_id || ""}|${it.quantity}|${JSON.stringify(it.customization || {})}`;
     const setA = new Set(a.map(key));
     return b.every((it) => setA.has(key(it)));
   };
 
   const placeOrder = async () => {
+    if (closureInfo) {
+      toast.error(lang === "fr"
+        ? (closureInfo.reason_fr || "Cette date n'est pas disponible")
+        : (closureInfo.reason_en || "This date is not available"));
+      return;
+    }
+    if (availableSlots.length === 0) {
+      toast.error(lang === "fr" ? "Aucun créneau disponible" : "No slot available");
+      return;
+    }
+    if (!scheduledDate) {
+      toast.error(lang === "fr" ? "Choisissez une date de livraison" : "Choose a delivery date");
+      return;
+    }
+    if (scheduledDate < minDateStr) {
+      toast.error(lang === "fr"
+        ? `Choisissez une date à partir du ${new Date(minDateStr).toLocaleDateString("fr-FR")}`
+        : `Choose a date from ${new Date(minDateStr).toLocaleDateString("en-GB")}`);
+      return;
+    }
+    if (scheduledDate > maxDateStr) {
+      toast.error(lang === "fr" ? `Date trop éloignée (max ${maxAdvanceDays} jours)` : `Date too far ahead (max ${maxAdvanceDays} days)`);
+      return;
+    }
+    if (!scheduledSlot) {
+      toast.error(lang === "fr" ? "Choisissez un créneau horaire" : "Choose a time slot");
+      return;
+    }
+
     setLoading(true);
     try {
-      // 1) Chercher une commande pending existante avec les memes items
       if (user) {
         try {
           const { data: myOrders } = await api.get("/orders");
           const pendingMatch = (myOrders || []).find((o) =>
-            o.status === "pending_payment" &&
-            o.payment_status === "pending" &&
+            o.status === "pending_payment" && o.payment_status === "pending" &&
             itemsMatch(o.items || [], itemsPayload)
           );
           if (pendingMatch) {
@@ -244,16 +324,16 @@ export default function Checkout() {
             window.location.href = data.checkout_url;
             return;
           }
-        } catch {
-          // Silencieux : on continue avec la creation normale
-        }
+        } catch {}
       }
 
-      // 2) Sinon creer une nouvelle commande
       const { data } = await api.post("/checkout/create", {
         items: itemsPayload, currency, shipping: shippingPayload,
         shipping_method_index: methodIndex, origin_url: window.location.origin,
         promo_code: promo?.code || null, lang,
+        customer_note: customerNote || null,
+        scheduled_date: scheduledDate,
+        scheduled_time_slot: scheduledSlot,
       });
       window.location.href = data.checkout_url;
     } catch (e) {
@@ -288,15 +368,11 @@ export default function Checkout() {
             <div data-testid="step-contact">
               {/* Bouton géoloc */}
               <div className="mb-5 flex flex-wrap items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={useMyLocation}
+                <Button type="button" variant="outline" onClick={useMyLocation}
                   disabled={geoLoading || !isSecureContext}
                   title={!isSecureContext ? (lang === "fr" ? "Disponible uniquement en HTTPS" : "Available only over HTTPS") : ""}
                   className="rounded-none inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  data-testid="use-location-btn"
-                >
+                  data-testid="use-location-btn">
                   {geoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                   {lang === "fr" ? "Utiliser ma position" : "Use my location"}
                 </Button>
@@ -315,45 +391,34 @@ export default function Checkout() {
                   </div>
                   <div className="grid sm:grid-cols-2 gap-3">
                     {addresses.map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        onClick={() => applyAddress(a)}
+                      <button key={a.id} type="button" onClick={() => applyAddress(a)}
                         className={`text-left border p-4 hover:border-brand transition-colors ${selectedAddressId === a.id ? "border-brand bg-brand/5" : "border-border"}`}
-                        data-testid={`address-option-${a.id}`}
-                      >
+                        data-testid={`address-option-${a.id}`}>
                         <div className="font-semibold text-sm">{a.first_name} {a.last_name}</div>
                         <div className="text-xs text-ink-soft mt-1">{a.address_line}</div>
                         <div className="text-xs text-ink-soft">{a.postal_code} {a.city}</div>
                         <div className="text-xs text-ink-muted mt-1">{countryName(a.country, lang)}</div>
                       </button>
                     ))}
-                    <button
-                      type="button"
+                    <button type="button"
                       onClick={() => { setShowNewForm(true); setSelectedAddressId(null); }}
                       className="text-left border border-dashed border-border p-4 hover:border-brand transition-colors flex items-center gap-2 text-sm"
-                      data-testid="address-option-new"
-                    >
+                      data-testid="address-option-new">
                       <Plus className="w-4 h-4" />
                       {lang === "fr" ? "Nouvelle adresse" : "New address"}
                     </button>
                   </div>
 
-                  {/* Bouton Continuer */}
                   {selectedAddressId ? (
                     <div className="mt-4 flex flex-wrap items-center gap-3">
-                      <Button
-                        onClick={() => { setShowNewForm(false); setStep(1); }}
+                      <Button onClick={() => { setShowNewForm(false); setStep(1); }}
                         data-testid="continue-with-address-btn"
-                        className="bg-ink hover:bg-ink/90 rounded-none uppercase font-bold"
-                      >
+                        className="bg-ink hover:bg-ink/90 rounded-none uppercase font-bold">
                         {lang === "fr" ? "Continuer avec cette adresse" : "Continue with this address"} →
                       </Button>
-                      <button
-                        type="button"
+                      <button type="button"
                         onClick={() => { setShowNewForm(true); setSelectedAddressId(null); setForm((f) => ({ ...f, city: "", address_line: "", postal_code: "" })); }}
-                        className="text-xs text-brand font-semibold hover:underline"
-                      >
+                        className="text-xs text-brand font-semibold hover:underline">
                         {lang === "fr" ? "Modifier cette adresse" : "Edit this address"}
                       </button>
                     </div>
@@ -372,11 +437,9 @@ export default function Checkout() {
                     <Check className="w-4 h-4" />
                     {lang === "fr" ? "Adresse enregistrée pré-remplie" : "Saved address pre-filled"}
                   </div>
-                  <button
-                    type="button"
+                  <button type="button"
                     onClick={() => { setShowNewForm(true); setSelectedAddressId(null); setForm((f) => ({ ...f, city: "", address_line: "", postal_code: "" })); }}
-                    className="text-xs text-brand font-semibold hover:underline"
-                  >
+                    className="text-xs text-brand font-semibold hover:underline">
                     {lang === "fr" ? "Utiliser une autre adresse" : "Use another address"}
                   </button>
                 </div>
@@ -390,21 +453,12 @@ export default function Checkout() {
                   ))}
                   <div>
                     <Label>{t("country")}</Label>
-                    <select
-                      value={form.country}
-                      onChange={(e) => { setF("country", e.target.value); setMethodIndex(0); }}
-                      className="mt-1 w-full border border-border h-10 px-3 bg-white"
-                      data-testid="checkout-country"
-                    >
+                    <select value={form.country} onChange={(e) => { setF("country", e.target.value); setMethodIndex(0); }}
+                      className="mt-1 w-full border border-border h-10 px-3 bg-white" data-testid="checkout-country">
                       {availableCountries.map((c) => (
                         <option key={c.code} value={c.code}>{countryName(c.code, lang)}</option>
                       ))}
                     </select>
-                    {availableCountries.length === 0 && (
-                      <p className="text-xs text-ink-muted mt-1">
-                        {lang === "fr" ? "Aucun pays configuré (admin > Livraison)" : "No country configured (admin > Shipping)"}
-                      </p>
-                    )}
                   </div>
                   <div><Label>{t("city")}</Label><Input value={form.city} onChange={(e) => setF("city", e.target.value)} data-testid="checkout-city" className="mt-1" /></div>
                   <div className="sm:col-span-2"><Label>{t("address")}</Label><Input value={form.address_line} onChange={(e) => setF("address_line", e.target.value)} data-testid="checkout-address" className="mt-1" /></div>
@@ -412,13 +466,8 @@ export default function Checkout() {
 
                   {user && !showSavedBadge && (
                     <div className="sm:col-span-2 flex items-center gap-2 text-sm pt-1">
-                      <input
-                        type="checkbox"
-                        id="save-address"
-                        checked={saveAddress}
-                        onChange={(e) => setSaveAddress(e.target.checked)}
-                        data-testid="save-address-checkbox"
-                      />
+                      <input type="checkbox" id="save-address" checked={saveAddress}
+                        onChange={(e) => setSaveAddress(e.target.checked)} data-testid="save-address-checkbox" />
                       <label htmlFor="save-address" className="cursor-pointer inline-flex items-center gap-1.5">
                         <Save className="w-3.5 h-3.5 text-ink-muted" />
                         {lang === "fr" ? "Enregistrer cette adresse pour mes prochaines commandes" : "Save this address for future orders"}
@@ -427,11 +476,8 @@ export default function Checkout() {
                   )}
 
                   <div className="sm:col-span-2 pt-2">
-                    <Button
-                      onClick={nextFromStep0}
-                      data-testid="to-shipping-btn"
-                      className="bg-ink hover:bg-ink/90 rounded-none uppercase font-bold"
-                    >
+                    <Button onClick={nextFromStep0} data-testid="to-shipping-btn"
+                      className="bg-ink hover:bg-ink/90 rounded-none uppercase font-bold">
                       {t("shippingMethod")} →
                     </Button>
                   </div>
@@ -466,26 +512,174 @@ export default function Checkout() {
 
           {step === 2 && (
             <div data-testid="step-review">
+              {/* ⭐ ARTICLES ÉDITABLES */}
               <div className="space-y-3">
                 {cart.map((i, idx) => {
                   const name = lang === "fr" ? i.name_fr : i.name_en;
-                  return <div key={idx} className="flex gap-3 border border-border p-3">
-                    <img src={mediaSrc(i.image)} alt="" className="w-14 h-16 object-cover" />
-                    <div className="flex-1 text-sm">
-                      <div className="font-medium">{name}</div>
-                      <div className="text-xs text-ink-muted">{t("size")}: {i.size} · x{i.quantity}</div>
-                      {/* PERSONNALISATION DESACTIVEE TEMPORAIREMENT */}
-                      {false && i.customization && <div className="text-xs text-brand">{i.customization.name} {i.customization.number}</div>}
+                  const fields = i.customization_fields || [];
+                  const unit = cartUnitPrice(i);
+                  return (
+                    <div key={idx} className="border border-border p-3" data-testid="checkout-item">
+                      <div className="flex gap-3">
+                        <img src={mediaSrc(i.image)} alt="" className="w-16 h-20 object-cover bg-secondary shrink-0" />
+                        <div className="flex-1 text-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-medium leading-tight">{name}</div>
+                            <div className="text-right whitespace-nowrap">
+                              <div className="font-semibold">{fmt(unit * i.quantity)}</div>
+                              {i.quantity > 1 && (
+                                <div className="text-[10px] text-ink-muted">{fmt(unit)} / u</div>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-xs text-ink-muted mt-1">
+                            Portion : {i.size}
+                            {i.color ? ` · ${i.color}` : ""}
+                          </div>
+
+                          {/* Personnalisation */}
+                          {i.customization && fields.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {fields.map((f) => {
+                                const v = i.customization[f.key];
+                                if (!v) return null;
+                                let display = v;
+                                if (f.type === "select") {
+                                  const opt = (f.options || []).find((o) => o.value === v);
+                                  if (opt) display = lang === "fr" ? opt.label_fr : opt.label_en;
+                                }
+                                return (
+                                  <div key={f.key} className="text-xs text-brand flex items-center gap-1">
+                                    🎂 <span className="text-ink-muted">{lang === "fr" ? f.label_fr : f.label_en} :</span>
+                                    <strong className="text-ink">{display}</strong>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                          {i.customization && fields.length === 0 && (i.customization.name || i.customization.number) && (
+                            <div className="mt-1 text-xs text-brand">
+                              🎂 {[i.customization.name, i.customization.number && `N°${i.customization.number}`].filter(Boolean).join(" · ")}
+                            </div>
+                          )}
+
+                          {/* Contrôles quantité + supprimer */}
+                          <div className="flex items-center gap-3 mt-2">
+                            <div className="flex items-center border border-border" data-testid="checkout-qty-controls">
+                              <button
+                                type="button"
+                                onClick={() => updateQty(i.variant_id, i.customization, i.quantity - 1)}
+                                disabled={i.quantity <= 1}
+                                className="p-1.5 disabled:opacity-30 disabled:cursor-not-allowed"
+                                data-testid="checkout-qty-minus"
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <span className="w-8 text-center text-sm font-medium" data-testid="checkout-qty-value">
+                                {i.quantity}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateQty(i.variant_id, i.customization, i.quantity + 1)}
+                                className="p-1.5"
+                                data-testid="checkout-qty-plus"
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeFromCart(i.variant_id, i.customization);
+                                toast.success(lang === "fr" ? "Article retiré" : "Item removed");
+                              }}
+                              className="text-xs text-ink-muted hover:text-red-600 inline-flex items-center gap-1 transition-colors"
+                              data-testid="checkout-remove-item"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              {lang === "fr" ? "Retirer" : "Remove"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </div>;
+                  );
                 })}
               </div>
+
+              {/* Adresse */}
               <div className="mt-4 text-sm border border-border p-4">
                 <div className="font-semibold mb-1">{t("address")}</div>
                 <div className="text-ink-soft">
                   {form.first_name} {form.last_name}, {form.address_line}, {form.postal_code} {form.city}, {countryName(form.country, lang)}
                 </div>
               </div>
+
+              {/* Commande programmée */}
+              <div className="mt-6 border border-brand/30 bg-brand/5 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Calendar className="w-5 h-5 text-brand" />
+                  <span className="font-semibold text-ink">
+                    {lang === "fr" ? "Quand souhaitez-vous recevoir votre commande ?" : "When would you like to receive your order?"}
+                  </span>
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label>{lang === "fr" ? "Date souhaitée" : "Preferred date"} *</Label>
+                    <Input type="date" value={scheduledDate} min={minDateStr} max={maxDateStr}
+                      onChange={(e) => setScheduledDate(e.target.value)} className="mt-1 bg-white"
+                      data-testid="checkout-scheduled-date" />
+                    <p className="text-[11px] text-ink-muted mt-1">
+                      {lang === "fr"
+                        ? `À partir du ${new Date(minDateStr).toLocaleDateString("fr-FR")} (délai : ${minLeadHuman}).`
+                        : `From ${new Date(minDateStr).toLocaleDateString("en-GB")} (lead time: ${minLeadHuman}).`}
+                    </p>
+                  </div>
+                  <div>
+                    <Label>{lang === "fr" ? "Créneau horaire" : "Time slot"} *</Label>
+                    {closureInfo ? (
+                      <div className="mt-1 border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                        🚫 {lang === "fr" ? closureInfo.reason_fr : closureInfo.reason_en}
+                      </div>
+                    ) : (
+                      <select value={scheduledSlot} onChange={(e) => setScheduledSlot(e.target.value)}
+                        className="mt-1 w-full border border-border h-10 px-3 bg-white"
+                        data-testid="checkout-scheduled-slot"
+                        disabled={availableSlots.length === 0}>
+                        {availableSlots.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {lang === "fr" ? s.label_fr : s.label_en}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-ink-soft mt-3">
+                  🎂 {lang === "fr"
+                    ? "Vos gâteaux sont préparés à la commande — merci de respecter le délai minimum."
+                    : "Our cakes are made to order — please respect the minimum lead time."}
+                </p>
+              </div>
+
+              {/* Note client */}
+              <div className="mt-4">
+                <Label htmlFor="customer_note">
+                  {lang === "fr" ? "Note / instructions spéciales" : "Note / special instructions"}{" "}
+                  <span className="text-ink-muted font-normal">({lang === "fr" ? "optionnel" : "optional"})</span>
+                </Label>
+                <Textarea id="customer_note" rows={3} maxLength={500}
+                  value={customerNote} onChange={(e) => setCustomerNote(e.target.value)}
+                  placeholder={lang === "fr"
+                    ? "Ex : Allergie aux fruits à coque, message sur le gâteau, préférence de créneau de livraison..."
+                    : "E.g. Nut allergy, message on the cake, preferred delivery time..."}
+                  className="mt-1 rounded-none" data-testid="checkout-customer-note" />
+                <p className="text-[11px] text-ink-muted mt-1">
+                  {customerNote.length}/500 {lang === "fr" ? "caractères" : "characters"}
+                </p>
+              </div>
+
               {chargeDifferent && (
                 <div className="mt-4 bg-amber-50 border border-amber-200 p-4 text-sm" data-testid="payment-notice">
                   <strong>{t("paymentNotice")}: </strong>
@@ -494,6 +688,7 @@ export default function Checkout() {
                     : `Payment will be processed in EUR (equivalent of ${fmt(total)}). Stripe does not charge in XOF yet.`}
                 </div>
               )}
+
               <div className="flex gap-3 mt-6">
                 <Button variant="outline" onClick={() => setStep(1)} className="rounded-none">←</Button>
                 <Button onClick={placeOrder} disabled={loading} data-testid="place-order-btn"

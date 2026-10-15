@@ -46,7 +46,7 @@ export default function AdminReviews() {
                 <div className="text-xs text-ink-muted mt-2">{r.author_name} · {r.product ? <Link to={`/product/${r.product.slug}`} className="underline hover:text-brand" target="_blank">{r.product.name}</Link> : "produit supprime"}</div>
                 {replying === r.id ? (
                   <div className="mt-3" data-testid={`reply-form-${r.id}`}>
-                    <Textarea rows={3} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Votre reponse publique au nom de STRYKOS..." data-testid={`reply-text-${r.id}`} />
+                    <Textarea rows={3} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Votre reponse publique au nom de CAKESSHOP..." data-testid={`reply-text-${r.id}`} />
                     <div className="flex gap-2 mt-2">
                       <Button size="sm" onClick={() => saveReply(r)} className="bg-ink hover:bg-ink/90 rounded-none" data-testid={`reply-save-${r.id}`}>Publier la reponse</Button>
                       {r.admin_reply && <Button size="sm" variant="outline" onClick={() => saveReply(r, "")} className="rounded-none text-red-600">Supprimer</Button>}
@@ -55,7 +55,7 @@ export default function AdminReviews() {
                   </div>
                 ) : r.admin_reply ? (
                   <div className="mt-3 bg-secondary border-l-2 border-brand p-3 text-sm" data-testid={`admin-reply-${r.id}`}>
-                    <div className="text-[11px] uppercase tracking-wider font-bold text-brand mb-1 flex justify-between">Reponse STRYKOS <button onClick={() => { setReplying(r.id); setReplyText(r.admin_reply); }} className="underline font-normal normal-case">modifier</button></div>
+                    <div className="text-[11px] uppercase tracking-wider font-bold text-brand mb-1 flex justify-between">Reponse CAKESSHOP <button onClick={() => { setReplying(r.id); setReplyText(r.admin_reply); }} className="underline font-normal normal-case">modifier</button></div>
                     <p className="text-ink-soft whitespace-pre-line">{r.admin_reply}</p>
                   </div>
                 ) : (

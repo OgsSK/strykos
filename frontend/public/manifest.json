@@ -1,11 +1,11 @@
 {
-  "name": "STRYKOS",
-  "short_name": "STRYKOS",
-  "description": "Boutique de football multimarque indépendante",
+  "name": "CAKES SHOP — Pâtisserie artisanale",
+  "short_name": "CAKES SHOP",
+  "description": "Pâtisserie artisanale indépendante. Gâteaux d'anniversaire, wedding cakes, cupcakes et macarons faits maison. Livraison à Bamako et au Mali.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b0b0d",
-  "theme_color": "#0b0b0d",
+  "background_color": "#FAF5ED",
+  "theme_color": "#4A2C25",
   "orientation": "portrait",
   "icons": [
     {

@@ -4,15 +4,24 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Profile, UserAddress, NewsletterSubscriber
-from auth import hash_password, verify_password, create_access_token, get_current_user
+from auth import (
+    hash_password, verify_password, create_access_token, get_current_user,
+    create_email_confirm_token, decode_email_confirm_token,
+)
 from emails import send_templated, _layout, PUBLIC_BASE_URL, tpl_email_change_old, tpl_email_change_new
 from models import EmailChangeRequest
 
+import re
+import secrets
+import hashlib
+from datetime import datetime, timezone, timedelta
+from html import escape
+from models import PasswordResetToken
+
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-import re
 
-
+# ==================== Helpers mot de passe ====================
 def password_strength(pwd: str) -> dict:
     """Evalue un mot de passe. Retourne score (0-5), label, criteria."""
     if not pwd:
@@ -37,7 +46,6 @@ def password_strength(pwd: str) -> dict:
 
 
 def validate_password(pwd: str) -> None:
-    """Verifie que le mot de passe respecte le minimum requis. Raise si non."""
     if len(pwd) < 8:
         raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 8 caracteres")
     if not re.search(r"[A-Za-z]", pwd):
@@ -46,6 +54,7 @@ def validate_password(pwd: str) -> None:
         raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins un chiffre")
 
 
+# ==================== Schémas ====================
 class RegisterInput(BaseModel):
     email: EmailStr
     password: str
@@ -67,46 +76,53 @@ class ProfileUpdate(BaseModel):
     preferred_language: str | None = None
 
 
+class ConfirmEmailIn(BaseModel):
+    token: str
+
+
+# ==================== Utils ====================
 def _auth_response(user: Profile, response: Response):
     token = create_access_token(user.id, user.email, user.role)
     response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=604800, path="/")
     return {"token": token, "user": user.to_dict()}
 
 
-def _tpl_welcome(user: Profile, lang: str):
+def _tpl_welcome(user: Profile, lang: str, confirm_token: str):
+    """Template du mail d'inscription : demande de confirmation d'email."""
     first = escape(user.first_name or "")
+    confirm_url = f"{PUBLIC_BASE_URL}/confirm-email?token={confirm_token}"
     if lang == "en":
-        subject = "Welcome to STRYKOS"
+        subject = "Confirm your CAKESSHOP account"
         body = (f"<p>Hi {first},</p>"
-                "<p>Welcome to STRYKOS — the independent multi-brand store for real football players.</p>"
-                "<p>Your account is now active. You can:</p>"
-                "<ul style='margin:8px 0 16px;padding-left:20px'>"
-                "<li>Track your orders in real time</li>"
-                "<li>Save your favourite products to your wishlist</li>"
-                "<li>Check out faster with saved addresses</li>"
-                "</ul>")
-        cta = "Discover the shop"
+                "<p>Welcome to CAKESSHOP — your artisan bakery, handmade with passion.</p>"
+                "<p>To activate your account, please confirm your email address by clicking below. "
+                "This link is valid for 24 hours.</p>"
+                f'<p style="margin:22px 0"><a href="{confirm_url}" '
+                f'style="background:#C58B58;color:#fff;text-decoration:none;padding:14px 26px;'
+                f'font-weight:bold;text-transform:uppercase;display:inline-block;letter-spacing:.5px">Confirm my account</a></p>'
+                "<p>Once confirmed, you can log in and start ordering.</p>"
+                "<p style='color:#777;font-size:13px'>If you did not create an account, you can ignore this email.</p>")
+        title = "Confirm your account"
     else:
-        subject = "Bienvenue chez STRYKOS"
+        subject = "Confirmez votre compte CAKESSHOP"
         body = (f"<p>Bonjour {first},</p>"
-                "<p>Bienvenue chez STRYKOS — la boutique multimarque indépendante pour les vrais joueurs de football.</p>"
-                "<p>Votre compte est maintenant actif. Vous pouvez :</p>"
-                "<ul style='margin:8px 0 16px;padding-left:20px'>"
-                "<li>Suivre vos commandes en temps réel</li>"
-                "<li>Enregistrer vos produits préférés dans votre wishlist</li>"
-                "<li>Commander plus rapidement grâce à vos adresses sauvegardées</li>"
-                "</ul>")
-        cta = "Découvrir la boutique"
-    if PUBLIC_BASE_URL.startswith("https://"):
-        body += (f'<p style="margin:22px 0"><a href="{PUBLIC_BASE_URL}/catalog" '
-                 f'style="background:#e4002b;color:#fff;text-decoration:none;padding:12px 22px;'
-                 f'font-weight:bold;text-transform:uppercase;display:inline-block">{cta}</a></p>')
-    return subject, _layout("Bienvenue" if lang == "fr" else "Welcome", body, lang)
+                "<p>Bienvenue chez CAKESSHOP — votre pâtisserie artisanale, faite maison avec passion.</p>"
+                "<p>Pour activer votre compte, merci de confirmer votre adresse e-mail en cliquant ci-dessous. "
+                "Ce lien est valable 24 heures.</p>"
+                f'<p style="margin:22px 0"><a href="{confirm_url}" '
+                f'style="background:#C58B58;color:#fff;text-decoration:none;padding:14px 26px;'
+                f'font-weight:bold;text-transform:uppercase;display:inline-block;letter-spacing:.5px">Confirmer mon compte</a></p>'
+                "<p>Une fois confirmé, vous pourrez vous connecter et passer commande.</p>"
+                "<p style='color:#777;font-size:13px'>Si vous n'êtes pas à l'origine de cette inscription, ignorez cet e-mail.</p>")
+        title = "Confirmez votre compte"
+    return subject, _layout(title, body, lang)
 
 
-
+# ==================== Routes ====================
 @router.post("/register")
-async def register(data: RegisterInput, response: Response, db: AsyncSession = Depends(get_db)):
+async def register(data: RegisterInput, db: AsyncSession = Depends(get_db)):
+    """Inscription : crée le compte + envoie un email de confirmation.
+    ⭐ NE CONNECTE PAS automatiquement : l'utilisateur doit confirmer son email."""
     email = data.email.lower().strip()
     existing = await db.execute(select(Profile).where(Profile.email == email))
     if existing.scalar_one_or_none():
@@ -120,16 +136,44 @@ async def register(data: RegisterInput, response: Response, db: AsyncSession = D
     await db.commit()
     await db.refresh(user)
 
-    # Email de bienvenue
+    # Génère le token de confirmation (JWT 24h)
+    confirm_token = create_email_confirm_token(user.id, user.email)
+
+    # Envoie l'email de confirmation (ne bloque jamais l'inscription)
     lang = data.lang if data.lang in ("fr", "en") else "fr"
     try:
-        subject, html = _tpl_welcome(user, lang)
+        subject, html = _tpl_welcome(user, lang, confirm_token)
         await send_templated(db, to=user.email, subject=subject, html=html, template="welcome")
     except Exception:
-        pass  # Ne jamais bloquer l'inscription sur un échec email
+        pass
 
+    return {
+        "ok": True,
+        "requires_confirmation": True,
+        "email": user.email,
+        "message": "Vérifiez votre boîte mail pour confirmer votre compte.",
+    }
+
+
+@router.post("/confirm-email")
+async def confirm_email(data: ConfirmEmailIn, response: Response, db: AsyncSession = Depends(get_db)):
+    """Valide le token de confirmation et connecte automatiquement l'utilisateur."""
+    payload = decode_email_confirm_token(data.token)
+    if not payload:
+        raise HTTPException(status_code=400, detail="Lien de confirmation invalide ou expiré")
+
+    user_id = payload.get("sub")
+    user = (await db.execute(select(Profile).where(Profile.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Compte introuvable")
+
+    # ⭐ Marque l'email comme vérifié (la colonne existe maintenant en base)
+    user.email_verified = True
+    await db.commit()
+    await db.refresh(user)
+
+    # Connecte l'utilisateur (retourne token + cookie)
     return _auth_response(user, response)
-
 
 @router.post("/login")
 async def login(data: LoginInput, response: Response, db: AsyncSession = Depends(get_db)):
@@ -138,6 +182,14 @@ async def login(data: LoginInput, response: Response, db: AsyncSession = Depends
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou mot de passe incorrect")
+
+    # ⭐ NOUVEAU : bloque la connexion si l'email n'est pas confirmé
+    if not user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Votre compte n'est pas encore activé. Vérifiez votre boîte mail et cliquez sur le lien de confirmation."
+        )
+
     return _auth_response(user, response)
 
 
@@ -163,7 +215,7 @@ async def update_me(data: ProfileUpdate, user: Profile = Depends(get_current_use
     return user.to_dict()
 
 
-# ---- Addresses ----
+# ==================== Adresses ====================
 class AddressInput(BaseModel):
     label: str = ""
     first_name: str = ""
@@ -202,15 +254,7 @@ async def delete_address(address_id: str, user: Profile = Depends(get_current_us
     return {"ok": True}
 
 
-# ---------------- Password reset ----------------
-import secrets
-import hashlib
-from datetime import datetime, timezone, timedelta
-from html import escape
-from models import PasswordResetToken
-
-
-
+# ==================== Password reset ====================
 class ForgotInput(BaseModel):
     email: EmailStr
     lang: str = "fr"
@@ -244,17 +288,17 @@ class DeleteAccountInput(BaseModel):
 def _tpl_reset(user: Profile, link: str, lang: str):
     first = escape(user.first_name or "")
     if lang == "en":
-        subject = "Reset your STRYKOS password"
-        body = (f"<p>Hi {first},</p><p>We received a request to reset the password of your STRYKOS account. "
+        subject = "Reset your CAKESSHOP password"
+        body = (f"<p>Hi {first},</p><p>We received a request to reset the password of your CAKESSHOP account. "
                 f"This link is valid for 1 hour and can be used once.</p>"
-                f'<p style="margin:22px 0"><a href="{link}" style="background:#e4002b;color:#fff;text-decoration:none;padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">Choose a new password</a></p>'
+                f'<p style="margin:22px 0"><a href="{link}" style="background:#C58B58;color:#fff;text-decoration:none;padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">Choose a new password</a></p>'
                 "<p style=\"color:#777;font-size:13px\">If you did not request this, you can ignore this email: your password stays unchanged.</p>")
         title = "Password reset"
     else:
-        subject = "Réinitialisation de votre mot de passe STRYKOS"
-        body = (f"<p>Bonjour {first},</p><p>Nous avons reçu une demande de réinitialisation du mot de passe de votre compte STRYKOS. "
+        subject = "Réinitialisation de votre mot de passe CAKESSHOP"
+        body = (f"<p>Bonjour {first},</p><p>Nous avons reçu une demande de réinitialisation du mot de passe de votre compte CAKESSHOP. "
                 f"Ce lien est valable 1 heure et utilisable une seule fois.</p>"
-                f'<p style="margin:22px 0"><a href="{link}" style="background:#e4002b;color:#fff;text-decoration:none;padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">Choisir un nouveau mot de passe</a></p>'
+                f'<p style="margin:22px 0"><a href="{link}" style="background:#C58B58;color:#fff;text-decoration:none;padding:12px 22px;font-weight:bold;text-transform:uppercase;display:inline-block">Choisir un nouveau mot de passe</a></p>'
                 "<p style=\"color:#777;font-size:13px\">Si vous n'êtes pas à l'origine de cette demande, ignorez cet e-mail : votre mot de passe reste inchangé.</p>")
         title = "Mot de passe oublié"
     return subject, _layout(title, body, lang)
@@ -264,7 +308,6 @@ def _tpl_reset(user: Profile, link: str, lang: str):
 async def forgot_password(data: ForgotInput, db: AsyncSession = Depends(get_db)):
     email = data.email.lower().strip()
     user = (await db.execute(select(Profile).where(Profile.email == email))).scalar_one_or_none()
-    # Always answer OK to avoid account enumeration
     if user:
         recent = await db.execute(select(PasswordResetToken).where(
             PasswordResetToken.user_id == user.id, PasswordResetToken.used == False,
@@ -282,27 +325,25 @@ async def forgot_password(data: ForgotInput, db: AsyncSession = Depends(get_db))
     return {"ok": True}
 
 
-
 def _tpl_password_changed(user: Profile, lang: str):
     first = escape(user.first_name or "")
     if lang == "en":
-        subject = "Your STRYKOS password has been changed"
+        subject = "Your CAKESSHOP password has been changed"
         body = (f"<p>Hi {first},</p>"
-                "<p>Your STRYKOS password has just been changed. You can now log in with your new password.</p>"
-                "<p style='color:#a00;background:#fff3f3;padding:12px;border-left:3px solid #e4002b'>"
+                "<p>Your CAKESSHOP password has just been changed. You can now log in with your new password.</p>"
+                "<p style='color:#a00;background:#fff3f3;padding:12px;border-left:3px solid #C58B58'>"
                 "<strong>If you did not make this change</strong>, reset your password immediately and contact us at "
                 "contact@actoos.com.</p>")
         title = "Password changed"
     else:
-        subject = "Votre mot de passe STRYKOS a été modifié"
+        subject = "Votre mot de passe CAKESSHOP a été modifié"
         body = (f"<p>Bonjour {first},</p>"
-                "<p>Votre mot de passe STRYKOS vient d'être modifié. Vous pouvez dès maintenant vous connecter avec votre nouveau mot de passe.</p>"
-                "<p style='color:#a00;background:#fff3f3;padding:12px;border-left:3px solid #e4002b'>"
+                "<p>Votre mot de passe CAKESSHOP vient d'être modifié. Vous pouvez dès maintenant vous connecter avec votre nouveau mot de passe.</p>"
+                "<p style='color:#a00;background:#fff3f3;padding:12px;border-left:3px solid #C58B58'>"
                 "<strong>Si vous n'êtes pas à l'origine de ce changement</strong>, réinitialisez votre mot de passe immédiatement "
                 "et contactez-nous à contact@actoos.com.</p>")
         title = "Mot de passe modifié"
     return subject, _layout(title, body, lang)
-
 
 
 @router.post("/reset-password")
@@ -319,7 +360,6 @@ async def reset_password(data: ResetInput, db: AsyncSession = Depends(get_db)):
     tok.used = True
     await db.commit()
 
-    # Confirmation de changement de mot de passe
     lang = data.lang if data.lang in ("fr", "en") else "fr"
     try:
         subject, html = _tpl_password_changed(user, lang)
@@ -330,10 +370,9 @@ async def reset_password(data: ResetInput, db: AsyncSession = Depends(get_db)):
     return {"ok": True}
 
 
-# ---------------- Change password / Change email / Delete account ----------------
+# ==================== Change password / Change email / Delete account ====================
 @router.post("/check-password-strength")
 async def check_password_strength(data: PasswordCheckIn):
-    """Retourne le score du mot de passe (public, pour l'UI temps reel)."""
     return password_strength(data.password)
 
 
@@ -348,7 +387,6 @@ async def change_password(data: ChangePasswordInput, user: Profile = Depends(get
     user.password_hash = hash_password(data.new_password)
     await db.commit()
 
-    # Notification email de securite
     try:
         lang = user.preferred_language if user.preferred_language in ("fr", "en") else "fr"
         subject, html = _tpl_password_changed(user, lang)
@@ -361,7 +399,6 @@ async def change_password(data: ChangePasswordInput, user: Profile = Depends(get
 
 @router.post("/request-email-change")
 async def request_email_change(data: EmailChangeRequestIn, user: Profile = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Demande un changement d'email : envoie 2 emails de confirmation (ancien + nouveau)."""
     if not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=400, detail="Mot de passe incorrect")
     new_email = str(data.new_email).lower().strip()
@@ -372,7 +409,6 @@ async def request_email_change(data: EmailChangeRequestIn, user: Profile = Depen
     if existing:
         raise HTTPException(status_code=400, detail="Cet email est deja utilise par un autre compte")
 
-    # Annule toute demande precedente non utilisee
     prev = (await db.execute(
         select(EmailChangeRequest).where(
             EmailChangeRequest.user_id == user.id,
@@ -401,7 +437,6 @@ async def request_email_change(data: EmailChangeRequestIn, user: Profile = Depen
     lang = user.preferred_language if user.preferred_language in ("fr", "en") else "fr"
     u_dict = user.to_dict()
 
-    # Email a l'ANCIEN (avec lien Annuler)
     cancel_url = f"{PUBLIC_BASE_URL}/account?cancel_email_change=1"
     try:
         subject, html = tpl_email_change_old(u_dict, old_email, new_email, raw_old, cancel_url, lang)
@@ -409,7 +444,6 @@ async def request_email_change(data: EmailChangeRequestIn, user: Profile = Depen
     except Exception:
         pass
 
-    # Email au NOUVEAU
     try:
         subject, html = tpl_email_change_new(u_dict, old_email, new_email, raw_new, lang)
         await send_templated(db, to=new_email, subject=subject, html=html, template="email_change_new")
@@ -421,11 +455,9 @@ async def request_email_change(data: EmailChangeRequestIn, user: Profile = Depen
 
 @router.get("/confirm-email-change/{token}")
 async def confirm_email_change(token: str, type: str = "old", db: AsyncSession = Depends(get_db)):
-    """Confirme le changement cote ancien ou nouveau email. Si les 2 confirmes, applique le changement."""
     th = hashlib.sha256(token.encode()).hexdigest()
     now = datetime.now(timezone.utc)
 
-    # Cherche par token old ou new
     ecr = None
     if type == "old":
         ecr = (await db.execute(select(EmailChangeRequest).where(EmailChangeRequest.old_token_hash == th))).scalar_one_or_none()
@@ -433,7 +465,6 @@ async def confirm_email_change(token: str, type: str = "old", db: AsyncSession =
         ecr = (await db.execute(select(EmailChangeRequest).where(EmailChangeRequest.new_token_hash == th))).scalar_one_or_none()
 
     if not ecr:
-        # Fallback : essaie dans l'autre sens (au cas ou le type serait mal passe)
         ecr = (await db.execute(select(EmailChangeRequest).where(
             (EmailChangeRequest.old_token_hash == th) | (EmailChangeRequest.new_token_hash == th)
         ))).scalar_one_or_none()
@@ -447,19 +478,16 @@ async def confirm_email_change(token: str, type: str = "old", db: AsyncSession =
     if ecr.expires_at < now:
         raise HTTPException(status_code=400, detail="Lien expire")
 
-    # Marque le cote confirme
     if ecr.old_token_hash == th:
         ecr.old_confirmed_at = now
     if ecr.new_token_hash == th:
         ecr.new_confirmed_at = now
     await db.commit()
 
-    # Si les 2 confirmes : applique le changement
     if ecr.old_confirmed_at and ecr.new_confirmed_at:
         user = (await db.execute(select(Profile).where(Profile.id == ecr.user_id))).scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="Utilisateur introuvable")
-        # Revérifier l'unicite au cas ou
         existing = (await db.execute(select(Profile).where(Profile.email == ecr.new_email, Profile.id != user.id))).scalar_one_or_none()
         if existing:
             raise HTTPException(status_code=400, detail="Cet email est deja utilise")
@@ -471,13 +499,13 @@ async def confirm_email_change(token: str, type: str = "old", db: AsyncSession =
         try:
             first = escape(user.first_name or "")
             if lang == "en":
-                subject = "Your STRYKOS email has been updated"
-                body = (f"<p>Hi {first},</p><p>Your STRYKOS account email has been successfully updated to "
+                subject = "Your CAKESSHOP email has been updated"
+                body = (f"<p>Hi {first},</p><p>Your CAKESSHOP account email has been successfully updated to "
                         f"<strong>{escape(ecr.new_email)}</strong>.</p>"
                         "<p style='color:#777;font-size:13px'>If you did not make this change, contact us immediately.</p>")
             else:
-                subject = "Votre email STRYKOS a ete modifie"
-                body = (f"<p>Bonjour {first},</p><p>L'email de votre compte STRYKOS a bien ete modifie vers "
+                subject = "Votre email CAKESSHOP a ete modifie"
+                body = (f"<p>Bonjour {first},</p><p>L'email de votre compte CAKESSHOP a bien ete modifie vers "
                         f"<strong>{escape(ecr.new_email)}</strong>.</p>"
                         "<p style='color:#777;font-size:13px'>Si vous n'etes pas a l'origine de ce changement, contactez-nous immediatement.</p>")
             html = _layout("Email modifie" if lang == "fr" else "Email updated", body, lang)
@@ -497,7 +525,6 @@ async def confirm_email_change(token: str, type: str = "old", db: AsyncSession =
 
 @router.get("/pending-email-change")
 async def pending_email_change(user: Profile = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Retourne la demande de changement d'email en cours pour l'utilisateur (s'il y en a une)."""
     now = datetime.now(timezone.utc)
     ecr = (await db.execute(
         select(EmailChangeRequest).where(
@@ -524,7 +551,6 @@ async def pending_email_change(user: Profile = Depends(get_current_user), db: As
 
 @router.post("/cancel-email-change")
 async def cancel_email_change(user: Profile = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Annule la demande de changement d'email en cours."""
     now = datetime.now(timezone.utc)
     ecr = (await db.execute(
         select(EmailChangeRequest).where(
@@ -548,7 +574,6 @@ async def delete_my_account(data: DeleteAccountInput, user: Profile = Depends(ge
     if confirm not in ("SUPPRIMER", "DELETE"):
         raise HTTPException(status_code=400, detail="Tapez SUPPRIMER pour confirmer")
 
-    # Desactive la newsletter liee
     try:
         sub = (await db.execute(select(NewsletterSubscriber).where(
             (NewsletterSubscriber.user_id == user.id) | (NewsletterSubscriber.email == user.email)
@@ -559,8 +584,6 @@ async def delete_my_account(data: DeleteAccountInput, user: Profile = Depends(ge
     except Exception:
         pass
 
-    # Suppression du compte (cascade sur adresses, avis, wishlist)
-    # Les commandes restent (user_id -> NULL)
     email_backup = user.email
     try:
         await db.delete(user)
@@ -569,7 +592,6 @@ async def delete_my_account(data: DeleteAccountInput, user: Profile = Depends(ge
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Erreur suppression: {str(e)[:100]}")
 
-    # Log (le compte est supprime, on garde une trace dans email_logs)
     try:
         from models import EmailLog
         db.add(EmailLog(to_email=email_backup, subject="Compte supprime par le client",

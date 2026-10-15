@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, apiError } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { money, fmtDate, STATUSES, STATUS_LABELS, STATUS_COLORS, downloadCsv } from "@/lib/adminUtils";
 import { toast } from "sonner";
-import { Search, Truck, Trash2, Eye, Download, X, RotateCcw, XCircle, Package, Send, CheckCircle2, PackageCheck } from "lucide-react";
+import { Search, Truck, Trash2, Eye, Download, X, RotateCcw, XCircle, Package, Send, CheckCircle2, PackageCheck, KeyRound } from "lucide-react";
 
 // Groupes de statuts pour la barre d'accès rapides
 const QUICK_FILTERS = [
@@ -21,6 +21,8 @@ export default function AdminOrders() {
   const [orders, setOrders] = useState([]);
   const [counts, setCounts] = useState(null);
   const [q, setQ] = useState(params.get("q") || "");
+  // ⭐ Filtre "Créneau programmé" (client-side, appliqué sur les résultats déjà chargés)
+  const [schedFilter, setSchedFilter] = useState("all");
 
   const status = params.get("status") || "";
   const paymentStatus = params.get("payment_status") || "";
@@ -66,9 +68,26 @@ export default function AdminOrders() {
   const clearAllFilters = () => {
     setParams(new URLSearchParams());
     setQ("");
+    setSchedFilter("all");
   };
 
-  const hasActiveFilters = !!(status || paymentStatus || country || (period && period !== "all") || (sort && sort !== "recent") || q);
+  const hasActiveFilters = !!(status || paymentStatus || country || (period && period !== "all") || (sort && sort !== "recent") || q || schedFilter !== "all");
+
+  // ⭐ Filtrage "Créneau programmé" (client-side, appliqué sur les résultats)
+  const filteredOrders = useMemo(() => {
+    if (schedFilter === "all") return orders;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return orders.filter((o) => {
+      // Les 3 filtres "scheduled" ne concernent que les commandes avec date
+      if (!o.scheduled_date) return false;
+      const target = new Date(o.scheduled_date); target.setHours(0, 0, 0, 0);
+      const diff = Math.round((target - today) / (1000 * 60 * 60 * 24));
+      if (schedFilter === "today") return diff === 0;
+      if (schedFilter === "week") return diff >= 0 && diff <= 7;
+      if (schedFilter === "overdue") return diff < 0;
+      return true;
+    });
+  }, [orders, schedFilter]);
 
   const updateStatus = async (id, s) => {
     try {
@@ -88,7 +107,7 @@ export default function AdminOrders() {
     <div data-testid="admin-orders">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <h1 className="font-heading text-2xl font-bold uppercase">
-          Commandes <span className="text-ink-muted text-base font-normal">({orders.length})</span>
+          Commandes <span className="text-ink-muted text-base font-normal">({filteredOrders.length})</span>
         </h1>
         <div className="flex gap-2 items-center">
           {hasActiveFilters && (
@@ -171,12 +190,26 @@ export default function AdminOrders() {
           <option value="90d">90 derniers jours</option>
         </select>
 
+        {/* ⭐ NOUVEAU : filtre "Créneau programmé" */}
+        <select
+          value={schedFilter}
+          onChange={(e) => setSchedFilter(e.target.value)}
+          className="border border-border h-10 px-2 text-sm bg-white"
+          data-testid="orders-scheduled-filter"
+        >
+          <option value="all">Tous les créneaux</option>
+          <option value="today">📅 Aujourd'hui</option>
+          <option value="week">📅 Cette semaine</option>
+          <option value="overdue">⚠️ En retard</option>
+        </select>
+
         <select value={sort} onChange={(e) => setFilter("sort", e.target.value)}
           className="border border-border h-10 px-2 text-sm bg-white" data-testid="orders-sort">
           <option value="recent">Plus récentes</option>
           <option value="oldest">Plus anciennes</option>
           <option value="amount_desc">Montant ↓</option>
           <option value="amount_asc">Montant ↑</option>
+          <option value="scheduled">📅 Date prévue</option>
         </select>
       </div>
 
@@ -193,6 +226,22 @@ export default function AdminOrders() {
         </div>
       )}
 
+      {/* Bandeau : filtre programmé actif */}
+      {schedFilter !== "all" && (
+        <div className="mb-3 border border-blue-200 bg-blue-50 px-4 py-2 text-xs flex items-center justify-between">
+          <span className="text-blue-800">
+            <strong>Filtre programmé : </strong>
+            {schedFilter === "today" && "📅 Aujourd'hui"}
+            {schedFilter === "week" && "📅 Cette semaine"}
+            {schedFilter === "overdue" && "⚠️ En retard"}
+            {" "}· {filteredOrders.length} commande{filteredOrders.length > 1 ? "s" : ""}
+          </span>
+          <button onClick={() => setSchedFilter("all")} className="text-blue-700 font-semibold hover:underline">
+            Retirer
+          </button>
+        </div>
+      )}
+
       <div className="bg-white border border-border overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-secondary text-left text-xs uppercase tracking-wider">
@@ -200,6 +249,8 @@ export default function AdminOrders() {
               <th className="p-3">N°</th>
               <th className="p-3">Client</th>
               <th className="p-3">Total</th>
+              {/* ⭐ NOUVEAU : colonne "Prévu" */}
+              <th className="p-3 hidden md:table-cell">Prévu</th>
               <th className="p-3">Paiement</th>
               <th className="p-3">Statut</th>
               <th className="p-3 hidden md:table-cell">Suivi</th>
@@ -208,7 +259,7 @@ export default function AdminOrders() {
             </tr>
           </thead>
           <tbody>
-            {orders.map((o) => {
+            {filteredOrders.map((o) => {
               const isReturn = o.status?.startsWith("return_");
               const isCancellation = o.status === "cancellation_requested";
               const rowHighlight = isReturn ? "border-l-4 border-l-orange-400" : isCancellation ? "border-l-4 border-l-red-500" : "";
@@ -218,6 +269,12 @@ export default function AdminOrders() {
                     <Link to={`/admin/orders/${o.id}`} className="font-semibold hover:text-brand" data-testid={`order-link-${o.order_number}`}>
                       {o.order_number}
                     </Link>
+                    {/* ⭐ NOUVEAU : pastille OTP actif */}
+                    {o.delivery_otp && ["shipped", "in_transit"].includes(o.status) && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider bg-purple-100 text-purple-800 px-1.5 py-0.5">
+                        <KeyRound className="w-3 h-3" /> OTP
+                      </span>
+                    )}
                     {o.promo_code && <div className="text-[10px] text-purple-700">{o.promo_code}</div>}
                     {isReturn && (
                       <div className="text-[10px] text-orange-700 font-semibold mt-0.5 inline-flex items-center gap-1">
@@ -241,6 +298,27 @@ export default function AdminOrders() {
                     {money(o.total, o.currency)}
                     {o.charge_currency !== o.currency && <div className="text-[10px] text-ink-muted">{money(o.charge_total, o.charge_currency)}</div>}
                   </td>
+
+                  {/* ⭐ NOUVEAU : cellule "Prévu" */}
+                  <td className="p-3 hidden md:table-cell text-sm whitespace-nowrap">
+                    {o.scheduled_date ? (
+                      (() => {
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        const target = new Date(o.scheduled_date); target.setHours(0, 0, 0, 0);
+                        const diff = Math.round((target - today) / (1000 * 60 * 60 * 24));
+                        const dateStr = target.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+                        const slot = o.scheduled_time_slot || "";
+                        const slotSuffix = slot ? ` · ${slot}` : "";
+                        if (diff < 0) return <span className="text-red-600 font-semibold">⚠️ {dateStr}{slotSuffix}</span>;
+                        if (diff === 0) return <span className="bg-amber-100 text-amber-800 px-2 py-0.5 font-semibold">🔔 {dateStr}{slotSuffix}</span>;
+                        if (diff === 1) return <span className="text-orange-600 font-semibold">Demain {dateStr}{slotSuffix}</span>;
+                        return <span className="text-ink-soft">{dateStr}{slotSuffix}</span>;
+                      })()
+                    ) : (
+                      <span className="text-ink-muted">—</span>
+                    )}
+                  </td>
+
                   <td className="p-3">
                     <span className={`text-xs font-semibold ${o.payment_status === "paid" ? "text-green-600" : o.payment_status === "refunded" ? "text-red-600" : "text-amber-600"}`}>
                       {o.payment_status}
@@ -268,7 +346,7 @@ export default function AdminOrders() {
                 </tr>
               );
             })}
-            {orders.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-ink-muted">Aucune commande</td></tr>}
+            {filteredOrders.length === 0 && <tr><td colSpan={9} className="p-6 text-center text-ink-muted">Aucune commande</td></tr>}
           </tbody>
         </table>
       </div>

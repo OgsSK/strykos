@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Column, String, Text, Boolean, Integer, Numeric, DateTime, ForeignKey, JSON, UniqueConstraint
+    Column, String, Text, Boolean, Integer, Numeric, DateTime, Date, ForeignKey, JSON, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
 from database import Base
@@ -23,8 +23,11 @@ class Profile(Base):
     first_name = Column(String(120), default="")
     last_name = Column(String(120), default="")
     phone = Column(String(60), default="")
+    # ⭐ Rôles supportés : customer | admin | driver
     role = Column(String(30), default="customer", index=True)
     preferred_language = Column(String(5), default="fr")
+    # ⭐ NOUVEAU : confirmation d'email obligatoire pour activer le compte
+    email_verified = Column(Boolean, default=False, nullable=False, server_default="false", index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     addresses = relationship("UserAddress", back_populates="user", cascade="all, delete-orphan")
@@ -34,6 +37,7 @@ class Profile(Base):
             "id": self.id, "email": self.email, "first_name": self.first_name,
             "last_name": self.last_name, "phone": self.phone, "role": self.role,
             "preferred_language": self.preferred_language,
+            "email_verified": bool(self.email_verified),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -122,8 +126,8 @@ class Product(Base):
     is_new = Column(Boolean, default=False, index=True)
     is_featured = Column(Boolean, default=False, index=True)
     is_best_seller = Column(Boolean, default=False, index=True)
-    gender = Column(String(30), default="", index=True)     # homme | femme | enfant | unisexe
-    sport = Column(String(40), default="", index=True)      # football | running | lifestyle | ...
+    gender = Column(String(30), default="", index=True)     # occasion : anniversaire | mariage | ...
+    sport = Column(String(40), default="", index=True)      # saveur : chocolat | vanille | ...
     club = Column(String(120), default="", index=True)
     national_team = Column(String(120), default="", index=True)
     surface = Column(String(60), default="")
@@ -131,6 +135,14 @@ class Product(Base):
     colors = Column(JSON, default=list)
     customizable = Column(Boolean, default=False)
     customization_price_eur = Column(Numeric(12, 2), default=0)
+    # ⭐ Champs de personnalisation configurables par produit
+    # Format : [{"key":"message","type":"text","label_fr":"...","label_en":"...",
+    #            "placeholder_fr":"...","placeholder_en":"...","required":true,
+    #            "max_length":30,"price_eur":2.0,"default_value":"","options":[]}]
+    customization_fields = Column(JSON, default=list)
+    # ⭐ NOUVEAU : texte du bouton sur la home (vide = auto)
+    # Valeurs : "" | "auto" | "add_to_cart" | "choose" | "customize" | "order" | "view"
+    cta_label = Column(String(40), default="")
     video_url = Column(Text, default="")
     sales_count = Column(Integer, default=0)
     published = Column(Boolean, default=True, index=True)
@@ -199,6 +211,18 @@ class Order(Base):
     total = Column(Numeric(14, 2), default=0)
     charge_total = Column(Numeric(14, 2), default=0)
     payment_notice = Column(Text, default="")
+    customer_note = Column(Text, default="")   # ⭐ Note / instructions du client
+    # ⭐ Commande programmée
+    scheduled_date = Column(Date, nullable=True, index=True)   # Date souhaitée (YYYY-MM-DD)
+    scheduled_time_slot = Column(String(40), default="")       # Ex: "matin", "apres-midi", "soir"
+    # ⭐ NOUVEAU : code OTP de livraison
+    delivery_otp = Column(String(6), default="")
+    delivery_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    delivery_otp_attempts = Column(Integer, default=0)
+    delivery_otp_locked = Column(Boolean, default=False)
+    delivered_by_driver_id = Column(String(36), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    delivered_via = Column(String(20), default="")  # "otp" | "admin_manual"
+    driver_assigned_at = Column(DateTime(timezone=True), nullable=True)
     shipping_address = Column(JSON, default=dict)
     shipping_method = Column(JSON, default=dict)
     items = Column(JSON, default=list)
@@ -220,8 +244,8 @@ class Order(Base):
     cancellation_refused_reason = Column(Text, default="")
     # --- Retours / RMA ---
     return_reason = Column(Text, default="")
-    return_type = Column(String(20), default="")          # refund | exchange
-    return_products = Column(JSON, default=list)           # [{product_id, variant_id, name, size, reason, photos: []}]
+    return_type = Column(String(20), default="")
+    return_products = Column(JSON, default=list)
     return_rma_code = Column(String(80), default="", index=True)
     return_label_url = Column(Text, default="")
     return_requested_at = Column(DateTime(timezone=True), nullable=True)
@@ -231,11 +255,18 @@ class Order(Base):
     return_received_at = Column(DateTime(timezone=True), nullable=True)
     return_exchange_product_id = Column(String(36), nullable=True)
     return_exchange_variant_id = Column(String(36), nullable=True)
-    exchange_price_diff = Column(Numeric(14, 2), default=0)      # diff en EUR (positif = a payer, negatif = a rembourser)
-    exchange_payment_status = Column(String(20), default="")     # pending | paid | refunded
+    exchange_price_diff = Column(Numeric(14, 2), default=0)
+    exchange_payment_status = Column(String(20), default="")
     exchange_stripe_session_id = Column(String(255), default="")
-    shipping_origin_country = Column(String(5), default="")       # BE, ML...
-    shipping_segments = Column(JSON, default=list)                # [{carrier, tracking_number, tracking_url, status, note, at}]
+    # ⭐ NOUVEAU : message de remboursement envoyé au client
+    refund_message = Column(Text, default="")
+    # ⭐ NOUVEAU : réclamation — médias + demande d'info admin
+    claim_media_urls = Column(JSON, default=list)               # [{"type": "image"|"video", "url": "..."}]
+    claim_info_requested_at = Column(DateTime(timezone=True), nullable=True)
+    claim_info_request_message = Column(Text, default="")
+    claim_info_request_types = Column(JSON, default=list)       # ["photo","video"]
+    shipping_origin_country = Column(String(5), default="")
+    shipping_segments = Column(JSON, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -248,6 +279,9 @@ class Order(Base):
             "subtotal": float(self.subtotal or 0), "shipping_cost": float(self.shipping_cost or 0),
             "discount": float(self.discount or 0), "total": float(self.total or 0),
             "charge_total": float(self.charge_total or 0), "payment_notice": self.payment_notice,
+            # ⭐ Commande programmée (visibles client + admin)
+            "scheduled_date": self.scheduled_date.isoformat() if self.scheduled_date else None,
+            "scheduled_time_slot": self.scheduled_time_slot or "",
             "shipping_method": self.shipping_method, "items": self.items,
             "lang": self.lang, "promo_code": self.promo_code,
             "tracking_carrier": self.tracking_carrier, "tracking_number": self.tracking_number,
@@ -261,6 +295,7 @@ class Order(Base):
             d.update({"user_id": self.user_id, "phone": self.phone, "shipping_address": self.shipping_address,
                       "stripe_session_id": self.stripe_session_id, "admin_notes": self.admin_notes,
                       "hidden_by_customer": bool(self.hidden_by_customer),
+                      "customer_note": self.customer_note or "",
                       "cancellation_reason": self.cancellation_reason or "",
                       "cancellation_requested_at": self.cancellation_requested_at.isoformat() if self.cancellation_requested_at else None,
                       "cancellation_decided_at": self.cancellation_decided_at.isoformat() if self.cancellation_decided_at else None,
@@ -280,6 +315,20 @@ class Order(Base):
                       "exchange_price_diff": float(self.exchange_price_diff or 0),
                       "exchange_payment_status": self.exchange_payment_status or "",
                       "exchange_stripe_session_id": self.exchange_stripe_session_id or "",
+                      "refund_message": self.refund_message or "",
+                      # ⭐ NOUVEAU : réclamation — médias + demande d'info admin
+                      "claim_media_urls": self.claim_media_urls or [],
+                      "claim_info_requested_at": self.claim_info_requested_at.isoformat() if self.claim_info_requested_at else None,
+                      "claim_info_request_message": self.claim_info_request_message or "",
+                      "claim_info_request_types": self.claim_info_request_types or [],
+                      # ⭐ NOUVEAU : code OTP de livraison
+                      "delivery_otp": self.delivery_otp or "",
+                      "delivery_otp_expires_at": self.delivery_otp_expires_at.isoformat() if self.delivery_otp_expires_at else None,
+                      "delivery_otp_attempts": self.delivery_otp_attempts or 0,
+                      "delivery_otp_locked": bool(self.delivery_otp_locked),
+                      "delivered_by_driver_id": self.delivered_by_driver_id,
+                      "delivered_via": self.delivered_via or "",
+                      "driver_assigned_at": self.driver_assigned_at.isoformat() if self.driver_assigned_at else None,
                       "shipping_origin_country": self.shipping_origin_country or "",
                       "shipping_segments": self.shipping_segments or []})
         return d
@@ -320,8 +369,8 @@ class PromoCode(Base):
     id = Column(String(36), primary_key=True, default=gen_uuid)
     code = Column(String(60), unique=True, nullable=False, index=True)
     description = Column(Text, default="")
-    discount_type = Column(String(20), default="percent")  # percent | fixed
-    value = Column(Numeric(12, 2), default=0)  # percent or EUR amount
+    discount_type = Column(String(20), default="percent")
+    value = Column(Numeric(12, 2), default=0)
     min_subtotal_eur = Column(Numeric(12, 2), default=0)
     free_shipping = Column(Boolean, default=False)
     first_order_only = Column(Boolean, default=False)
@@ -373,7 +422,7 @@ class EmailLog(Base):
     subject = Column(Text, default="")
     template = Column(String(60), default="", index=True)
     order_id = Column(String(36), nullable=True, index=True)
-    status = Column(String(20), default="sent", index=True)  # sent | failed | disabled
+    status = Column(String(20), default="sent", index=True)
     provider_id = Column(String(120), default="")
     error = Column(Text, default="")
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -467,7 +516,7 @@ class NewsletterCampaign(Base):
     cta_link = Column(String(300), default="/catalog?is_new=true")
     cta_fr = Column(String(80), default="Decouvrir")
     cta_en = Column(String(80), default="Shop now")
-    status = Column(String(20), default="draft", index=True)  # draft | sending | sent | failed
+    status = Column(String(20), default="draft", index=True)
     sent_count = Column(Integer, default=0)
     failed_count = Column(Integer, default=0)
     total_recipients = Column(Integer, default=0)
@@ -494,7 +543,7 @@ class ContactMessage(Base):
     subject = Column(String(200), nullable=False)
     message = Column(Text, nullable=False)
     lang = Column(String(5), default="fr")
-    status = Column(String(20), default="new", index=True)  # new | read | replied | archived
+    status = Column(String(20), default="new", index=True)
     user_id = Column(String(36), nullable=True, index=True)
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(255), nullable=True)
@@ -552,13 +601,13 @@ class Cart(Base):
     __tablename__ = "carts"
     id = Column(String(36), primary_key=True, default=gen_uuid)
     user_id = Column(String(36), ForeignKey("profiles.id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
-    items = Column(JSON, default=list)                      # meme format que le panier front
-    subtotal_eur = Column(Numeric(14, 2), default=0)         # pour filtrer les mini-paniers
+    items = Column(JSON, default=list)
+    subtotal_eur = Column(Numeric(14, 2), default=0)
     email_1_sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
     email_2_sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
     reminder_opt_out = Column(Boolean, default=False)
-    recovered_order_id = Column(String(36), nullable=True)   # commande creee depuis ce panier
-    promo_code_used = Column(String(60), default="")         # code envoye dans le 2e mail
+    recovered_order_id = Column(String(36), nullable=True)
+    promo_code_used = Column(String(60), default="")
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
@@ -574,5 +623,32 @@ class Cart(Base):
             "recovered_order_id": self.recovered_order_id,
             "promo_code_used": self.promo_code_used or "",
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+# ⭐ NOUVEAU : messagerie de réclamation (chat client ↔ admin)
+class ClaimMessage(Base):
+    __tablename__ = "claim_messages"
+    id = Column(String(36), primary_key=True, default=gen_uuid)
+    order_id = Column(String(36), ForeignKey("orders.id", ondelete="CASCADE"), index=True)
+    sender = Column(String(10), nullable=False)              # "client" | "admin"
+    sender_email = Column(String(255), default="")
+    text = Column(Text, default="")
+    # ⭐ Médias joints : [{"type": "image"|"video", "url": "..."}]
+    media_urls = Column(JSON, default=list)
+    # ⭐ Quand l'admin demande, on précise quels types il demande
+    requested_types = Column(JSON, default=list)             # ["photo", "video"]
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "order_id": self.order_id,
+            "sender": self.sender,
+            "sender_email": self.sender_email,
+            "text": self.text or "",
+            "media_urls": self.media_urls or [],
+            "requested_types": self.requested_types or [],
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }

@@ -4,22 +4,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
-import { Plus, Trash2, ArrowUp, ArrowDown, Film } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Film, Truck, ShieldCheck, Store, Headphones, Star, Heart, Clock, Phone, Gift, Package } from "lucide-react";
 
 const EMPTY_SLIDE = { video_url: "", image_url: "", title_fr: "", title_en: "", subtitle_fr: "", subtitle_en: "", cta_fr: "Decouvrir", cta_en: "Shop now", cta_link: "/catalog" };
-const SECTION_LABELS = { categories: "Achetez par categorie", new_arrivals: "Nouveautes", promotions: "Promotions", best_sellers: "Meilleures ventes", featured: "Selection STRYKOS" };
+const SECTION_LABELS = { categories: "Achetez par categorie", new_arrivals: "Nouveautes", promotions: "Promotions", best_sellers: "Meilleures ventes", featured: "Selection CAKESSHOP" };
 
 export function HeroSlidesEditor({ hero, onChange }) {
   const slides = hero?.slides || [];
   const set = (patch) => onChange({ ...hero, ...patch });
   const upd = (i, patch) => set({ slides: slides.map((s, idx) => (idx === i ? { ...s, ...patch } : s)) });
   const move = (i, d) => { const arr = [...slides]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ slides: arr }); };
+
   return (
     <div className="space-y-4" data-testid="hero-slides-editor">
       <div className="flex flex-wrap items-end gap-4">
-        <div className="w-48"><Label>Duree par slide (secondes)</Label><Input type="number" min={3} max={30} value={Math.round((hero?.interval_ms || 7000) / 1000)} onChange={(e) => set({ interval_ms: (parseInt(e.target.value) || 7) * 1000 })} data-testid="hero-interval" /></div>
-        <Button variant="outline" className="rounded-none" onClick={() => set({ slides: [...slides, { ...EMPTY_SLIDE }] })} data-testid="add-slide-btn"><Plus className="w-4 h-4 mr-1" /> Ajouter un slide</Button>
+        <div className="w-48">
+          <Label>Duree par slide (secondes)</Label>
+          <Input type="number" min={3} max={30} value={Math.round((hero?.interval_ms || 7000) / 1000)} onChange={(e) => set({ interval_ms: (parseInt(e.target.value) || 7) * 1000 })} data-testid="hero-interval" />
+        </div>
+        <Button variant="outline" className="rounded-none" onClick={() => set({ slides: [...slides, { ...EMPTY_SLIDE }] })} data-testid="add-slide-btn">
+          <Plus className="w-4 h-4 mr-1" /> Ajouter un slide
+        </Button>
       </div>
+
+      <p className="text-[11px] text-ink-muted bg-secondary/40 border border-border p-3">
+        <strong>Astuce</strong> : si une vidéo est présente, elle s'affiche en fond du cercle du hero (au-dessus de l'image). L'<em>accroche</em> apparaît au-dessus du titre avec un trait décoratif. Le <em>badge</em> s'affiche en bas à gauche de l'image/vidéo (ex : "Édition limitée").
+      </p>
+
       {slides.map((s, i) => (
         <details key={i} className="border border-border bg-secondary/40" data-testid={`hero-slide-${i}`} open={i === 0}>
           <summary className="cursor-pointer p-4 flex items-center justify-between list-none">
@@ -33,15 +44,43 @@ export function HeroSlidesEditor({ hero, onChange }) {
             </div>
           </summary>
           <div className="p-4 pt-0 grid md:grid-cols-2 gap-4">
-            <div><Label>Video (mp4/webm)</Label><SingleMediaUploader value={s.video_url} onChange={(v) => upd(i, { video_url: v })} accept="video/mp4,video/webm,video/quicktime" kind="video" label="une video" testid={`slide-video-${i}`} /></div>
-            <div><Label>Image de secours / poster</Label><SingleMediaUploader value={s.image_url} onChange={(v) => upd(i, { image_url: v })} label="une image" testid={`slide-image-${i}`} /></div>
+            <div>
+              <Label>Video (mp4/webm) — optionnelle</Label>
+              <SingleMediaUploader value={s.video_url} onChange={(v) => upd(i, { video_url: v })} accept="video/mp4,video/webm,video/quicktime" kind="video" label="une video" testid={`slide-video-${i}`} />
+            </div>
+            <div>
+              <Label>Image (fallback / poster)</Label>
+              <SingleMediaUploader value={s.image_url} onChange={(v) => upd(i, { image_url: v })} label="une image" testid={`slide-image-${i}`} />
+            </div>
+
+            <div>
+              <Label>Accroche FR <span className="text-ink-muted font-normal">(optionnel)</span></Label>
+              <Input value={s.overline_fr || ""} onChange={(e) => upd(i, { overline_fr: e.target.value })} placeholder="Gâteaux d'exception" data-testid={`slide-overline-fr-${i}`} />
+            </div>
+            <div>
+              <Label>Accroche EN <span className="text-ink-muted font-normal">(optionnel)</span></Label>
+              <Input value={s.overline_en || ""} onChange={(e) => upd(i, { overline_en: e.target.value })} placeholder="Exceptional cakes" />
+            </div>
+
             <div><Label>Titre FR</Label><Input value={s.title_fr} onChange={(e) => upd(i, { title_fr: e.target.value })} data-testid={`slide-title-fr-${i}`} /></div>
             <div><Label>Titre EN</Label><Input value={s.title_en} onChange={(e) => upd(i, { title_en: e.target.value })} /></div>
             <div><Label>Sous-titre FR</Label><Textarea rows={2} value={s.subtitle_fr} onChange={(e) => upd(i, { subtitle_fr: e.target.value })} /></div>
             <div><Label>Sous-titre EN</Label><Textarea rows={2} value={s.subtitle_en} onChange={(e) => upd(i, { subtitle_en: e.target.value })} /></div>
             <div><Label>Bouton FR</Label><Input value={s.cta_fr} onChange={(e) => upd(i, { cta_fr: e.target.value })} /></div>
             <div><Label>Bouton EN</Label><Input value={s.cta_en} onChange={(e) => upd(i, { cta_en: e.target.value })} /></div>
-            <div className="md:col-span-2"><Label>Lien du bouton</Label><Input value={s.cta_link} onChange={(e) => upd(i, { cta_link: e.target.value })} placeholder="/catalog?category=maillots" /></div>
+            <div className="md:col-span-2">
+              <Label>Lien du bouton</Label>
+              <Input value={s.cta_link} onChange={(e) => upd(i, { cta_link: e.target.value })} placeholder="/catalog?category=anniversaire" />
+            </div>
+
+            <div>
+              <Label>Badge sur l'image/vidéo — FR <span className="text-ink-muted font-normal">(optionnel)</span></Label>
+              <Input value={s.badge_text_fr || ""} onChange={(e) => upd(i, { badge_text_fr: e.target.value })} placeholder="Édition limitée" data-testid={`slide-badge-fr-${i}`} />
+            </div>
+            <div>
+              <Label>Badge sur l'image/vidéo — EN <span className="text-ink-muted font-normal">(optionnel)</span></Label>
+              <Input value={s.badge_text_en || ""} onChange={(e) => upd(i, { badge_text_en: e.target.value })} placeholder="Limited edition" />
+            </div>
           </div>
         </details>
       ))}
@@ -253,6 +292,361 @@ export function IconsEditor({ icons, onChange }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Features Editor (4 avantages) ==================== */
+const ICON_OPTIONS = [
+  { value: "truck", label: "Camion / Livraison", Icon: Truck },
+  { value: "shield", label: "Bouclier / Sécurité", Icon: ShieldCheck },
+  { value: "store", label: "Boutique / Retrait", Icon: Store },
+  { value: "headphones", label: "Casque / Support", Icon: Headphones },
+  { value: "star", label: "Étoile", Icon: Star },
+  { value: "heart", label: "Cœur", Icon: Heart },
+  { value: "clock", label: "Horloge / Temps", Icon: Clock },
+  { value: "phone", label: "Téléphone", Icon: Phone },
+  { value: "gift", label: "Cadeau", Icon: Gift },
+  { value: "package", label: "Colis", Icon: Package },
+];
+
+const EMPTY_FEATURE = { icon: "star", title_fr: "", title_en: "", subtitle_fr: "", subtitle_en: "" };
+
+export function FeaturesEditor({ features, onChange }) {
+  const items = features?.items || [];
+  const set = (patch) => onChange({ ...features, ...patch });
+  const upd = (i, patch) => set({ items: items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  const move = (i, d) => { const arr = [...items]; const j = i + d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; set({ items: arr }); };
+  const remove = (i) => set({ items: items.filter((_, idx) => idx !== i) });
+
+  return (
+    <div className="space-y-4" data-testid="features-editor">
+      <p className="text-xs text-ink-muted">
+        Les 4 avantages affichés en bas de la home (livraison, paiement, retrait, support). Recommandé : 4 items maximum pour un bel alignement.
+      </p>
+
+      <div className="flex items-center justify-between">
+        <Label>Avantages ({items.length})</Label>
+        <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ items: [...items, { ...EMPTY_FEATURE }] })} data-testid="add-feature">
+          <Plus className="w-4 h-4 mr-1" /> Ajouter
+        </Button>
+      </div>
+
+      {items.length === 0 && <p className="text-xs text-ink-muted italic">Aucun avantage. Cliquez sur Ajouter.</p>}
+
+      <div className="space-y-3">
+        {items.map((it, i) => (
+          <div key={i} className="border border-border bg-white p-3 space-y-3" data-testid={`feature-editor-${i}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wider text-ink-muted">Avantage {i + 1}</span>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => move(i, -1)} className="p-1 hover:bg-secondary" title="Monter"><ArrowUp className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => move(i, 1)} className="p-1 hover:bg-secondary" title="Descendre"><ArrowDown className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => remove(i)} className="p-1 text-red-600 hover:bg-red-50" title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-[180px_1fr_1fr] gap-3">
+              <div>
+                <Label className="text-xs">Icône</Label>
+                <select
+                  value={it.icon || "star"}
+                  onChange={(e) => upd(i, { icon: e.target.value })}
+                  className="w-full border border-border h-9 px-2 bg-white text-sm"
+                >
+                  {ICON_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Titre FR</Label>
+                <Input value={it.title_fr || ""} onChange={(e) => upd(i, { title_fr: e.target.value })} placeholder="Livraison rapide" className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">Titre EN</Label>
+                <Input value={it.title_en || ""} onChange={(e) => upd(i, { title_en: e.target.value })} placeholder="Fast delivery" className="h-9" />
+              </div>
+              <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Sous-titre FR</Label>
+                  <Input value={it.subtitle_fr || ""} onChange={(e) => upd(i, { subtitle_fr: e.target.value })} placeholder="À Bamako et environs" className="h-9" />
+                </div>
+                <div>
+                  <Label className="text-xs">Sous-titre EN</Label>
+                  <Input value={it.subtitle_en || ""} onChange={(e) => upd(i, { subtitle_en: e.target.value })} placeholder="In Bamako and nearby" className="h-9" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Testimonials Editor (avis clients) ==================== */
+const EMPTY_TESTIMONIAL = { name: "", rating: 5, avatar: "", text_fr: "", text_en: "" };
+
+export function TestimonialsEditor({ testimonials, onChange }) {
+  const v = testimonials || { title_fr: "", title_en: "", items: [] };
+  const items = v.items || [];
+  const set = (patch) => onChange({ ...v, ...patch });
+  const upd = (i, patch) => set({ items: items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  const remove = (i) => set({ items: items.filter((_, idx) => idx !== i) });
+
+  return (
+    <div className="space-y-4" data-testid="testimonials-editor">
+      <p className="text-xs text-ink-muted">
+        Avis affichés dans la section « Ils nous font confiance » en bas de la home.
+      </p>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div>
+          <Label>Titre FR</Label>
+          <Input value={v.title_fr || ""} onChange={(e) => set({ title_fr: e.target.value })} placeholder="Ils nous font confiance" />
+        </div>
+        <div>
+          <Label>Titre EN</Label>
+          <Input value={v.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} placeholder="They trust us" />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border pt-4">
+        <Label>Avis ({items.length})</Label>
+        <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ items: [...items, { ...EMPTY_TESTIMONIAL }] })} data-testid="add-testimonial">
+          <Plus className="w-4 h-4 mr-1" /> Ajouter un avis
+        </Button>
+      </div>
+
+      {items.length === 0 && <p className="text-xs text-ink-muted italic">Aucun avis. Cliquez sur Ajouter.</p>}
+
+      <div className="space-y-3">
+        {items.map((t, i) => (
+          <div key={i} className="border border-border bg-white p-3 space-y-3" data-testid={`testimonial-editor-${i}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wider text-ink-muted">Avis {i + 1}</span>
+              <button type="button" onClick={() => remove(i)} className="p-1 text-red-600 hover:bg-red-50" title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+
+            <div className="grid sm:grid-cols-[1fr_100px_180px] gap-3">
+              <div>
+                <Label className="text-xs">Nom du client</Label>
+                <Input value={t.name || ""} onChange={(e) => upd(i, { name: e.target.value })} placeholder="Aminata Traoré" className="h-9" />
+              </div>
+              <div>
+                <Label className="text-xs">Note (1-5)</Label>
+                <Input
+                  type="number" min={1} max={5}
+                  value={t.rating ?? 5}
+                  onChange={(e) => upd(i, { rating: parseInt(e.target.value) || 5 })}
+                  className="h-9"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Avatar (URL, optionnel)</Label>
+                <Input value={t.avatar || ""} onChange={(e) => upd(i, { avatar: e.target.value })} placeholder="https://..." className="h-9 text-xs" />
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label className="text-xs">Texte FR</Label>
+                <Textarea rows={3} value={t.text_fr || ""} onChange={(e) => upd(i, { text_fr: e.target.value })} placeholder="Le gâteau était magnifique..." />
+              </div>
+              <div>
+                <Label className="text-xs">Texte EN</Label>
+                <Textarea rows={3} value={t.text_en || ""} onChange={(e) => upd(i, { text_en: e.target.value })} placeholder="The cake was gorgeous..." />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== CTA Banner Editor ==================== */
+const EMPTY_BANNER = {
+  image_url: "", video_url: "",
+  overline_fr: "", overline_en: "",
+  title_fr: "", title_en: "",
+  subtitle_fr: "", subtitle_en: "",
+  cta_fr: "", cta_en: "", cta_link: "/catalog?customizable=true",
+};
+
+export function CtaBannerEditor({ banner, onChange }) {
+  const v = banner || { ...EMPTY_BANNER };
+  const u = (patch) => onChange({ ...v, ...patch });
+  return (
+    <div className="space-y-4" data-testid="cta-banner-editor">
+      <p className="text-xs text-ink-muted">
+        Bannière pleine largeur. Idéal pour « Commandez votre gâteau personnalisé » ou une promo ponctuelle.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><Label>Image (fond)</Label><SingleMediaUploader value={v.image_url || ""} onChange={(x) => u({ image_url: x })} label="une image" testid="cta-banner-image" /></div>
+        <div><Label>Video (optionnel)</Label><SingleMediaUploader value={v.video_url || ""} onChange={(x) => u({ video_url: x })} accept="video/mp4,video/webm" kind="video" label="une video" /></div>
+        <div><Label>Accroche FR</Label><Input value={v.overline_fr || ""} onChange={(e) => u({ overline_fr: e.target.value })} placeholder="Sur mesure" /></div>
+        <div><Label>Accroche EN</Label><Input value={v.overline_en || ""} onChange={(e) => u({ overline_en: e.target.value })} /></div>
+        <div><Label>Titre FR</Label><Input value={v.title_fr || ""} onChange={(e) => u({ title_fr: e.target.value })} placeholder="Commandez votre gâteau personnalisé" /></div>
+        <div><Label>Titre EN</Label><Input value={v.title_en || ""} onChange={(e) => u({ title_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Sous-titre FR</Label><Textarea rows={2} value={v.subtitle_fr || ""} onChange={(e) => u({ subtitle_fr: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Sous-titre EN</Label><Textarea rows={2} value={v.subtitle_en || ""} onChange={(e) => u({ subtitle_en: e.target.value })} /></div>
+        <div><Label>Bouton FR</Label><Input value={v.cta_fr || ""} onChange={(e) => u({ cta_fr: e.target.value })} placeholder="Commander" /></div>
+        <div><Label>Bouton EN</Label><Input value={v.cta_en || ""} onChange={(e) => u({ cta_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Lien du bouton</Label><Input value={v.cta_link || ""} onChange={(e) => u({ cta_link: e.target.value })} placeholder="/catalog?customizable=true" /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Story Block Editor ==================== */
+const EMPTY_STORY = {
+  image_url: "", image_position: "left",
+  overline_fr: "", overline_en: "",
+  title_fr: "", title_en: "",
+  text_fr: "", text_en: "",
+  cta_fr: "", cta_en: "", cta_link: "/page/about",
+};
+
+export function StoryBlockEditor({ story, onChange }) {
+  const v = story || { ...EMPTY_STORY };
+  const u = (patch) => onChange({ ...v, ...patch });
+  return (
+    <div className="space-y-4" data-testid="story-block-editor">
+      <p className="text-xs text-ink-muted">
+        Bloc « Notre histoire » : image + texte côte à côte. Idéal pour raconter votre savoir-faire.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><Label>Image</Label><SingleMediaUploader value={v.image_url || ""} onChange={(x) => u({ image_url: x })} label="une image" testid="story-image" /></div>
+        <div>
+          <Label>Position de l'image</Label>
+          <select value={v.image_position || "left"} onChange={(e) => u({ image_position: e.target.value })} className="w-full border border-border h-9 px-2 bg-white text-sm">
+            <option value="left">À gauche</option>
+            <option value="right">À droite</option>
+          </select>
+        </div>
+        <div><Label>Accroche FR</Label><Input value={v.overline_fr || ""} onChange={(e) => u({ overline_fr: e.target.value })} placeholder="Notre savoir-faire" /></div>
+        <div><Label>Accroche EN</Label><Input value={v.overline_en || ""} onChange={(e) => u({ overline_en: e.target.value })} /></div>
+        <div><Label>Titre FR</Label><Input value={v.title_fr || ""} onChange={(e) => u({ title_fr: e.target.value })} placeholder="Une pâtisserie artisanale" /></div>
+        <div><Label>Titre EN</Label><Input value={v.title_en || ""} onChange={(e) => u({ title_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Texte FR</Label><Textarea rows={4} value={v.text_fr || ""} onChange={(e) => u({ text_fr: e.target.value })} placeholder="Depuis 2015, nous créons..." /></div>
+        <div className="sm:col-span-2"><Label>Texte EN</Label><Textarea rows={4} value={v.text_en || ""} onChange={(e) => u({ text_en: e.target.value })} /></div>
+        <div><Label>Bouton FR (optionnel)</Label><Input value={v.cta_fr || ""} onChange={(e) => u({ cta_fr: e.target.value })} /></div>
+        <div><Label>Bouton EN (optionnel)</Label><Input value={v.cta_en || ""} onChange={(e) => u({ cta_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Lien du bouton</Label><Input value={v.cta_link || ""} onChange={(e) => u({ cta_link: e.target.value })} /></div>
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Steps Editor ==================== */
+const EMPTY_STEP = { title_fr: "", title_en: "", text_fr: "", text_en: "" };
+
+export function StepsEditor({ steps, onChange }) {
+  const v = steps || { title_fr: "", title_en: "", subtitle_fr: "", subtitle_en: "", items: [] };
+  const items = v.items || [];
+  const set = (patch) => onChange({ ...v, ...patch });
+  const upd = (i, patch) => set({ items: items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  const remove = (i) => set({ items: items.filter((_, idx) => idx !== i) });
+  const move = (i, d) => { const a = [...items]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; set({ items: a }); };
+
+  return (
+    <div className="space-y-4" data-testid="steps-editor">
+      <p className="text-xs text-ink-muted">
+        Section « Comment ça marche » : 3 étapes numérotées. Recommandé : 3 items.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><Label>Titre section FR</Label><Input value={v.title_fr || ""} onChange={(e) => set({ title_fr: e.target.value })} placeholder="Comment ça marche" /></div>
+        <div><Label>Titre section EN</Label><Input value={v.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Sous-titre section FR</Label><Input value={v.subtitle_fr || ""} onChange={(e) => set({ subtitle_fr: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>Sous-titre section EN</Label><Input value={v.subtitle_en || ""} onChange={(e) => set({ subtitle_en: e.target.value })} /></div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border pt-4">
+        <Label>Étapes ({items.length})</Label>
+        <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ items: [...items, { ...EMPTY_STEP }] })}>
+          <Plus className="w-4 h-4 mr-1" /> Ajouter
+        </Button>
+      </div>
+
+      <div className="space-y-3">
+        {items.map((it, i) => (
+          <div key={i} className="border border-border bg-white p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wider text-ink-muted">Étape {i + 1}</span>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => move(i, -1)} className="p-1 hover:bg-secondary"><ArrowUp className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => move(i, 1)} className="p-1 hover:bg-secondary"><ArrowDown className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => remove(i)} className="p-1 text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div><Label className="text-xs">Titre FR</Label><Input value={it.title_fr || ""} onChange={(e) => upd(i, { title_fr: e.target.value })} placeholder="Choisissez" className="h-9" /></div>
+              <div><Label className="text-xs">Titre EN</Label><Input value={it.title_en || ""} onChange={(e) => upd(i, { title_en: e.target.value })} className="h-9" /></div>
+              <div><Label className="text-xs">Description FR</Label><Textarea rows={2} value={it.text_fr || ""} onChange={(e) => upd(i, { text_fr: e.target.value })} placeholder="Parcourez notre catalogue..." /></div>
+              <div><Label className="text-xs">Description EN</Label><Textarea rows={2} value={it.text_en || ""} onChange={(e) => upd(i, { text_en: e.target.value })} /></div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ==================== Gallery Editor ==================== */
+const EMPTY_GALLERY_ITEM = { image_url: "", caption_fr: "", caption_en: "", link: "" };
+
+export function GalleryEditor({ gallery, onChange }) {
+  const v = gallery || { title_fr: "", title_en: "", overline_fr: "", overline_en: "", instagram_url: "", items: [] };
+  const items = v.items || [];
+  const set = (patch) => onChange({ ...v, ...patch });
+  const upd = (i, patch) => set({ items: items.map((x, idx) => (idx === i ? { ...x, ...patch } : x)) });
+  const remove = (i) => set({ items: items.filter((_, idx) => idx !== i) });
+  const move = (i, d) => { const a = [...items]; const j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; set({ items: a }); };
+
+  return (
+    <div className="space-y-4" data-testid="gallery-editor">
+      <p className="text-xs text-ink-muted">
+        Galerie d'images (max 8 affichées en grille). Idéal pour montrer vos créations.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div><Label>Accroche FR</Label><Input value={v.overline_fr || ""} onChange={(e) => set({ overline_fr: e.target.value })} placeholder="Nos créations" /></div>
+        <div><Label>Accroche EN</Label><Input value={v.overline_en || ""} onChange={(e) => set({ overline_en: e.target.value })} /></div>
+        <div><Label>Titre FR</Label><Input value={v.title_fr || ""} onChange={(e) => set({ title_fr: e.target.value })} placeholder="Suivez-nous sur Instagram" /></div>
+        <div><Label>Titre EN</Label><Input value={v.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} /></div>
+        <div className="sm:col-span-2"><Label>URL Instagram (optionnel)</Label><Input value={v.instagram_url || ""} onChange={(e) => set({ instagram_url: e.target.value })} placeholder="https://instagram.com/..." /></div>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border pt-4">
+        <Label>Images ({items.length}/8)</Label>
+        {items.length < 8 && (
+          <Button variant="outline" size="sm" className="rounded-none" onClick={() => set({ items: [...items, { ...EMPTY_GALLERY_ITEM }] })}>
+            <Plus className="w-4 h-4 mr-1" /> Ajouter
+          </Button>
+        )}
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {items.map((it, i) => (
+          <div key={i} className="border border-border bg-white p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wider text-ink-muted">Image {i + 1}</span>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => move(i, -1)} className="p-1 hover:bg-secondary"><ArrowUp className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => move(i, 1)} className="p-1 hover:bg-secondary"><ArrowDown className="w-3.5 h-3.5" /></button>
+                <button type="button" onClick={() => remove(i)} className="p-1 text-red-600 hover:bg-red-50"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            </div>
+            <SingleMediaUploader compact value={it.image_url || ""} onChange={(x) => upd(i, { image_url: x })} label="image" />
+            <div className="grid grid-cols-2 gap-2">
+              <Input value={it.caption_fr || ""} onChange={(e) => upd(i, { caption_fr: e.target.value })} placeholder="Légende FR" className="h-8 text-xs" />
+              <Input value={it.caption_en || ""} onChange={(e) => upd(i, { caption_en: e.target.value })} placeholder="Caption EN" className="h-8 text-xs" />
+            </div>
+            <Input value={it.link || ""} onChange={(e) => upd(i, { link: e.target.value })} placeholder="Lien (optionnel)" className="h-8 text-xs" />
+          </div>
+        ))}
       </div>
     </div>
   );

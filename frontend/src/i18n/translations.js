@@ -1,25 +1,35 @@
 export const translations = {
   fr: {
     // nav
-    jerseys: "Maillots", boots: "Chaussures", clothing: "Vetements", equipment: "Equipements",
-    accessories: "Accessoires", clubs: "Clubs", nationalTeams: "Selections", brands: "Marques",
+    jerseys: "Anniversaires", boots: "Mariages", clothing: "Enfants", equipment: "Personnalises",
+    accessories: "Evenements", clubs: "Occasions", nationalTeams: "Themes", brands: "Nos creations",
     newArrivals: "Nouveautes", promotions: "Promotions", localBrands: "Marques locales",
     catalog: "Catalogue",
+
     // common
-    search: "Rechercher", searchPlaceholder: "Rechercher un maillot, une marque, un club...",
+    search: "Rechercher", searchPlaceholder: "Rechercher un gateau, une saveur, une occasion...",
     account: "Compte", wishlist: "Favoris", cart: "Panier", login: "Connexion", logout: "Deconnexion",
     register: "Creer un compte", addToCart: "Ajouter au panier", buyNow: "Acheter maintenant",
+    // ⭐ NOUVEAU : libellés de bouton configurables (cta_label)
+    choose: "Choisir",
+    customize: "Personnaliser",
+    order: "Commander",
+    view: "Voir le produit",
     outOfStock: "Epuise", inStock: "En stock", viewProduct: "Voir le produit", shopNow: "Decouvrir",
     from: "A partir de", size: "Taille", color: "Couleur", quantity: "Quantite", brand: "Marque",
     price: "Prix", filters: "Filtres", sortBy: "Trier par", relevance: "Pertinence",
     priceAsc: "Prix croissant", priceDesc: "Prix decroissant", newest: "Nouveautes",
     bestSellers: "Meilleures ventes", products: "produits", noResults: "Aucun resultat",
     clearFilters: "Effacer les filtres", apply: "Appliquer", all: "Tout",
+
     // product
     description: "Description", reference: "Reference", relatedProducts: "Produits complementaires",
-    customization: "Personnalisation", playerName: "Nom du joueur", playerNumber: "Numero",
-    addCustomization: "Ajouter la personnalisation", delivery: "Livraison et retours",
-    deliveryInfo: "Livraison internationale suivie. Retours sous 14 jours.",
+    customization: "Personnalisation", playerName: "Prenom / Message", playerNumber: "Age",
+    addCustomization: "Ajouter la personnalisation",
+    // ⭐ MODIFIÉ — Produit alimentaire : plus de mention de retour
+    delivery: "Livraison et fraîcheur",
+    deliveryInfo: "Livraison soignée. Fraîcheur garantie à la réception.",
+
     // cart / checkout
     yourCart: "Votre panier", emptyCart: "Votre panier est vide", continueShopping: "Continuer les achats",
     subtotal: "Sous-total", shipping: "Livraison", total: "Total", checkout: "Passer la commande",
@@ -28,28 +38,36 @@ export const translations = {
     email: "E-mail", phone: "Telephone", country: "Pays", city: "Ville", address: "Adresse",
     postalCode: "Code postal", payWithStripe: "Payer avec Stripe", placeOrder: "Valider et payer",
     orderSummary: "Recapitulatif de commande", paymentNotice: "Information de paiement",
+
     // confirmation
     orderConfirmed: "Commande confirmee", thankYou: "Merci pour votre commande",
     orderNumber: "Numero de commande", paymentPending: "Paiement en attente de confirmation",
     trackOrder: "Suivre ma commande", orderProcessing: "Verification du paiement...",
+
     // account
     dashboard: "Tableau de bord", myOrders: "Mes commandes", myAddresses: "Mes adresses",
     profile: "Profil", welcome: "Bienvenue", noOrders: "Aucune commande pour le moment",
     orderDate: "Date", status: "Statut", save: "Enregistrer", addAddress: "Ajouter une adresse",
+
     // auth
     passwordLabel: "Mot de passe", loginTitle: "Connexion a votre compte",
-    registerTitle: "Creer votre compte STRYKOS", noAccount: "Pas encore de compte ?",
+    registerTitle: "Creer votre compte CAKESSHOP", noAccount: "Pas encore de compte ?",
     haveAccount: "Deja un compte ?", signIn: "Se connecter", signUp: "S'inscrire",
+
     // footer
-        footerTagline: "Multimarque. Authentique. Livré chez vous.",
+    footerTagline: "Pâtisserie artisanale. Fraîcheur garantie. Livrée chez vous.",
     customerService: "Service client", about: "A propos", faq: "FAQ", contact: "Contact",
-    shippingPolicy: "Politique de livraison", returnsPolicy: "Retours et remboursements",
-    terms: "Conditions generales", privacy: "Confidentialite", cookies: "Cookies",    legalNotice: "Legal notice",
-        allRightsReserved: "Tous droits reserves", independentStore: "Revendeur indépendant · Non affilié aux marques",
+    shippingPolicy: "Politique de livraison", returnsPolicy: "Qualité et fraîcheur",
+    terms: "Conditions generales", privacy: "Confidentialite", cookies: "Cookies",
+    legalNotice: "Mentions legales",
+    allRightsReserved: "Tous droits reserves",
+    independentStore: "Pâtisserie artisanale · Fait maison avec passion",
+
     // misc
     loading: "Chargement...", heroCta2: "Voir les nouveautes", shopByCategory: "Achetez par categorie",
-    internationalBrands: "Marques internationales", recommended: "Recommandes pour vous",
-    featured: "Selection STRYKOS", admin: "Administration",
+    internationalBrands: "Nos specialites", recommended: "Recommandes pour vous",
+    featured: "Nos coups de coeur", admin: "Administration",
+
     // promo / tracking
     promoCode: "Code promo", applyPromo: "Appliquer", promoApplied: "Code applique", discount: "Remise",
     freeShipping: "Livraison offerte", promo_invalid: "Code promo invalide", promo_expired: "Ce code a expire",
@@ -60,72 +78,94 @@ export const translations = {
     orderHistory: "Historique", notShippedYet: "Votre commande n'a pas encore ete expediee.", viewDetails: "Voir le detail",
     hideDetails: "Masquer", contactUs: "Nous contacter", hours: "Horaires",
     st_pending_payment: "En attente de paiement", st_paid: "Payee", st_preparing: "En preparation", st_shipped: "Expediee",
-    st_in_transit: "En transit", st_delivered: "Livree", st_cancelled: "Annulee", st_return_requested: "Retour demande",    st_cancellation_requested: "Annulation demandée",
-    st_return_approved: "Retour approuvé",
-    st_return_shipped: "Retour expédié",
-    st_return_received: "Retour reçu",
-    st_exchange_sent: "Échange envoyé",
+    st_in_transit: "En transit", st_delivered: "Livree", st_cancelled: "Annulee", st_return_requested: "Retour demande",
+    st_cancellation_requested: "Annulation demandee",
+    st_return_approved: "Retour approuve",
+    st_return_shipped: "Retour expedie",
+    st_return_received: "Retour recu",
+    st_exchange_sent: "Echange envoye",
     st_returned: "Retournee", st_refunded: "Remboursee",
+
     forgotPassword: "Mot de passe oublie ?", forgotTitle: "Reinitialiser le mot de passe",
     forgotIntro: "Entrez votre e-mail : nous vous enverrons un lien valable 1 heure.", sendLink: "Envoyer le lien",
     forgotSent: "Si un compte existe pour cet e-mail, un lien de reinitialisation vient d'etre envoye.",
     resetTitle: "Nouveau mot de passe", newPassword: "Nouveau mot de passe", confirmPassword: "Confirmer le mot de passe",
-    resetBtn: "Enregistrer le mot de passe", resetDone: "Mot de passe modifie. Vous pouvez vous connecter.", passwordsMismatch: "Les mots de passe ne correspondent pas",
+    resetBtn: "Enregistrer le mot de passe", resetDone: "Mot de passe modifie. Vous pouvez vous connecter.",
+    passwordsMismatch: "Les mots de passe ne correspondent pas",
+
     reviews: "Avis clients", reviewsCount: "avis", writeReview: "Donner mon avis", loginToReview: "Connectez-vous pour laisser un avis",
-    yourRating: "Votre note", reviewTitle: "Titre (optionnel)", reviewBody: "Votre avis : qualite, taille, confort...", publishReview: "Publier",
+    yourRating: "Votre note", reviewTitle: "Titre (optionnel)", reviewBody: "Votre avis : gout, fraicheur, decoration...", publishReview: "Publier",
     reviewThanks: "Merci pour votre avis !", verifiedPurchase: "Achat verifie", noReviews: "Aucun avis pour le moment. Soyez le premier !",
-    storeReply: "Reponse de STRYKOS",
-    newsletterTitle: "Soyez le premier sur les nouveaux maillots", newsletterText: "Nouveautes, editions limitees et codes promo reserves aux abonnes. Pas de spam, desabonnement en un clic.",
+    storeReply: "Reponse de CAKESSHOP",
+
+    newsletterTitle: "Soyez le premier sur nos nouvelles creations",
+    newsletterText: "Nouveaux gateaux, editions limitees et codes promo reserves aux abonnes. Pas de spam, desabonnement en un clic.",
     newsletterBtn: "Je m'abonne", newsletterOk: "Merci ! Verifiez votre boite mail.", newsletterAlready: "Vous etes deja abonne.",
-    newsletterPref: "Newsletter STRYKOS", newsletterOn: "Abonne : vous recevez les nouveautes et offres.", newsletterOff: "Non abonne.",
-    subscribe: "S'abonner", unsubscribe: "Se desabonner", unsubTitle: "Desabonnement", unsubDone: "Vous etes desabonne. Vous ne recevrez plus nos e-mails.",
-    unsubError: "Lien invalide ou deja utilise.", cookieText: "Nous utilisons le stockage local de votre navigateur pour accelerer la boutique (panier, langue, devise, cache). Aucun traceur publicitaire.",
+    newsletterPref: "Newsletter CAKESSHOP", newsletterOn: "Abonne : vous recevez les nouveautes et offres.", newsletterOff: "Non abonne.",
+    subscribe: "S'abonner", unsubscribe: "Se desabonner", unsubTitle: "Desabonnement",
+    unsubDone: "Vous etes desabonne. Vous ne recevrez plus nos e-mails.",
+    unsubError: "Lien invalide ou deja utilise.",
+    cookieText: "Nous utilisons le stockage local de votre navigateur pour accelerer la boutique (panier, langue, devise, cache). Aucun traceur publicitaire.",
     cookieOk: "J'ai compris", dontMiss: "A ne pas manquer",
-        trackHeading: "Suivre ma commande",
-    trackHelpTitle: "Où trouver mon numéro de commande ?",
-    trackHelpText: "Le numéro de commande vous est envoyé par e-mail juste après la validation de votre paiement. Il commence par STK- suivi de la date et d'un code unique. Vous le retrouvez aussi dans votre compte client, rubrique « Mes commandes ».",
-    trackNotFound: "Aucune commande trouvée",
+
+    trackHeading: "Suivre ma commande",
+    trackHelpTitle: "Ou trouver mon numero de commande ?",
+    trackHelpText: "Le numero de commande vous est envoye par e-mail juste apres la validation de votre paiement. Il commence par STK- suivi de la date et d'un code unique. Vous le retrouvez aussi dans votre compte client, rubrique « Mes commandes ».",
+    trackNotFound: "Aucune commande trouvee",
     trackContact: "Contacter le service client",
     trackNeedHelp: "Besoin d'aide ?",
-    trackNeedHelpText: "Vous ne retrouvez pas votre commande ou votre numéro ? Notre service client est là pour vous aider.",
-    loading: "Chargement...",
-     cookieBannerTitle: "Cookies",
-    cookieBannerText: "Nous utilisons des cookies techniques nécessaires au fonctionnement du site, ainsi que des cookies optionnels pour analyser l'audience et améliorer votre expérience. Aucune donnée n'est revendue.",
+    trackNeedHelpText: "Vous ne retrouvez pas votre commande ou votre numero ? Notre service client est la pour vous aider.",
+
+    // Cookie banner (modal)
+    cookieBannerTitle: "Cookies",
+    cookieBannerText: "Nous utilisons des cookies techniques necessaires au fonctionnement du site, ainsi que des cookies optionnels pour analyser l'audience et ameliorer votre experience. Aucune donnee n'est revendue.",
     cookieBannerLearn: "Politique cookies",
     cookieCustomize: "Personnaliser",
     cookieRejectAll: "Tout refuser",
     cookieAcceptAll: "Tout accepter",
     cookieModalTitle: "Personnaliser mes cookies",
-    cookieModalIntro: "Choisissez les cookies que vous acceptez. Les cookies nécessaires ne peuvent pas être désactivés, ils assurent le bon fonctionnement du site.",
-    cookieEssential: "Nécessaires",
+    cookieModalIntro: "Choisissez les cookies que vous acceptez. Les cookies necessaires ne peuvent pas etre desactives, ils assurent le bon fonctionnement du site.",
+    cookieEssential: "Necessaires",
     cookieRequired: "Requis",
-    cookieEssentialDesc: "Panier, session de connexion, préférences de langue et devise. Ces cookies sont indispensables au fonctionnement du site.",
+    cookieEssentialDesc: "Panier, session de connexion, preferences de langue et devise. Ces cookies sont indispensables au fonctionnement du site.",
     cookieAnalytics: "Analytiques",
-    cookieAnalyticsDesc: "Nous aident à comprendre comment vous utilisez le site (pages visitées, temps passé) pour améliorer nos services. Données anonymisées.",
+    cookieAnalyticsDesc: "Nous aident a comprendre comment vous utilisez le site (pages visitees, temps passe) pour ameliorer nos services. Donnees anonymisees.",
     cookieMarketing: "Marketing",
-    cookieMarketingDesc: "Permettent de vous proposer des publicités pertinentes sur d'autres sites, en fonction de votre navigation. Aucun partage sans votre accord.",
+    cookieMarketingDesc: "Permettent de vous proposer des publicites pertinentes sur d'autres sites, en fonction de votre navigation. Aucun partage sans votre accord.",
     cookieSave: "Enregistrer mes choix",
-    
-  
-  
   },
+
   en: {
-    jerseys: "Jerseys", boots: "Boots", clothing: "Clothing", equipment: "Equipment",
-    accessories: "Accessories", clubs: "Clubs", nationalTeams: "National Teams", brands: "Brands",
+    // nav
+    jerseys: "Birthdays", boots: "Weddings", clothing: "Kids", equipment: "Custom",
+    accessories: "Events", clubs: "Occasions", nationalTeams: "Themes", brands: "Our creations",
     newArrivals: "New Arrivals", promotions: "Sale", localBrands: "Local Brands", catalog: "Catalog",
-    search: "Search", searchPlaceholder: "Search a jersey, brand, club...",
+
+    // common
+    search: "Search", searchPlaceholder: "Search a cake, a flavor, an occasion...",
     account: "Account", wishlist: "Wishlist", cart: "Cart", login: "Login", logout: "Logout",
     register: "Create account", addToCart: "Add to cart", buyNow: "Buy now",
+    // ⭐ NOUVEAU : configurable CTA labels (cta_label)
+    choose: "Choose",
+    customize: "Customize",
+    order: "Order",
+    view: "View product",
     outOfStock: "Out of stock", inStock: "In stock", viewProduct: "View product", shopNow: "Shop now",
     from: "From", size: "Size", color: "Color", quantity: "Quantity", brand: "Brand",
     price: "Price", filters: "Filters", sortBy: "Sort by", relevance: "Relevance",
     priceAsc: "Price: low to high", priceDesc: "Price: high to low", newest: "Newest",
     bestSellers: "Best sellers", products: "products", noResults: "No results",
     clearFilters: "Clear filters", apply: "Apply", all: "All",
+
+    // product
     description: "Description", reference: "Reference", relatedProducts: "You may also like",
-    customization: "Customization", playerName: "Player name", playerNumber: "Number",
-    addCustomization: "Add customization", delivery: "Delivery & returns",
-    deliveryInfo: "Tracked international delivery. 14-day returns.",
+    customization: "Customization", playerName: "Message", playerNumber: "Age",
+    addCustomization: "Add customization",
+    // ⭐ MODIFIÉ — Perishable product: no return mention
+    delivery: "Delivery & freshness",
+    deliveryInfo: "Careful delivery. Freshness guaranteed on arrival.",
+
+    // cart / checkout
     yourCart: "Your cart", emptyCart: "Your cart is empty", continueShopping: "Continue shopping",
     subtotal: "Subtotal", shipping: "Shipping", total: "Total", checkout: "Checkout",
     remove: "Remove", contactDetails: "Contact details", shippingMethod: "Shipping method",
@@ -133,23 +173,37 @@ export const translations = {
     email: "Email", phone: "Phone", country: "Country", city: "City", address: "Address",
     postalCode: "Postal code", payWithStripe: "Pay with Stripe", placeOrder: "Place order & pay",
     orderSummary: "Order summary", paymentNotice: "Payment notice",
+
+    // confirmation
     orderConfirmed: "Order confirmed", thankYou: "Thank you for your order",
     orderNumber: "Order number", paymentPending: "Payment awaiting confirmation",
     trackOrder: "Track my order", orderProcessing: "Verifying payment...",
+
+    // account
     dashboard: "Dashboard", myOrders: "My orders", myAddresses: "My addresses",
     profile: "Profile", welcome: "Welcome", noOrders: "No orders yet",
     orderDate: "Date", status: "Status", save: "Save", addAddress: "Add address",
+
+    // auth
     passwordLabel: "Password", loginTitle: "Sign in to your account",
-    registerTitle: "Create your STRYKOS account", noAccount: "No account yet?",
+    registerTitle: "Create your CAKESSHOP account", noAccount: "No account yet?",
     haveAccount: "Already have an account?", signIn: "Sign in", signUp: "Sign up",
-        footerTagline: "Multi-brand. Authentic. Delivered to you.",
+
+    // footer
+    footerTagline: "Artisan bakery. Freshly made. Delivered to you.",
     customerService: "Customer service", about: "About", faq: "FAQ", contact: "Contact",
-    shippingPolicy: "Shipping policy", returnsPolicy: "Returns & refunds",
-    terms: "Terms & conditions", privacy: "Privacy", cookies: "Cookies",    legalNotice: "Mentions légales",
-        allRightsReserved: "All rights reserved", independentStore: "Independent reseller · Not affiliated with the brands",
+    shippingPolicy: "Shipping policy", returnsPolicy: "Quality & freshness",
+    terms: "Terms & conditions", privacy: "Privacy", cookies: "Cookies",
+    legalNotice: "Legal notice",
+    allRightsReserved: "All rights reserved",
+    independentStore: "Artisan bakery · Handmade with passion",
+
+    // misc
     loading: "Loading...", heroCta2: "View new arrivals", shopByCategory: "Shop by category",
-    internationalBrands: "International brands", recommended: "Recommended for you",
-    featured: "STRYKOS selection", admin: "Admin",
+    internationalBrands: "Our specialties", recommended: "Recommended for you",
+    featured: "Our favorites", admin: "Admin",
+
+    // promo / tracking
     promoCode: "Promo code", applyPromo: "Apply", promoApplied: "Code applied", discount: "Discount",
     freeShipping: "Free shipping", promo_invalid: "Invalid promo code", promo_expired: "This code has expired",
     promo_not_started: "This code is not active yet", promo_exhausted: "This code has reached its usage limit",
@@ -159,36 +213,46 @@ export const translations = {
     orderHistory: "History", notShippedYet: "Your order has not shipped yet.", viewDetails: "View details",
     hideDetails: "Hide", contactUs: "Contact us", hours: "Opening hours",
     st_pending_payment: "Awaiting payment", st_paid: "Paid", st_preparing: "Preparing", st_shipped: "Shipped",
-    st_in_transit: "In transit", st_delivered: "Delivered", st_cancelled: "Cancelled", st_return_requested: "Return requested",    st_cancellation_requested: "Cancellation requested",
+    st_in_transit: "In transit", st_delivered: "Delivered", st_cancelled: "Cancelled", st_return_requested: "Return requested",
+    st_cancellation_requested: "Cancellation requested",
     st_return_approved: "Return approved",
     st_return_shipped: "Return shipped",
     st_return_received: "Return received",
     st_exchange_sent: "Exchange sent",
     st_returned: "Returned", st_refunded: "Refunded",
+
     forgotPassword: "Forgot password?", forgotTitle: "Reset your password",
     forgotIntro: "Enter your email: we will send you a link valid for 1 hour.", sendLink: "Send link",
     forgotSent: "If an account exists for this email, a reset link has just been sent.",
     resetTitle: "New password", newPassword: "New password", confirmPassword: "Confirm password",
-    resetBtn: "Save password", resetDone: "Password updated. You can now sign in.", passwordsMismatch: "Passwords do not match",
+    resetBtn: "Save password", resetDone: "Password updated. You can now sign in.",
+    passwordsMismatch: "Passwords do not match",
+
     reviews: "Customer reviews", reviewsCount: "reviews", writeReview: "Write a review", loginToReview: "Sign in to leave a review",
-    yourRating: "Your rating", reviewTitle: "Title (optional)", reviewBody: "Your review: quality, sizing, comfort...", publishReview: "Publish",
+    yourRating: "Your rating", reviewTitle: "Title (optional)", reviewBody: "Your review: taste, freshness, decoration...", publishReview: "Publish",
     reviewThanks: "Thanks for your review!", verifiedPurchase: "Verified purchase", noReviews: "No reviews yet. Be the first!",
-    storeReply: "Reply from STRYKOS",
-    newsletterTitle: "Be first on new jersey drops", newsletterText: "New arrivals, limited editions and subscriber-only promo codes. No spam, one-click unsubscribe.",
+    storeReply: "Reply from CAKESSHOP",
+
+    newsletterTitle: "Be the first on our new creations",
+    newsletterText: "New cakes, limited editions and subscriber-only promo codes. No spam, one-click unsubscribe.",
     newsletterBtn: "Subscribe", newsletterOk: "Thanks! Check your inbox.", newsletterAlready: "You are already subscribed.",
-    newsletterPref: "STRYKOS newsletter", newsletterOn: "Subscribed: you receive new drops and offers.", newsletterOff: "Not subscribed.",
-    subscribe: "Subscribe", unsubscribe: "Unsubscribe", unsubTitle: "Unsubscribe", unsubDone: "You have been unsubscribed. You will no longer receive our emails.",
-    unsubError: "Invalid or already used link.", cookieText: "We use your browser's local storage to speed up the store (cart, language, currency, cache). No advertising trackers.",
+    newsletterPref: "CAKESSHOP newsletter", newsletterOn: "Subscribed: you receive new creations and offers.", newsletterOff: "Not subscribed.",
+    subscribe: "Subscribe", unsubscribe: "Unsubscribe", unsubTitle: "Unsubscribe",
+    unsubDone: "You have been unsubscribed. You will no longer receive our emails.",
+    unsubError: "Invalid or already used link.",
+    cookieText: "We use your browser's local storage to speed up the store (cart, language, currency, cache). No advertising trackers.",
     cookieOk: "Got it", dontMiss: "Don't miss",
-        trackHeading: "Track my order",
+
+    trackHeading: "Track my order",
     trackHelpTitle: "Where do I find my order number?",
     trackHelpText: "Your order number is sent to you by email right after your payment is confirmed. It starts with STK- followed by the date and a unique code. You can also find it in your customer account, under \"My orders\".",
     trackNotFound: "No order found",
     trackContact: "Contact customer service",
     trackNeedHelp: "Need help?",
     trackNeedHelpText: "Can't find your order or your order number? Our customer service is here to help.",
-    loading: "Loading...",
-     cookieBannerTitle: "Cookies",
+
+    // Cookie banner (modal)
+    cookieBannerTitle: "Cookies",
     cookieBannerText: "We use technical cookies necessary for the site to work, as well as optional cookies to analyze traffic and improve your experience. No data is resold.",
     cookieBannerLearn: "Cookies policy",
     cookieCustomize: "Customize",
@@ -204,16 +268,33 @@ export const translations = {
     cookieMarketing: "Marketing",
     cookieMarketingDesc: "Used to show you relevant ads on other sites based on your browsing. No sharing without your consent.",
     cookieSave: "Save my choices",
-    
   },
 };
 
+// ================================================================
+// Devises supportées
+// ================================================================
 export const CURRENCY_SYMBOLS = { EUR: "€", USD: "$", XOF: "FCFA" };
 
+// ================================================================
+// Formatage des prix (FCFA, EUR, USD)
+// - XOF : pas de décimales, arrondi à la centaine (prix propres : 25 000 FCFA)
+// - EUR / USD : 2 décimales
+// ================================================================
 export function formatMoney(amount, currency) {
-  if (amount === null || amount === undefined) return "";
+  if (amount === null || amount === undefined || isNaN(amount)) return "";
   const sym = CURRENCY_SYMBOLS[currency] || currency;
-  if (currency === "XOF") return `${Math.round(amount).toLocaleString("fr-FR")} ${sym}`;
-  if (currency === "USD") return `${sym}${Number(amount).toFixed(2)}`;
+
+  if (currency === "XOF") {
+    // Arrondi à la centaine la plus proche → 26238 → 26200
+    const rounded = Math.round(Number(amount) / 100) * 100;
+    return `${rounded.toLocaleString("fr-FR")} ${sym}`;
+  }
+
+  if (currency === "USD") {
+    return `${sym}${Number(amount).toFixed(2)}`;
+  }
+
+  // EUR
   return `${Number(amount).toFixed(2)} ${sym}`;
 }

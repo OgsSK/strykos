@@ -7,11 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck, RefreshCw, XCircle, AlertTriangle, Eye, EyeOff, Clock, RotateCcw, CheckCircle2 } from "lucide-react";
+import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck, RefreshCw, XCircle, AlertTriangle, Eye, EyeOff, Clock, RotateCcw, CheckCircle2, AlertCircle, MessageSquare } from "lucide-react";
 import { OrderTimeline } from "@/components/OrderTimeline";
 import { COUNTRIES_MAP, countryName } from "@/lib/countries";
 import { RETURN_REASONS, isStrykosExpense } from "@/lib/returnReasons";
 import PasswordStrength from "@/components/PasswordStrength";
+import ClaimMediaUploader from "@/components/ClaimMediaUploader";
+import { mediaSrc } from "@/lib/adminUtils";
 
 export default function Account() {
   const { t, lang, user, logout, settings, clearCart, addToCart, setUser, applyBrand } = useStore();
@@ -26,20 +28,24 @@ export default function Account() {
   const [requestCancel, setRequestCancel] = useState(null);
   const [cancelReason, setCancelReason] = useState("");
   const [includeHidden, setIncludeHidden] = useState(false);
-  const [ordersFilter, setOrdersFilter] = useState(""); // "" | "paid" | ...
+  const [ordersFilter, setOrdersFilter] = useState("");
 
-  // --- Retours ---
-  const [requestReturn, setRequestReturn] = useState(null);   // commande concernee
+  // --- Réclamations ---
+  const [requestReturn, setRequestReturn] = useState(null);
   const [returnStep, setReturnStep] = useState(1);
-  const [selectedProducts, setSelectedProducts] = useState({}); // { "pid|vid": true }
-  const [productReasons, setProductReasons] = useState({});     // { "pid|vid": "defect" }
-  const [returnType, setReturnType] = useState("refund");       // refund | exchange
-  const [exchangeVariants, setExchangeVariants] = useState({});      // { product_id: { product, variants } }
-  const [selectedExchangeVariant, setSelectedExchangeVariant] = useState({}); // { product_id: variant_id }
+  const [selectedProducts, setSelectedProducts] = useState({});
+  const [productReasons, setProductReasons] = useState({});
   const [returnGeneralReason, setReturnGeneralReason] = useState("");
   const [returnBusy, setReturnBusy] = useState(false);
-  const [markShippedOrder, setMarkShippedOrder] = useState(null);
-  const [returnTracking, setReturnTracking] = useState("");
+
+  // ⭐ Médias + conversation de réclamation
+  const [claimMedia, setClaimMedia] = useState([]);
+  const [claimMessages, setClaimMessages] = useState([]);
+  const [claimReplyText, setClaimReplyText] = useState("");
+  const [claimReplyMedia, setClaimReplyMedia] = useState([]);
+  const [claimReplyMode, setClaimReplyMode] = useState(false);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimSettings, setClaimSettings] = useState(null);
 
   // --- Paramètres compte ---
   const [showChangePwd, setShowChangePwd] = useState(false);
@@ -49,7 +55,7 @@ export default function Account() {
   const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [deleteForm, setDeleteForm] = useState({ password: "", confirm: "" });
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const [pendingEmail, setPendingEmail] = useState(null);   // { old_email, new_email, old_confirmed, new_confirmed, expires_at }
+  const [pendingEmail, setPendingEmail] = useState(null);
   const [cartRemindersOptOut, setCartRemindersOptOut] = useState(false);
 
   useEffect(() => { if (user) api.get("/newsletter/status").then((r) => setNews(r.data)).catch(() => {}); }, [user]);
@@ -71,14 +77,13 @@ export default function Account() {
           : (newVal ? "Reminders disabled" : "Reminders enabled")
       );
     } catch (e) {
-      setCartRemindersOptOut(!newVal); // rollback
+      setCartRemindersOptOut(!newVal);
       toast.error(apiError(e));
     }
   };
 
   const [profile, setProfile] = useState({ first_name: user.first_name, last_name: user.last_name, phone: user.phone });
 
-  // Sync le formulaire quand user change (ex: après change-email/refresh)
   useEffect(() => {
     if (user) {
       setProfile({
@@ -99,7 +104,6 @@ export default function Account() {
     api.get("/auth/me").then((r) => { if (typeof setUser === "function") setUser(r.data); }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Charge la demande de changement d'email en cours
   const loadPendingEmail = () => {
     if (!user) return;
     api.get("/auth/pending-email-change")
@@ -108,7 +112,6 @@ export default function Account() {
   };
   useEffect(() => { loadPendingEmail(); }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Charge la préférence de relance panier
   useEffect(() => {
     if (!user) return;
     api.get("/cart")
@@ -116,7 +119,6 @@ export default function Account() {
       .catch(() => {});
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detecte le retour depuis un lien d'annulation (?cancel_email_change=1)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("cancel_email_change") === "1") {
@@ -133,7 +135,6 @@ export default function Account() {
   const saveProfile = async () => {
     try {
       const { data } = await api.put("/auth/me", profile);
-      // Synchronise le store + localStorage
       if (typeof setUser === "function") setUser(data);
       setProfile({
         first_name: data.first_name || "",
@@ -146,7 +147,6 @@ export default function Account() {
     }
   };
 
-  // --- Changement mot de passe ---
   const submitChangePwd = async () => {
     if (!pwdForm.current || !pwdForm.newPwd || !pwdForm.confirm) {
       return toast.error(lang === "fr" ? "Remplissez tous les champs" : "Fill all fields");
@@ -172,7 +172,6 @@ export default function Account() {
     setSettingsBusy(false);
   };
 
-  // --- Changement email (double confirmation) ---
   const submitChangeEmail = async () => {
     if (!emailForm.password || !emailForm.newEmail) {
       return toast.error(lang === "fr" ? "Remplissez tous les champs" : "Fill all fields");
@@ -212,7 +211,6 @@ export default function Account() {
     }
   };
 
-  // --- Suppression compte ---
   const submitDeleteAccount = async () => {
     if (!deleteForm.password) {
       return toast.error(lang === "fr" ? "Mot de passe requis" : "Password required");
@@ -242,7 +240,6 @@ export default function Account() {
     await api.delete(`/auth/addresses/${id}`); setAddresses(addresses.filter((a) => a.id !== id));
   };
 
-  // --- Actions commande ---
   const retryPayment = async (orderNumber) => {
     setBusyOrder(orderNumber);
     try {
@@ -319,112 +316,51 @@ export default function Account() {
     }
   };
 
-  // --- Retours ---
   const canRequestReturn = (o) => {
     if (o.status !== "delivered" || o.payment_status !== "paid") return false;
     if (["return_requested", "return_approved", "return_shipped", "return_received", "returned", "refunded", "exchange_sent"].includes(o.status)) return false;
     if (!o.delivered_at) return false;
-    const age = (Date.now() - new Date(o.delivered_at).getTime()) / (1000 * 60 * 60 * 24);
-    return age <= 14;
+    const ageHours = (Date.now() - new Date(o.delivered_at).getTime()) / (1000 * 60 * 60);
+    return ageHours <= 24;
   };
 
-  const openReturnModal = (order) => {
+  const openReturnModal = async (order) => {
     setRequestReturn(order);
     setReturnStep(1);
     setSelectedProducts({});
     setProductReasons({});
-    setReturnType("refund");
     setReturnGeneralReason("");
-    setExchangeVariants({});
-    setSelectedExchangeVariant({});
+    setClaimMedia([]);
+    setClaimMessages([]);
+    setClaimReplyText("");
+    setClaimReplyMedia([]);
+    setClaimReplyMode(false);
+
+    try {
+      const { data: s } = await api.get("/settings");
+      setClaimSettings(s?.orders || {});
+    } catch {
+      setClaimSettings({});
+    }
+
+    try {
+      const { data: msgs } = await api.get(`/orders/${order.order_number}/claim/messages`);
+      setClaimMessages(msgs || []);
+    } catch {
+      setClaimMessages([]);
+    }
   };
 
   const toggleProductSelection = (it) => {
     const key = `${it.product_id}|${it.variant_id || ""}`;
     setSelectedProducts((p) => ({ ...p, [key]: !p[key] }));
     if (!productReasons[key]) {
-      setProductReasons((p) => ({ ...p, [key]: "defect" }));
+      setProductReasons((p) => ({ ...p, [key]: "quality" }));
     }
   };
 
   const setProductReason = (key, reason) => {
     setProductReasons((p) => ({ ...p, [key]: reason }));
-  };
-
-  // Charge les variantes de tous les produits retournés (pour échange)
-  const loadExchangeVariants = async () => {
-    if (!requestReturn) return;
-    const toLoad = [];
-    for (const it of (requestReturn.items || [])) {
-      const key = `${it.product_id}|${it.variant_id || ""}`;
-      if (!selectedProducts[key]) continue;
-      if (exchangeVariants[it.product_id]) continue;
-      if (!it.slug) continue;
-      toLoad.push(it);
-    }
-    for (const it of toLoad) {
-      try {
-        const { data: p } = await api.get(`/products/${it.slug}`);
-        setExchangeVariants((prev) => ({
-          ...prev,
-          [it.product_id]: {
-            product: p,
-            variants: (p.variants || []).filter((v) => v.stock > 0),
-          },
-        }));
-      } catch {
-        // ignore
-      }
-    }
-  };
-
-  // Auto-load quand on passe en exchange
-  React.useEffect(() => {
-    if (requestReturn && returnType === "exchange" && returnStep === 2) {
-      loadExchangeVariants();
-    }
-  }, [returnType, returnStep, requestReturn]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Calcul diff de prix pour un produit
-  const computeExchangeDiff = (productId) => {
-    if (!exchangeVariants[productId] || !requestReturn) return null;
-    const { product, variants } = exchangeVariants[productId];
-    const selectedVariantId = selectedExchangeVariant[productId];
-    if (!selectedVariantId) return null;
-    const variant = variants.find((v) => v.id === selectedVariantId);
-    if (!variant) return null;
-
-    // Prix payé par le client pour ce produit
-    let paidPrice = 0;
-    for (const it of (requestReturn.items || [])) {
-      if (it.product_id === productId) {
-        paidPrice = parseFloat(it.unit_price || 0);
-        break;
-      }
-    }
-
-    // Prix cible
-    const targetPrice = parseFloat(product.sale_price_eur || product.price_eur || 0)
-      + parseFloat(variant.extra_price_eur || 0);
-
-    return {
-      target_price: targetPrice,
-      paid_price: paidPrice,
-      diff: Math.round((targetPrice - paidPrice) * 100) / 100,
-      variant,
-    };
-  };
-
-  // Différence totale
-  const totalExchangeDiff = () => {
-    let total = 0;
-    for (const it of (requestReturn?.items || [])) {
-      const key = `${it.product_id}|${it.variant_id || ""}`;
-      if (!selectedProducts[key]) continue;
-      const diff = computeExchangeDiff(it.product_id);
-      if (diff) total += diff.diff;
-    }
-    return Math.round(total * 100) / 100;
   };
 
   const submitReturn = async () => {
@@ -441,47 +377,24 @@ export default function Account() {
       }
     }
     if (products.length === 0) {
-      toast.error(lang === "fr" ? "Selectionnez au moins un article" : "Select at least one item");
+      toast.error(lang === "fr" ? "Sélectionnez au moins un article" : "Select at least one item");
       return;
-    }
-
-    // Si echange : verifier que toutes les variantes sont selectionnees
-    let exchange_variant_id = null;
-    if (returnType === "exchange") {
-      // On prend la 1ere variante (pour l'instant mono-produit)
-      for (const it of (requestReturn.items || [])) {
-        const key = `${it.product_id}|${it.variant_id || ""}`;
-        if (!selectedProducts[key]) continue;
-        const variantId = selectedExchangeVariant[it.product_id];
-        if (!variantId) {
-          toast.error(lang === "fr" ? "Selectionnez la nouvelle variante pour l'echange" : "Select the new variant for the exchange");
-          return;
-        }
-        exchange_variant_id = variantId;
-        break; // mono-produit
-      }
     }
 
     setReturnBusy(true);
     try {
       const { data } = await api.post(`/orders/${requestReturn.order_number}/request-return`, {
         products,
-        return_type: returnType,
+        return_type: "refund",
         reason: returnGeneralReason,
-        exchange_variant_id,
         origin_url: window.location.origin,
+        media_urls: claimMedia,
       });
-
-      // Si un paiement de complement est requis -> redirection Stripe
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url;
-        return;
-      }
 
       toast.success(
         lang === "fr"
-          ? `Demande envoyee · Code RMA : ${data.rma_code}`
-          : `Request sent · RMA code: ${data.rma_code}`
+          ? `Réclamation envoyée · Code : ${data.rma_code}`
+          : `Report sent · Code: ${data.rma_code}`
       );
       setRequestReturn(null);
       reloadOrders();
@@ -489,40 +402,63 @@ export default function Account() {
     setReturnBusy(false);
   };
 
-  const submitMarkShipped = async () => {
-    if (!markShippedOrder || !returnTracking.trim()) {
-      toast.error(lang === "fr" ? "Numero de suivi requis" : "Tracking number required");
+  // ⭐ MODIFIÉ : validation des types demandés + ferme LES DEUX modales après envoi
+  const submitClaimReply = async () => {
+    if (!requestReturn) return;
+    if (!claimReplyText.trim() && claimReplyMedia.length === 0) {
+      toast.error(lang === "fr" ? "Ajoutez un message ou des fichiers" : "Add a message or files");
       return;
     }
-    setReturnBusy(true);
+    // ⭐ NOUVEAU : validation des types demandés par l'admin
+    const requested = requestReturn.claim_info_request_types || [];
+    if (requested.length > 0) {
+      const hasVideo = claimReplyMedia.some((m) => m.type === "video");
+      const hasPhoto = claimReplyMedia.some((m) => m.type === "image");
+      if (hasVideo && !requested.includes("video")) {
+        toast.error(lang === "fr"
+          ? "L'équipe n'a pas demandé de vidéo."
+          : "The team did not request a video.");
+        return;
+      }
+      if (hasPhoto && !requested.includes("photo")) {
+        toast.error(lang === "fr"
+          ? "L'équipe n'a pas demandé de photo."
+          : "The team did not request photos.");
+        return;
+      }
+    }
+    setClaimBusy(true);
     try {
-      await api.post(`/orders/${markShippedOrder.order_number}/mark-return-shipped`, {
-        tracking_number: returnTracking.trim(),
+      const { data } = await api.post(`/orders/${requestReturn.order_number}/claim/reply`, {
+        text: claimReplyText.trim(),
+        media_urls: claimReplyMedia,
       });
-      toast.success(lang === "fr" ? "Expedition confirmee" : "Shipment confirmed");
-      setMarkShippedOrder(null);
-      setReturnTracking("");
+      // Rafraîchit la conversation
+      setClaimMessages((prev) => [...prev, data.message]);
+      setClaimReplyText("");
+      setClaimReplyMedia([]);
+      // ⭐ Ferme LES DEUX modales (réponse + signalement)
+      setClaimReplyMode(false);
+      setRequestReturn(null);
+      toast.success(lang === "fr" ? "Réponse envoyée" : "Reply sent");
       reloadOrders();
-    } catch (e) { toast.error(apiError(e)); }
-    setReturnBusy(false);
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+    setClaimBusy(false);
   };
 
-  // --- Helpers affichage badges retour ---
   const returnBadge = (o) => {
     switch (o.status) {
       case "return_requested":
-        return { label: lang === "fr" ? "Retour demande" : "Return requested", color: "bg-orange-100 text-orange-800 border-orange-300" };
+        return { label: lang === "fr" ? "Réclamation en cours" : "Report in progress", color: "bg-orange-100 text-orange-800 border-orange-300" };
       case "return_approved":
-        return { label: lang === "fr" ? "Retour approuve · en attente d'envoi" : "Return approved · awaiting shipment", color: "bg-orange-100 text-orange-800 border-orange-300" };
-      case "return_shipped":
-        return { label: lang === "fr" ? "Colis retour en transit" : "Return parcel in transit", color: "bg-orange-100 text-orange-800 border-orange-300" };
+        return { label: lang === "fr" ? "Réclamation acceptée" : "Report approved", color: "bg-orange-100 text-orange-800 border-orange-300" };
       case "return_received":
-        return { label: lang === "fr" ? "Retour recu · controle en cours" : "Return received · inspection", color: "bg-orange-200 text-orange-900 border-orange-400" };
+        return { label: lang === "fr" ? "Réclamation · examen" : "Report · review", color: "bg-orange-200 text-orange-900 border-orange-400" };
       case "returned":
       case "refunded":
-        return { label: lang === "fr" ? "Retourne · rembourse" : "Returned · refunded", color: "bg-gray-200 text-gray-700 border-gray-300" };
-      case "exchange_sent":
-        return { label: lang === "fr" ? "Echange envoye" : "Exchange sent", color: "bg-purple-100 text-purple-800 border-purple-300" };
+        return { label: lang === "fr" ? "Remboursé" : "Refunded", color: "bg-gray-200 text-gray-700 border-gray-300" };
       default:
         return null;
     }
@@ -543,7 +479,6 @@ export default function Account() {
   });
   const hiddenCount = orders.filter((o) => o.hidden_by_customer && o.status !== "cancelled").length;
 
-  // Total selectionne pour retour
   const returnSelectionCount = Object.values(selectedProducts).filter(Boolean).length;
 
   return (
@@ -676,31 +611,80 @@ export default function Account() {
                       {(o.items || []).map((it, i) => <span key={i}>{(lang === "fr" ? it.name_fr : it.name_en)} ({it.size}) x{it.quantity}{i < o.items.length - 1 ? ", " : ""}</span>)}
                     </div>
 
-                    {o.tracking_number && <div className="mt-2 text-xs inline-flex items-center gap-1 text-cyan-700"><Truck className="w-3 h-3" /> {o.tracking_carrier} {o.tracking_number}</div>}
-
-                    {/* Info retour */}
-                    {o.return_rma_code && isReturnFlow && (
-                      <div className="mt-3 text-xs bg-orange-50 border border-orange-200 p-3 text-orange-900">
-                        <div className="inline-flex items-center gap-1.5 font-semibold mb-1">
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          {lang === "fr" ? "Code RMA" : "RMA code"} : <span className="font-mono">{o.return_rma_code}</span>
-                        </div>
-                        {o.status === "return_requested" && <p>{lang === "fr" ? "Notre equipe examine votre demande. Vous recevrez une reponse sous 24 a 48 heures ouvrees." : "Our team is reviewing your request. You will receive a response within 24-48 business hours."}</p>}
-                        {o.status === "return_approved" && <p>{lang === "fr" ? "Retour approuve. Imprimez l'etiquette depuis l'e-mail puis deposez le colis au point indique." : "Return approved. Print the label from the email, then drop off the parcel at the indicated point."}</p>}
-                        {o.status === "return_shipped" && <p>{lang === "fr" ? "Colis en transit. Nous vous previendrons des reception." : "Parcel in transit. We'll notify you upon receipt."}</p>}
-                        {o.status === "return_received" && <p>{lang === "fr" ? "Colis recu. Controle en cours (2 a 5 jours ouvres)." : "Parcel received. Inspection in progress (2-5 business days)."}</p>}
-                        {o.return_tracking_number && <p className="mt-1">{lang === "fr" ? "Suivi client" : "Customer tracking"} : <span className="font-mono">{o.return_tracking_number}</span></p>}
+                    {o.scheduled_date && (
+                      <div className="text-xs bg-blue-50 border border-blue-200 text-blue-800 px-3 py-1.5 rounded inline-flex items-center gap-2 mt-2" data-testid={`scheduled-delivery-${o.order_number}`}>
+                        📅 <strong>
+                          {new Date(o.scheduled_date).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-GB", {
+                            weekday: "long", day: "numeric", month: "long"
+                          })}
+                        </strong>
+                        {o.scheduled_time_slot && <span>· {o.scheduled_time_slot}</span>}
                       </div>
                     )}
 
-                    {/* Message annulation en cours */}
+                    {o.tracking_number && <div className="mt-2 text-xs inline-flex items-center gap-1 text-cyan-700"><Truck className="w-3 h-3" /> {o.tracking_carrier} {o.tracking_number}</div>}
+
+                    {o.return_rma_code && isReturnFlow && (
+                      <div className="mt-3 text-xs bg-orange-50 border border-orange-200 p-3 text-orange-900 space-y-3">
+                        <div className="inline-flex items-center gap-1.5 font-semibold">
+                          <RotateCcw className="w-3.5 h-3.5" />
+                          {lang === "fr" ? "Réclamation" : "Claim"} : <span className="font-mono">{o.return_rma_code}</span>
+                        </div>
+
+                        {o.claim_info_requested_at && (
+                          <div className="bg-amber-100 border border-amber-400 rounded p-3">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <div className="font-bold text-amber-900 text-sm mb-1">
+                                  {lang === "fr" ? "⚠️ Action requise de votre part" : "⚠️ Action required"}
+                                </div>
+                                <p className="text-amber-800 mb-2">
+                                  {lang === "fr" ? "Notre équipe a besoin d'informations complémentaires :" : "Our team needs more info:"}
+                                </p>
+                                <div className="bg-white border border-amber-300 rounded p-2 mb-3 text-ink whitespace-pre-line">
+                                  {o.claim_info_request_message}
+                                </div>
+                                {!claimReplyMode ? (
+                                  <button
+                                    onClick={() => {
+                                      setRequestReturn(o);
+                                      setClaimReplyMode(true);
+                                      setClaimReplyText("");
+                                      setClaimReplyMedia([]);
+                                      api.get(`/orders/${o.order_number}/claim/messages`)
+                                        .then((r) => setClaimMessages(r.data || []))
+                                        .catch(() => {});
+                                      if (!claimSettings) {
+                                        api.get("/settings").then((r) => setClaimSettings(r.data?.orders || {})).catch(() => {});
+                                      }
+                                    }}
+                                    className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-bold uppercase px-3 py-1.5 rounded"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5 inline mr-1" />
+                                    {lang === "fr" ? "Répondre avec photos/vidéos" : "Reply with photos/videos"}
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {o.status === "return_requested" && !o.claim_info_requested_at && (
+                          <p>{lang === "fr" ? "Notre équipe examine votre réclamation." : "Our team is reviewing your claim."}</p>
+                        )}
+                        {o.status === "return_approved" && (
+                          <p>{lang === "fr" ? "Réclamation acceptée." : "Claim approved."}</p>
+                        )}
+                      </div>
+                    )}
+
                     {cancelInProgress && (
                       <div className="mt-3 text-xs bg-red-50 border border-red-200 p-3 text-red-800">
                         <div className="inline-flex items-center gap-1.5 font-semibold mb-1"><Clock className="w-3.5 h-3.5" />{lang === "fr" ? "Annulation en cours d'examen" : "Cancellation under review"}</div>
                       </div>
                     )}
 
-                    {/* Actions commande EN ATTENTE */}
                     {isPending && (
                       <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-amber-200">
                         <Button onClick={() => retryPayment(o.order_number)} disabled={busy}
@@ -718,7 +702,6 @@ export default function Account() {
                       </div>
                     )}
 
-                    {/* Actions commande TRAITEE */}
                     {!isPending && !isTerminal && (
                       <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-border items-center">
                         <Button onClick={() => reorder(o)} disabled={busy}
@@ -733,16 +716,7 @@ export default function Account() {
                             className="text-xs text-orange-700 hover:text-orange-800 font-semibold inline-flex items-center gap-1 h-9 px-2 border border-orange-200 hover:bg-orange-50"
                             data-testid={`request-return-${o.order_number}`}>
                             <RotateCcw className="w-3.5 h-3.5" />
-                            {lang === "fr" ? "Demander un retour" : "Request a return"}
-                          </button>
-                        )}
-
-                        {o.status === "return_approved" && (
-                          <button onClick={() => { setMarkShippedOrder(o); setReturnTracking(""); }} disabled={busy}
-                            className="text-xs text-white bg-orange-600 hover:bg-orange-700 font-semibold inline-flex items-center gap-1 h-9 px-3 rounded-none"
-                            data-testid={`mark-return-shipped-${o.order_number}`}>
-                            <Truck className="w-3.5 h-3.5" />
-                            {lang === "fr" ? "J'ai envoye le colis" : "I shipped the parcel"}
+                            {lang === "fr" ? "Signaler un problème" : "Report an issue"}
                           </button>
                         )}
 
@@ -773,7 +747,6 @@ export default function Account() {
                       </div>
                     )}
 
-                    {/* Commandes terminales : juste masquer */}
                     {!isPending && isTerminal && (
                       <div className="mt-3 flex flex-wrap gap-2 pt-3 border-t border-border">
                         {!isHidden ? (
@@ -838,7 +811,6 @@ export default function Account() {
           {tab === "profile" && (
             <div className="max-w-2xl space-y-6" data-testid="profile-tab">
 
-              {/* Bandeau : changement d'email en cours */}
               {pendingEmail && (
                 <div className="border-2 border-amber-300 bg-amber-50 p-5" data-testid="pending-email-banner">
                   <div className="flex items-start gap-3">
@@ -868,7 +840,6 @@ export default function Account() {
                 </div>
               )}
 
-              {/* Section 1 — Informations personnelles */}
               <div className="border border-border p-5">
                 <h3 className="font-heading font-bold uppercase text-sm mb-4">{lang === "fr" ? "Informations personnelles" : "Personal information"}</h3>
                 <div className="grid sm:grid-cols-2 gap-3">
@@ -890,7 +861,6 @@ export default function Account() {
                 </Button>
               </div>
 
-              {/* Section 2 — Sécurité */}
               <div className="border border-border p-5">
                 <h3 className="font-heading font-bold uppercase text-sm mb-4">{lang === "fr" ? "Sécurité" : "Security"}</h3>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -904,7 +874,6 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* Section 3 — Newsletter */}
               <div className="border border-border p-5">
                 <h3 className="font-heading font-bold uppercase text-sm mb-4">{lang === "fr" ? "Newsletter" : "Newsletter"}</h3>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -918,7 +887,6 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* Section 3.b — Relances panier abandonné */}
               <div className="border border-border p-5">
                 <h3 className="font-heading font-bold uppercase text-sm mb-4">{lang === "fr" ? "Relances panier" : "Cart reminders"}</h3>
                 <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -946,7 +914,6 @@ export default function Account() {
                 </div>
               </div>
 
-              {/* Section 4 — Zone dangereuse */}
               <div className="border-2 border-red-200 p-5 bg-red-50/50">
                 <h3 className="font-heading font-bold uppercase text-sm mb-2 text-red-700">{lang === "fr" ? "Zone dangereuse" : "Danger zone"}</h3>
                 <p className="text-xs text-red-700/80 mb-3">
@@ -1020,27 +987,31 @@ export default function Account() {
         </div>
       )}
 
-      {/* Modale : Demander un retour */}
-      {requestReturn && (
+      {/* Modale signalement — conditionnée par !claimReplyMode */}
+      {requestReturn && !claimReplyMode && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setRequestReturn(null)}>
           <div className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-border" onClick={(e) => e.stopPropagation()}>
             <div className="p-5 border-b border-border">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="font-bold text-lg">{lang === "fr" ? "Demander un retour" : "Request a return"}</h3>
+                <h3 className="font-bold text-lg">{lang === "fr" ? "Signaler un problème" : "Report an issue"}</h3>
                 <button onClick={() => setRequestReturn(null)} className="text-ink-muted hover:text-ink"><XCircle className="w-5 h-5" /></button>
               </div>
               <p className="text-xs text-ink-muted">
-                {lang === "fr" ? `Commande ${requestReturn.order_number} · Etape ${returnStep}/2` : `Order ${requestReturn.order_number} · Step ${returnStep}/2`}
+                {lang === "fr" ? `Commande ${requestReturn.order_number} · Étape ${returnStep}/2` : `Order ${requestReturn.order_number} · Step ${returnStep}/2`}
               </p>
             </div>
 
-            {/* ETAPE 1 : Sélection produits + raison */}
             {returnStep === 1 && (
               <div className="p-5 space-y-3">
+                <div className="bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+  ⏱️ {lang === "fr"
+    ? `Vous avez ${claimSettings?.claim_window_hours ?? 48}h après la livraison pour signaler un problème.`
+    : `You have ${claimSettings?.claim_window_hours ?? 48}h after delivery to report an issue.`}
+</div>
                 <p className="text-sm text-ink-soft">
                   {lang === "fr"
-                    ? "Selectionnez les articles a retourner et indiquez un motif pour chacun."
-                    : "Select the items to return and indicate a reason for each."}
+                    ? "Sélectionnez les articles concernés et indiquez un motif pour chacun."
+                    : "Select the affected items and indicate a reason for each."}
                 </p>
                 {(requestReturn.items || []).map((it, i) => {
                   const key = `${it.product_id}|${it.variant_id || ""}`;
@@ -1051,23 +1022,18 @@ export default function Account() {
                         <input type="checkbox" checked={selected} onChange={() => toggleProductSelection(it)} className="mt-1 w-4 h-4" />
                         <div className="flex-1">
                           <div className="font-semibold text-sm">{lang === "fr" ? it.name_fr : it.name_en}</div>
-                          <div className="text-xs text-ink-muted">{lang === "fr" ? "Taille" : "Size"} {it.size} · x{it.quantity}</div>
+                          <div className="text-xs text-ink-muted">{lang === "fr" ? "Portion" : "Portion"} {it.size} · x{it.quantity}</div>
                         </div>
                       </label>
                       {selected && (
                         <div className="mt-3 pl-7">
                           <Label className="text-xs uppercase tracking-wider text-ink-muted">{lang === "fr" ? "Motif" : "Reason"}</Label>
-                          <select value={productReasons[key] || "defect"} onChange={(e) => setProductReason(key, e.target.value)}
+                          <select value={productReasons[key] || "quality"} onChange={(e) => setProductReason(key, e.target.value)}
                             className="mt-1 w-full border border-border h-10 px-3 bg-white text-sm">
                             {RETURN_REASONS.map((r) => (
                               <option key={r.value} value={r.value}>{lang === "fr" ? r.label_fr : r.label_en}</option>
                             ))}
                           </select>
-                          {isStrykosExpense(productReasons[key] || "defect") && (
-                            <p className="text-[11px] text-green-700 mt-1">
-                              {applyBrand(lang === "fr" ? "Frais de retour pris en charge par STRYKOS" : "Return costs covered by STRYKOS")}
-                            </p>
-                          )}
                         </div>
                       )}
                     </div>
@@ -1076,144 +1042,51 @@ export default function Account() {
               </div>
             )}
 
-            {/* ETAPE 2 : Type + raison globale + recap */}
             {returnStep === 2 && (
               <div className="p-5 space-y-4">
-                <div>
-                  <Label className="text-xs uppercase tracking-wider text-ink-muted mb-2 block">
-                    {lang === "fr" ? "Solution souhaitee" : "Requested solution"}
-                  </Label>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setReturnType("refund")}
-                      className={`p-3 border text-left text-sm ${returnType === "refund" ? "border-brand bg-brand/5" : "border-border hover:bg-secondary"}`}>
-                      <div className="font-semibold">{lang === "fr" ? "Remboursement" : "Refund"}</div>
-                      <div className="text-xs text-ink-muted">{lang === "fr" ? "Rembourse sur le moyen de paiement initial" : "Refunded to original payment method"}</div>
-                    </button>
-                    <button type="button" onClick={() => setReturnType("exchange")}
-                      className={`p-3 border text-left text-sm ${returnType === "exchange" ? "border-brand bg-brand/5" : "border-border hover:bg-secondary"}`}>
-                      <div className="font-semibold">{lang === "fr" ? "Echange" : "Exchange"}</div>
-                      <div className="text-xs text-ink-muted">{lang === "fr" ? "Autre taille ou couleur du meme produit" : "Other size or color of the same product"}</div>
-                    </button>
+                <div className="border border-border rounded-lg p-4 bg-secondary/20">
+                  <div className="text-sm font-semibold mb-3">
+                    📸 {lang === "fr" ? "Ajoutez des photos ou une vidéo" : "Add photos or a video"} <span className="text-ink-muted font-normal">({lang === "fr" ? "recommandé" : "recommended"})</span>
                   </div>
+                  <p className="text-xs text-ink-soft mb-4">
+                    {lang === "fr"
+                      ? "Montrez le problème sous tous les angles : ça nous aide à traiter votre réclamation plus vite."
+                      : "Show the issue from all angles: it helps us process your claim faster."}
+                  </p>
+                  <ClaimMediaUploader
+                    value={claimMedia}
+                    onChange={setClaimMedia}
+                    maxPhotos={claimSettings?.claim_media_max_photos ?? 3}
+                    maxVideos={claimSettings?.claim_media_max_videos ?? 1}
+                    maxPhotoMb={claimSettings?.claim_media_max_photo_mb ?? 5}
+                    maxVideoMb={claimSettings?.claim_media_max_video_mb ?? 50}
+                    disabled={returnBusy}
+                  />
                 </div>
-
-                {/* Sélection de la variante d'échange */}
-                {returnType === "exchange" && (
-                  <div className="space-y-4 border-t border-border pt-4">
-                    {(requestReturn.items || []).map((it) => {
-                      const key = `${it.product_id}|${it.variant_id || ""}`;
-                      if (!selectedProducts[key]) return null;
-                      const data = exchangeVariants[it.product_id];
-                      const diffInfo = computeExchangeDiff(it.product_id);
-                      const isSelected = !!selectedExchangeVariant[it.product_id];
-
-                      return (
-                        <div key={it.product_id} className="border border-border p-4 bg-white">
-                          <div className="text-sm font-semibold mb-1">{lang === "fr" ? it.name_fr : it.name_en}</div>
-                          <div className="text-xs text-ink-muted mb-3">
-                            {lang === "fr" ? "Taille actuelle" : "Current size"} : <strong>{it.size}</strong> · {lang === "fr" ? "Payé" : "Paid"} : {it.unit_price} €
-                          </div>
-
-                          {!data ? (
-                            <div className="text-xs text-ink-muted italic">{lang === "fr" ? "Chargement des variantes..." : "Loading variants..."}</div>
-                          ) : data.variants.length === 0 ? (
-                            <div className="text-xs text-red-600">{lang === "fr" ? "Aucune variante disponible en stock." : "No variant available in stock."}</div>
-                          ) : (
-                            <>
-                              <Label className="text-xs uppercase tracking-wider text-ink-muted">
-                                {lang === "fr" ? "Choisir la nouvelle taille / couleur" : "Choose new size / color"}
-                              </Label>
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {data.variants.map((v) => {
-                                  const isSel = selectedExchangeVariant[it.product_id] === v.id;
-                                  const isCurrent = v.id === it.variant_id;
-                                  return (
-                                    <button
-                                      key={v.id}
-                                      type="button"
-                                      onClick={() => {
-                                        if (isCurrent) return;
-                                        setSelectedExchangeVariant((s) => ({ ...s, [it.product_id]: v.id }));
-                                      }}
-                                      disabled={isCurrent}
-                                      className={`px-3 py-2 border text-xs font-semibold ${isSel ? "border-brand bg-brand text-white" : isCurrent ? "border-border bg-secondary text-ink-muted cursor-not-allowed" : "border-border hover:border-brand"}`}
-                                      title={isCurrent ? (lang === "fr" ? "Taille actuelle" : "Current size") : ""}
-                                    >
-                                      {v.size} {v.color && `· ${v.color}`}
-                                      {v.extra_price_eur > 0 && ` (+${v.extra_price_eur}€)`}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-
-                              {/* Diff de prix */}
-                              {diffInfo && (
-                                <div className={`mt-3 p-3 text-sm border ${diffInfo.diff > 0 ? "bg-amber-50 border-amber-200 text-amber-900" : diffInfo.diff < 0 ? "bg-green-50 border-green-200 text-green-900" : "bg-secondary border-border"}`}>
-                                  <div className="flex justify-between mb-1">
-                                    <span>{lang === "fr" ? "Prix du nouveau" : "New price"} :</span>
-                                    <span>{diffInfo.target_price.toFixed(2)} €</span>
-                                  </div>
-                                  <div className="flex justify-between mb-1">
-                                    <span>{lang === "fr" ? "Prix payé" : "Price paid"} :</span>
-                                    <span>{diffInfo.paid_price.toFixed(2)} €</span>
-                                  </div>
-                                  <div className="flex justify-between font-bold border-t border-current pt-1 mt-1">
-                                    <span>{lang === "fr" ? "Différence" : "Difference"} :</span>
-                                    <span>
-                                      {diffInfo.diff > 0 && `+${diffInfo.diff.toFixed(2)} €`}
-                                      {diffInfo.diff < 0 && `${diffInfo.diff.toFixed(2)} €`}
-                                      {diffInfo.diff === 0 && "0.00 €"}
-                                    </span>
-                                  </div>
-                                  <div className="text-[11px] mt-1 italic">
-                                    {diffInfo.diff > 0 && (lang === "fr" ? "Vous devrez payer ce montant avant validation." : "You will pay this amount before validation.")}
-                                    {diffInfo.diff < 0 && (lang === "fr" ? "Nous vous rembourserons ce montant à réception." : "We will refund this amount upon receipt.")}
-                                    {diffInfo.diff === 0 && (lang === "fr" ? "Aucun paiement supplémentaire." : "No additional payment.")}
-                                  </div>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* Total */}
-                    {totalExchangeDiff() !== 0 && (
-                      <div className={`p-3 text-sm font-bold text-center border-2 ${totalExchangeDiff() > 0 ? "bg-amber-50 border-amber-400 text-amber-900" : "bg-green-50 border-green-400 text-green-900"}`}>
-                        {totalExchangeDiff() > 0
-                          ? `${lang === "fr" ? "Total à payer" : "Total to pay"} : +${totalExchangeDiff().toFixed(2)} €`
-                          : `${lang === "fr" ? "Total à vous rembourser" : "Total to refund you"} : ${totalExchangeDiff().toFixed(2)} €`}
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 <div>
                   <Label className="text-xs uppercase tracking-wider text-ink-muted">
-                    {lang === "fr" ? "Message (optionnel)" : "Message (optional)"}
+                    {lang === "fr" ? "Détails supplémentaires (optionnel)" : "Additional details (optional)"}
                   </Label>
-                  <Textarea rows={3} value={returnGeneralReason} onChange={(e) => setReturnGeneralReason(e.target.value)}
-                    placeholder={lang === "fr" ? "Details supplementaires..." : "Additional details..."}
+                  <Textarea rows={4} value={returnGeneralReason} onChange={(e) => setReturnGeneralReason(e.target.value)}
+                    placeholder={lang === "fr" ? "Décrivez le problème rencontré..." : "Describe the issue..."}
                     className="mt-1 rounded-none" />
                 </div>
 
                 <div className="bg-secondary/40 border border-border p-4 text-sm">
-                  <div className="font-semibold mb-2">{lang === "fr" ? "Recapitulatif" : "Summary"}</div>
+                  <div className="font-semibold mb-2">{lang === "fr" ? "Récapitulatif" : "Summary"}</div>
                   <div className="text-xs text-ink-soft space-y-1">
-                    <div>{returnSelectionCount} {lang === "fr" ? "article(s) a retourner" : "item(s) to return"}</div>
-                    <div>{lang === "fr" ? "Solution" : "Solution"} : <strong>{returnType === "refund" ? (lang === "fr" ? "Remboursement" : "Refund") : (lang === "fr" ? "Echange" : "Exchange")}</strong></div>
-                    <p className="mt-2 text-ink-muted">
+                    <div>{returnSelectionCount} {lang === "fr" ? "article(s) concerné(s)" : "affected item(s)"}</div>
+                    <div className="pt-2 text-ink-muted">
                       {lang === "fr"
-                        ? "Un code RMA et une etiquette de retour vous seront envoyes par e-mail."
-                        : "An RMA code and a return label will be sent to you by email."}
-                    </p>
+                        ? "Notre équipe va examiner votre réclamation sous 24 à 48 heures ouvrées. Vous serez remboursé(e) sur votre moyen de paiement initial en cas d'acceptation."
+                        : "Our team will review your report within 24-48 business hours. You will be refunded to your original payment method if approved."}
+                    </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Footer actions */}
             <div className="p-5 border-t border-border flex gap-2 justify-end">
               {returnStep === 2 && (
                 <button onClick={() => setReturnStep(1)} className="px-4 py-2 border border-border text-xs font-bold uppercase hover:bg-secondary">
@@ -1225,7 +1098,7 @@ export default function Account() {
               </button>
               {returnStep === 1 ? (
                 <button onClick={() => {
-                  if (returnSelectionCount === 0) return toast.error(lang === "fr" ? "Selectionnez au moins un article" : "Select at least one item");
+                  if (returnSelectionCount === 0) return toast.error(lang === "fr" ? "Sélectionnez au moins un article" : "Select at least one item");
                   setReturnStep(2);
                 }}
                   className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase">
@@ -1235,7 +1108,7 @@ export default function Account() {
                 <button onClick={submitReturn} disabled={returnBusy}
                   className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase disabled:opacity-50"
                   data-testid="submit-return">
-                  {returnBusy ? "..." : (lang === "fr" ? "Envoyer la demande" : "Send request")}
+                  {returnBusy ? "..." : (lang === "fr" ? "Envoyer la réclamation" : "Send report")}
                 </button>
               )}
             </div>
@@ -1243,32 +1116,120 @@ export default function Account() {
         </div>
       )}
 
-      {/* Modale : J'ai envoyé le colis retour */}
-      {markShippedOrder && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setMarkShippedOrder(null)}>
-          <div className="bg-white max-w-md w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-start gap-3 mb-4">
-              <Truck className="w-6 h-6 text-orange-600 shrink-0" />
+      {/* ⭐ MODIFIÉ : Modale réponse — rappel admin + requestedTypes + filtre types */}
+      {requestReturn && claimReplyMode && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => { setClaimReplyMode(false); setRequestReturn(null); }}>
+          <div className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-border" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 border-b border-border sticky top-0 bg-white z-10">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-lg">
+                  {lang === "fr" ? "Répondre à la demande" : "Reply to request"}
+                </h3>
+                <button onClick={() => { setClaimReplyMode(false); setRequestReturn(null); }} className="text-ink-muted hover:text-ink">
+                  <XCircle className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-xs text-ink-muted mt-1">
+                {lang === "fr" ? `Commande ${requestReturn.order_number}` : `Order ${requestReturn.order_number}`}
+              </p>
+              {/* ⭐ NOUVEAU : rappel de la demande admin */}
+              {requestReturn?.claim_info_request_message && (
+                <div className="mt-3 bg-amber-50 border-l-4 border-amber-500 p-3 text-xs">
+                  <div className="font-semibold text-amber-900 mb-1">
+                    {lang === "fr" ? "Demande de l'équipe :" : "Team request:"}
+                  </div>
+                  <div className="text-amber-800 whitespace-pre-line mb-2">
+                    {requestReturn.claim_info_request_message}
+                  </div>
+                  {requestReturn?.claim_info_request_types?.length > 0 && (
+                    <div className="text-[11px] text-amber-700 italic">
+                      {lang === "fr" ? "Fichiers demandés : " : "Requested files: "}
+                      {requestReturn.claim_info_request_types.map((t) =>
+                        t === "photo" ? "📸 Photos" : "🎥 Vidéo"
+                      ).join(" · ")}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 space-y-4">
+              {claimMessages.length > 0 && (
+                <div className="bg-secondary/40 border border-border rounded-lg p-4 space-y-3 max-h-60 overflow-y-auto">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-ink-muted mb-2">
+                    💬 {lang === "fr" ? "Conversation" : "Conversation"}
+                  </div>
+                  {claimMessages.map((m, i) => (
+                    <div key={i} className={`flex ${m.sender === "client" ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[85%] rounded-lg p-3 text-sm ${
+                        m.sender === "client" ? "bg-brand text-white" : "bg-white border border-border"
+                      }`}>
+                        <div className="text-[10px] opacity-70 mb-1">
+                          {m.sender === "client" ? (lang === "fr" ? "Vous" : "You") : (lang === "fr" ? "Équipe CAKESSHOP" : "CAKESSHOP Team")}
+                          {" · "}
+                          {new Date(m.created_at).toLocaleString("fr-FR")}
+                        </div>
+                        {m.text && <div className="whitespace-pre-line">{m.text}</div>}
+                        {m.media_urls?.length > 0 && (
+                          <div className="mt-2 grid grid-cols-3 gap-1">
+                            {m.media_urls.slice(0, 6).map((media, j) => (
+                              media.type === "image" ? (
+                                <img key={j} src={mediaSrc(media.url)} alt="" className="aspect-square rounded object-cover" />
+                              ) : (
+                                <video key={j} src={mediaSrc(media.url)} className="aspect-square rounded object-cover" />
+                              )
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div>
-                <h3 className="font-bold text-lg mb-1">{lang === "fr" ? "Confirmer l'envoi" : "Confirm shipment"}</h3>
-                <p className="text-sm text-ink-soft">
-                  {lang === "fr"
-                    ? `Indiquez le numero de suivi de votre colis retour pour la commande ${markShippedOrder.order_number}.`
-                    : `Enter the tracking number of your return parcel for order ${markShippedOrder.order_number}.`}
-                </p>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">
+                  {lang === "fr" ? "Votre réponse" : "Your reply"}
+                </Label>
+                <Textarea
+                  rows={4}
+                  value={claimReplyText}
+                  onChange={(e) => setClaimReplyText(e.target.value)}
+                  placeholder={lang === "fr" ? "Décrivez les détails demandés..." : "Describe the requested details..."}
+                  className="mt-1 rounded-none"
+                />
+              </div>
+
+              <div className="border border-border rounded-lg p-4 bg-secondary/20">
+                <div className="text-sm font-semibold mb-3">
+                  📸 {lang === "fr" ? "Ajouter des photos/vidéos" : "Add photos/videos"}
+                </div>
+                <ClaimMediaUploader
+                  value={claimReplyMedia}
+                  onChange={setClaimReplyMedia}
+                  maxPhotos={claimSettings?.claim_media_max_photos ?? 3}
+                  maxVideos={claimSettings?.claim_media_max_videos ?? 1}
+                  maxPhotoMb={claimSettings?.claim_media_max_photo_mb ?? 5}
+                  maxVideoMb={claimSettings?.claim_media_max_video_mb ?? 50}
+                  requestedTypes={requestReturn?.claim_info_request_types || ["photo", "video"]}
+                  disabled={claimBusy}
+                />
               </div>
             </div>
-            <Label className="text-xs uppercase tracking-wider text-ink-muted">{lang === "fr" ? "Numero de suivi" : "Tracking number"}</Label>
-            <Input value={returnTracking} onChange={(e) => setReturnTracking(e.target.value)}
-              placeholder="Ex: 6A12345678901" className="mt-1 font-mono rounded-none" data-testid="return-tracking-input" />
-            <div className="flex gap-2 justify-end mt-4">
-              <button onClick={() => setMarkShippedOrder(null)} className="px-4 py-2 border border-border text-xs font-bold uppercase hover:bg-secondary">
+
+            <div className="p-5 border-t border-border flex gap-2 justify-end sticky bottom-0 bg-white">
+              <button
+                onClick={() => { setClaimReplyMode(false); setRequestReturn(null); }}
+                className="px-4 py-2 border border-border text-xs font-bold uppercase hover:bg-secondary"
+              >
                 {lang === "fr" ? "Annuler" : "Cancel"}
               </button>
-              <button onClick={submitMarkShipped} disabled={returnBusy || !returnTracking.trim()}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold uppercase disabled:opacity-50"
-                data-testid="confirm-mark-shipped">
-                {returnBusy ? "..." : (lang === "fr" ? "Confirmer" : "Confirm")}
+              <button
+                onClick={submitClaimReply}
+                disabled={claimBusy}
+                className="px-4 py-2 bg-brand hover:bg-brand-dark text-white text-xs font-bold uppercase disabled:opacity-50"
+              >
+                {claimBusy ? "..." : (lang === "fr" ? "Envoyer la réponse" : "Send reply")}
               </button>
             </div>
           </div>

@@ -62,14 +62,30 @@ export default function AdminCustomers() {
       </form>
       <div className="bg-white border border-border overflow-x-auto">
         <table className="w-full text-sm">
-          <thead className="bg-secondary text-left text-xs uppercase tracking-wider"><tr><th className="p-3">Client</th><th className="p-3">Telephone</th><th className="p-3">Commandes</th><th className="p-3">Total paye (EUR eq.)</th><th className="p-3">Role</th><th className="p-3">Inscrit</th><th className="p-3"></th></tr></thead>
+          <thead className="bg-secondary text-left text-xs uppercase tracking-wider">
+            <tr>
+              <th className="p-3">Client</th>
+              <th className="p-3">Telephone</th>
+              <th className="p-3">Commandes</th>
+              <th className="p-3">Total payé (FCFA)</th>
+              <th className="p-3">Role</th>
+              <th className="p-3">Inscrit</th>
+              <th className="p-3"></th>
+            </tr>
+          </thead>
           <tbody>
             {list.map((u) => (
               <tr key={u.id} className="border-t border-border hover:bg-secondary/50" data-testid={`customer-row-${u.email}`}>
                 <td className="p-3"><Link to={`/admin/customers/${u.id}`} className="font-medium hover:text-brand">{u.first_name} {u.last_name}</Link><div className="text-xs text-ink-muted">{u.email}</div></td>
                 <td className="p-3">{u.phone || "-"}</td>
                 <td className="p-3">{u.orders_count}</td>
-                <td className="p-3">{u.spent_eur.toFixed(2)} €</td>
+                <td className="p-3 font-semibold">
+                  {(() => {
+                    // Conversion EUR → FCFA (le backend renvoie spent_eur en EUR)
+                    const xof = Math.round(u.spent_eur * 655.957);
+                    return `${xof.toLocaleString("fr-FR")} FCFA`;
+                  })()}
+                </td>
                 <td className="p-3">
                   <select value={u.role} onChange={(e) => setRole(u, e.target.value)} className={`text-xs border border-border px-2 py-1 ${u.role === "admin" ? "text-brand font-semibold" : ""}`}>
                     <option value="customer">client</option><option value="admin">admin</option>

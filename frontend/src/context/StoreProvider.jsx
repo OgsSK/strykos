@@ -2,19 +2,26 @@ import React, { createContext, useContext, useEffect, useState, useCallback, use
 import { api, setAuthToken } from "@/lib/api";
 import { swrGetShared, invalidateCache } from "@/lib/cache";
 import { translations, formatMoney } from "@/i18n/translations";
+import { toast } from "sonner";
 
 const StoreContext = createContext(null);
 export const useStore = () => useContext(StoreContext);
 
 const DEFAULT_RATES = { EUR: 1, USD: 1.08, XOF: 655.957 };
 
+// ⭐ Devise par défaut = XOF (FCFA)
+const DEFAULT_CURRENCY = "XOF";
+const CURRENCY_KEY = "strykos_currency_v2";
+
 export function StoreProvider({ children }) {
-  // ---- currency & settings (en premier car brand en depend) ----
-  const [currency, setCurrencyState] = useState(() => localStorage.getItem("strykos_currency") || "EUR");
+  // ---- currency & settings ----
+  const [currency, setCurrencyState] = useState(() => {
+    return localStorage.getItem(CURRENCY_KEY) || DEFAULT_CURRENCY;
+  });
   const [settings, setSettings] = useState(() => { try { return JSON.parse(localStorage.getItem("strykos_cache:/settings") || "null")?.data || null; } catch { return null; } });
   const rates = settings?.currency?.rates || DEFAULT_RATES;
 
-  // ---- Brand (nom parametrable depuis l'admin) ----
+  // ---- Brand ----
   const brand = useMemo(() => {
     const s = settings?.site || {};
     const full = s.name || `${s.brand_part1 || "STRY"}${s.brand_part2 || "KOS"}`;
@@ -22,23 +29,21 @@ export function StoreProvider({ children }) {
       part1: s.brand_part1 || "STRY",
       part2: s.brand_part2 || "KOS",
       full,
-      tagline: s.brand_tagline || "Multimarque. Authentique. Livré chez vous.",
-      tagline_en: s.brand_tagline_en || "Multi-brand. Authentic. Delivered to you.",
+      tagline: s.brand_tagline || "Pâtisserie artisanale. Fraîcheur garantie. Livrée chez vous.",
+      tagline_en: s.brand_tagline_en || "Artisan bakery. Freshly made. Delivered to you.",
     };
   }, [settings]);
 
-  // Remplace le placeholder STRYKOS dans un texte par le nom actuel
   const applyBrand = useCallback((text) => {
     if (!text || typeof text !== "string") return text || "";
     return text.replace(/STRYKOS/g, brand.full);
   }, [brand.full]);
 
-  // ---- i18n (t utilise maintenant brand) ----
+  // ---- i18n ----
   const [lang, setLang] = useState(() => localStorage.getItem("strykos_lang") || "fr");
   const t = useCallback((key) => {
     const raw = translations[lang]?.[key] ?? translations.fr[key] ?? key;
     if (typeof raw !== "string") return raw;
-    // Remplace STRYKOS par le nom actuel de la marque
     if (raw.includes("STRYKOS") && brand.full !== "STRYKOS") {
       return raw.replace(/STRYKOS/g, brand.full);
     }
@@ -50,7 +55,10 @@ export function StoreProvider({ children }) {
     return obj[`${field}_${lang}`] || obj[`${field}_fr`] || obj[`${field}_en`] || "";
   }, [lang]);
 
-  const setCurrency = (c) => { setCurrencyState(c); localStorage.setItem("strykos_currency", c); };
+  const setCurrency = (c) => {
+    setCurrencyState(c);
+    localStorage.setItem(CURRENCY_KEY, c);
+  };
   const convertEur = useCallback((amtEur) => {
     if (amtEur == null) return 0;
     const v = amtEur * (rates[currency] || 1);
@@ -73,7 +81,17 @@ export function StoreProvider({ children }) {
   const setUser = (u) => { setUserState(u); if (u) localStorage.setItem("strykos_user", JSON.stringify(u)); else localStorage.removeItem("strykos_user"); };
   const [authChecked, setAuthChecked] = useState(() => !localStorage.getItem("strykos_token"));
 
-  // Fusionne 2 paniers : si meme variant_id + customization, on additionne les quantites
+  // ⭐ Helper centralisé — redirige vers /login (route réelle) avec ?redirect=
+  const requireAuth = useCallback((reason) => {
+    toast.error(reason || (lang === "fr" ? "Connectez-vous pour continuer" : "Please sign in to continue"));
+    const back = window.location.pathname + window.location.search;
+    setTimeout(() => {
+      window.location.href = `/login?redirect=${encodeURIComponent(back)}`;
+    }, 900);
+    return false;
+  }, [lang]);
+
+  // Fusionne 2 paniers
   const mergeCarts = (a, b) => {
     const out = [...a];
     for (const it of b) {
@@ -88,17 +106,15 @@ export function StoreProvider({ children }) {
     return out;
   };
 
-  // Charge le panier serveur et fusionne avec le panier local (invite)
+  // Charge le panier serveur et fusionne avec le panier local
   const loadServerCartAndMerge = async () => {
     try {
       const { data } = await api.get("/cart");
       const serverItems = data?.cart?.items || [];
       const localItems = JSON.parse(localStorage.getItem("strykos_cart") || "[]");
 
-      // Cas 1 : rien nulle part → on ne fait rien
       if (serverItems.length === 0 && localItems.length === 0) return;
 
-      // Cas 2 : serveur vide, local non vide → on pousse le local au serveur
       if (serverItems.length === 0 && localItems.length > 0) {
         setCart(localItems);
         const subtotalEur = localItems.reduce((s, i) => {
@@ -111,14 +127,11 @@ export function StoreProvider({ children }) {
         return;
       }
 
-      // Cas 3 : serveur non vide, local vide → on charge le serveur
       if (serverItems.length > 0 && localItems.length === 0) {
         setCart(serverItems);
         return;
       }
 
-      // Cas 4 : les 2 non vides → on compare pour eviter la double-fusion
-      // Si identiques (meme items, memes quantites) → on garde juste le serveur
       const same = JSON.stringify(
         [...serverItems].sort((a, b) => (a.variant_id || "").localeCompare(b.variant_id || ""))
       ) === JSON.stringify(
@@ -129,7 +142,6 @@ export function StoreProvider({ children }) {
         return;
       }
 
-      // Sinon : fusion reelle (vrai cas "invite avait un panier, user connecte en a un aussi")
       const merged = mergeCarts(serverItems, localItems);
       setCart(merged);
       const subtotalEur = merged.reduce((s, i) => {
@@ -140,7 +152,7 @@ export function StoreProvider({ children }) {
       }, 0);
       await api.post("/cart/sync", { items: merged, subtotal_eur: subtotalEur });
     } catch {
-      // silencieux : si le serveur ne repond pas, on garde le panier local
+      // silencieux
     }
   };
 
@@ -150,7 +162,6 @@ export function StoreProvider({ children }) {
     api.get("/auth/me")
       .then((r) => {
         setUser(r.data);
-        // Charge le panier serveur apres avoir identifie le user
         loadServerCartAndMerge();
       })
       .catch((e) => { if (e?.response?.status === 401) { setAuthToken(null); setUser(null); } })
@@ -164,18 +175,22 @@ export function StoreProvider({ children }) {
     await loadServerCartAndMerge();
     return data.user;
   };
+
+  // ⭐ MODIFIÉ : l'inscription ne connecte plus automatiquement.
+  // Le backend envoie un email de confirmation et renvoie { ok, requires_confirmation, email }.
+  // L'utilisateur sera connecté après avoir cliqué sur le lien de confirmation (voir ConfirmEmail.jsx).
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    setAuthToken(data.token); setUser(data.user); return data.user;
+    // Pas de setAuthToken ni setUser ici : on attend la confirmation email
+    return data;
   };
+
   const logout = async () => {
     try { await api.post("/auth/logout"); } catch (e) {}
     setAuthToken(null);
     setUser(null);
     setWishlist([]);
     localStorage.removeItem("strykos_wishlist");
-    // On vide le panier local au logout : le panier reste sur le serveur
-    // et sera rechargé à la prochaine connexion (evite les doublons par fusion)
     localStorage.removeItem("strykos_cart");
     setCart([]);
     invalidateCache("/auth");
@@ -189,8 +204,14 @@ export function StoreProvider({ children }) {
     catch (e) { /* keep cached */ }
   }, []);
   useEffect(() => { if (user) loadWishlist(); }, [user, loadWishlist]);
+
+  // ⭐ MODIFIÉ : exige la connexion
   const toggleWishlist = async (productId) => {
-    if (!user) return false;
+    if (!user) {
+      return requireAuth(lang === "fr"
+        ? "Connectez-vous pour ajouter aux favoris"
+        : "Sign in to save favorites");
+    }
     if (wishlist.includes(productId)) {
       setWishlist((w) => w.filter((x) => x !== productId));
       await api.delete(`/wishlist/${productId}`);
@@ -207,11 +228,10 @@ export function StoreProvider({ children }) {
   });
   useEffect(() => { localStorage.setItem("strykos_cart", JSON.stringify(cart)); }, [cart]);
 
-  // ---- Sync du panier vers le serveur (si user connecte) avec debounce ----
+  // Sync du panier vers le serveur (si user connecté)
   const cartSyncRef = useRef(null);
   useEffect(() => {
     if (!user) return;
-    // Debounce : attend 1.5s apres la derniere modif du panier
     if (cartSyncRef.current) clearTimeout(cartSyncRef.current);
     cartSyncRef.current = setTimeout(() => {
       const subtotalEur = cart.reduce((s, i) => {
@@ -226,7 +246,14 @@ export function StoreProvider({ children }) {
   }, [cart, user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
+
+  // ⭐ MODIFIÉ : exige la connexion
   const addToCart = (item) => {
+    if (!user) {
+      return requireAuth(lang === "fr"
+        ? "Connectez-vous pour ajouter au panier"
+        : "Sign in to add to cart");
+    }
     setCart((prev) => {
       const idx = prev.findIndex((x) => x.variant_id === item.variant_id &&
         JSON.stringify(x.customization) === JSON.stringify(item.customization));
@@ -235,7 +262,9 @@ export function StoreProvider({ children }) {
       }
       return [...prev, item];
     });
+    return true;
   };
+
   const updateQty = (variantId, custom, qty) => setCart((prev) => prev.map((x) =>
     (x.variant_id === variantId && JSON.stringify(x.customization) === JSON.stringify(custom))
       ? { ...x, quantity: Math.max(1, qty) } : x));
@@ -255,12 +284,12 @@ export function StoreProvider({ children }) {
     lang, changeLang, t, tr,
     currency, setCurrency, rates, convertEur, fmt, priceOf,
     settings, brand, applyBrand,
-    user, authChecked, login, register, logout,
+    user, authChecked, login, register, logout, requireAuth,
+    setUser,  // ⭐ AJOUTÉ — utilisé par ConfirmEmail.jsx pour connecter l'utilisateur après confirmation
     wishlist, toggleWishlist, loadWishlist,
     cart, cartCount, addToCart, updateQty, removeFromCart, clearCart, cartUnitPrice, cartSubtotal,
   };
 
-  // Met a jour le titre de l'onglet navigateur
   useEffect(() => {
     if (brand.full) document.title = brand.full;
   }, [brand.full]);

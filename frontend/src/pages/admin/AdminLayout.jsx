@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
-import { LayoutDashboard, Package, ShoppingCart, Settings, ArrowLeft, Tag, Users, Mail, Layers, Award, Menu, X, Star, Send } from "lucide-react";
+import { LayoutDashboard, Package, ShoppingCart, Settings, ArrowLeft, Tag, Users, Mail, Layers, Award, Menu, X, Star, Send, Truck } from "lucide-react";
 
 export const ADMIN_NAV = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
@@ -10,6 +10,8 @@ export const ADMIN_NAV = [
   { to: "/admin/brands", label: "Marques", icon: Award },
   { to: "/admin/categories", label: "Categories", icon: Layers },
   { to: "/admin/customers", label: "Clients", icon: Users },
+  // ⭐ NOUVEAU : gestion des livreurs
+  { to: "/admin/drivers", label: "Livreurs", icon: Truck },
   { to: "/admin/promos", label: "Codes promo", icon: Tag },
   { to: "/admin/reviews", label: "Avis", icon: Star },
   { to: "/admin/newsletter", label: "Newsletter", icon: Send },

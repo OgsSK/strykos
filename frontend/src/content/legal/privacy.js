@@ -1,16 +1,16 @@
 export default {
   fr: {
     title: "Politique de confidentialité",
-    subtitle: "Comment STRYKOS collecte, utilise et protège vos données personnelles.",
+    subtitle: "Comment CAKESSHOP collecte, utilise et protège vos données personnelles.",
     lastUpdate: "Dernière mise à jour : octobre 2026",
     sections: [
       {
         title: "1. Introduction",
-        content: "STRYKOS accorde une importance particulière à la protection de vos données personnelles. La présente Politique de confidentialité a pour objet de vous informer, en toute transparence, sur la manière dont nous collectons, utilisons, conservons et protégeons vos données lorsque vous utilisez notre site et passez commande.",
+        content: "CAKESSHOP accorde une importance particulière à la protection de vos données personnelles. La présente Politique de confidentialité a pour objet de vous informer, en toute transparence, sur la manière dont nous collectons, utilisons, conservons et protégeons vos données lorsque vous utilisez notre site et passez commande.",
       },
       {
         title: "2. Responsable du traitement",
-        content: "Le responsable du traitement des données est l'éditeur du site STRYKOS. Pour toute question relative à vos données personnelles, vous pouvez nous contacter à l'adresse suivante : contact@actoos.com.",
+        content: "Le responsable du traitement des données est l'éditeur du site CAKESSHOP. Pour toute question relative à vos données personnelles, vous pouvez nous contacter à l'adresse suivante : contact@actoos.com.",
       },
       {
         title: "3. Données collectées",
@@ -19,7 +19,8 @@ export default {
           "Identité : prénom, nom",
           "Coordonnées : adresse e-mail, numéro de téléphone, adresses de livraison et de facturation",
           "Données de commande : produits achetés, montants, historique d'achat",
-          "Données de paiement : traitées exclusivement par notre prestataire de paiement sécurisé, STRYKOS ne conservant aucune donnée bancaire",
+          "Préférences alimentaires : informations sur les allergènes, régimes spécifiques (sans gluten, vegan, etc.) ou demandes particulières que vous nous communiquez volontairement lors de la commande",
+          "Données de paiement : traitées exclusivement par notre prestataire de paiement sécurisé, CAKESSHOP ne conservant aucune donnée bancaire",
           "Données techniques : adresse IP, type de navigateur, données de navigation (cookies techniques)",
         ],
       },
@@ -28,6 +29,7 @@ export default {
         content: "Vos données sont utilisées pour les finalités suivantes :",
         list: [
           "Traitement et suivi de vos commandes",
+          "Personnalisation des créations selon vos préférences alimentaires et vos demandes spécifiques",
           "Gestion de la relation client (SAV, réclamations, retours)",
           "Gestion de votre compte client et de vos préférences",
           "Envoi de communications commerciales si vous y avez consenti (newsletter)",
@@ -52,6 +54,7 @@ export default {
           { title: "6.1 Données de compte", content: "Conservées tant que votre compte est actif, puis supprimées ou anonymisées 3 ans après la dernière activité." },
           { title: "6.2 Données de commande", content: "Conservées 10 ans à compter de la clôture de l'exercice comptable, conformément aux obligations légales de conservation des factures." },
           { title: "6.3 Newsletter", content: "Conservées jusqu'à votre désinscription, puis supprimées dans un délai maximum de 3 mois." },
+          { title: "6.4 Préférences alimentaires", content: "Conservées uniquement le temps du traitement de la commande concernée, sauf si vous demandez leur enregistrement pour vos commandes futures." },
         ],
       },
       {
@@ -87,7 +90,7 @@ export default {
       },
       {
         title: "11. Sécurité",
-        content: "STRYKOS met en œuvre des mesures techniques et organisationnelles appropriées pour protéger vos données contre tout accès non autorisé, perte, altération ou divulgation. Les paiements sont sécurisés par notre prestataire Stripe, certifié PCI-DSS. Les mots de passe sont stockés sous forme chiffrée (bcrypt).",
+        content: "CAKESSHOP met en œuvre des mesures techniques et organisationnelles appropriées pour protéger vos données contre tout accès non autorisé, perte, altération ou divulgation. Les paiements sont sécurisés par notre prestataire Stripe, certifié PCI-DSS. Les mots de passe sont stockés sous forme chiffrée (bcrypt).",
       },
       {
         title: "12. Cookies",
@@ -105,16 +108,16 @@ export default {
   },
   en: {
     title: "Privacy policy",
-    subtitle: "How STRYKOS collects, uses and protects your personal data.",
+    subtitle: "How CAKESSHOP collects, uses and protects your personal data.",
     lastUpdate: "Last updated: October 2026",
     sections: [
       {
         title: "1. Introduction",
-        content: "STRYKOS places particular importance on the protection of your personal data. This Privacy Policy aims to inform you, in full transparency, about how we collect, use, retain and protect your data when you use our site and place an order.",
+        content: "CAKESSHOP places particular importance on the protection of your personal data. This Privacy Policy aims to inform you, in full transparency, about how we collect, use, retain and protect your data when you use our site and place an order.",
       },
       {
         title: "2. Data controller",
-        content: "The data controller is the publisher of the STRYKOS website. For any question relating to your personal data, you can contact us at: contact@actoos.com.",
+        content: "The data controller is the publisher of the CAKESSHOP website. For any question relating to your personal data, you can contact us at: contact@actoos.com.",
       },
       {
         title: "3. Data collected",
@@ -123,7 +126,8 @@ export default {
           "Identity: first name, last name",
           "Contact details: email address, phone number, delivery and billing addresses",
           "Order data: products purchased, amounts, purchase history",
-          "Payment data: processed exclusively by our secure payment provider; STRYKOS does not store any banking data",
+          "Dietary preferences: information on allergens, specific diets (gluten-free, vegan, etc.) or special requests that you voluntarily communicate to us when ordering",
+          "Payment data: processed exclusively by our secure payment provider; CAKESSHOP does not store any banking data",
           "Technical data: IP address, browser type, browsing data (technical cookies)",
         ],
       },
@@ -132,6 +136,7 @@ export default {
         content: "Your data is used for the following purposes:",
         list: [
           "Processing and tracking your orders",
+          "Personalizing creations according to your dietary preferences and specific requests",
           "Customer relationship management (after-sales, complaints, returns)",
           "Managing your customer account and preferences",
           "Sending commercial communications if you have consented (newsletter)",
@@ -156,6 +161,7 @@ export default {
           { title: "6.1 Account data", content: "Retained as long as your account is active, then deleted or anonymized 3 years after the last activity." },
           { title: "6.2 Order data", content: "Retained 10 years from the close of the accounting year, in accordance with legal obligations to retain invoices." },
           { title: "6.3 Newsletter", content: "Retained until you unsubscribe, then deleted within a maximum of 3 months." },
+          { title: "6.4 Dietary preferences", content: "Retained only for the processing of the relevant order, unless you ask for them to be saved for future orders." },
         ],
       },
       {
@@ -191,7 +197,7 @@ export default {
       },
       {
         title: "11. Security",
-        content: "STRYKOS implements appropriate technical and organizational measures to protect your data against unauthorized access, loss, alteration or disclosure. Payments are secured by our provider Stripe, PCI-DSS certified. Passwords are stored in encrypted form (bcrypt).",
+        content: "CAKESSHOP implements appropriate technical and organizational measures to protect your data against unauthorized access, loss, alteration or disclosure. Payments are secured by our provider Stripe, PCI-DSS certified. Passwords are stored in encrypted form (bcrypt).",
       },
       {
         title: "12. Cookies",
