@@ -78,7 +78,7 @@ export default function Driver() {
       .finally(() => setHistoryLoading(false));
   }, [tab, historyPeriod, historyPage]);
 
-  // Sync profileForm quand user change
+    // Sync profileForm quand user change
   useEffect(() => {
     if (user) {
       setProfileForm({
@@ -87,14 +87,16 @@ export default function Driver() {
         phone: user.phone || "",
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // Charge le changement d'email en cours
+    // Charge le changement d'email en cours
   useEffect(() => {
     if (!user) return;
     api.get("/auth/pending-email-change")
       .then((r) => setPendingEmail(r.data.pending || null))
       .catch(() => setPendingEmail(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   // ============ OTP ============
