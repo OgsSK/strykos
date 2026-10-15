@@ -446,7 +446,26 @@ def tpl_order_shipped(order: dict, lang: str):
                 f"<p>Bonne nouvelle — votre commande <strong>{n}</strong> vient de quitter notre atelier et est en route.</p>"
                 + (f"<p>Transporteur : <strong>{carrier}</strong><br>Numéro de suivi : <strong>{num}</strong></p>" if num else ""))
         title = "Commande expédiée"
-    body += link + _address_block(order, lang) + _track_button(order, lang)
+    body += link
+
+    # ⭐ Rappel du code OTP
+    if order.get("delivery_otp"):
+        otp = order["delivery_otp"]
+        otp_formatted = f"{otp[:3]} {otp[3:]}" if len(otp) == 6 else otp
+        label = "Your delivery code" if lang == "en" else "Votre code de livraison"
+        hint = "Give it to the driver." if lang == "en" else "Donnez-le au livreur."
+        body += (
+            f'<div style="margin:20px 0;padding:16px 20px;background:{C_CREAM};'
+            f'border-left:4px solid {C_CARAMEL};text-align:center">'
+            f'<div style="font-size:11px;text-transform:uppercase;letter-spacing:2px;'
+            f'color:{C_SOFT};margin-bottom:6px">{label}</div>'
+            f'<div style="font-size:28px;font-weight:800;color:{C_CHOCOLATE};'
+            f'font-family:monospace;letter-spacing:5px">{escape(otp_formatted)}</div>'
+            f'<div style="font-size:12px;color:{C_SOFT};margin-top:6px">{hint}</div>'
+            f'</div>'
+        )
+
+    body += _address_block(order, lang) + _track_button(order, lang)
     return subject, _layout(title, body, lang)
 
 

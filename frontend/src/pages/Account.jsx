@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck, RefreshCw, XCircle, AlertTriangle, Eye, EyeOff, Clock, RotateCcw, CheckCircle2, AlertCircle, MessageSquare } from "lucide-react";
+import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck, RefreshCw, XCircle, AlertTriangle, Eye, EyeOff, Clock, RotateCcw, CheckCircle2, AlertCircle, MessageSquare, KeyRound, Copy } from "lucide-react";
 import { OrderTimeline } from "@/components/OrderTimeline";
 import { COUNTRIES_MAP, countryName } from "@/lib/countries";
 import { RETURN_REASONS, isStrykosExpense } from "@/lib/returnReasons";
@@ -29,6 +29,9 @@ export default function Account() {
   const [cancelReason, setCancelReason] = useState("");
   const [includeHidden, setIncludeHidden] = useState(false);
   const [ordersFilter, setOrdersFilter] = useState("");
+
+  // ⭐ NOUVEAU : OTP livraison
+  const [showOtpOrderId, setShowOtpOrderId] = useState(null);
 
   // --- Réclamations ---
   const [requestReturn, setRequestReturn] = useState(null);
@@ -131,6 +134,12 @@ export default function Account() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const money = (v, cur) => cur === "XOF" ? `${Math.round(v).toLocaleString("fr-FR")} FCFA` : cur === "USD" ? `$${v.toFixed(2)}` : `${v.toFixed(2)} €`;
+
+  // ⭐ NOUVEAU : copie du code OTP
+  const copyOtp = (code) => {
+    navigator.clipboard.writeText(code);
+    toast.success("Code copié");
+  };
 
   const saveProfile = async () => {
     try {
@@ -402,14 +411,14 @@ export default function Account() {
     setReturnBusy(false);
   };
 
-  // ⭐ MODIFIÉ : validation des types demandés + ferme LES DEUX modales après envoi
+  // ⭐ Validation des types demandés + ferme LES DEUX modales après envoi
   const submitClaimReply = async () => {
     if (!requestReturn) return;
     if (!claimReplyText.trim() && claimReplyMedia.length === 0) {
       toast.error(lang === "fr" ? "Ajoutez un message ou des fichiers" : "Add a message or files");
       return;
     }
-    // ⭐ NOUVEAU : validation des types demandés par l'admin
+    // ⭐ Validation des types demandés par l'admin
     const requested = requestReturn.claim_info_request_types || [];
     if (requested.length > 0) {
       const hasVideo = claimReplyMedia.some((m) => m.type === "video");
@@ -598,6 +607,13 @@ export default function Account() {
                           {isHidden && <span className="text-[10px] uppercase tracking-wider bg-secondary px-1.5 py-0.5 text-ink-muted">{lang === "fr" ? "Masquee" : "Hidden"}</span>}
                           {cancelInProgress && <span className="text-[10px] uppercase tracking-wider bg-red-100 text-red-700 px-1.5 py-0.5">{lang === "fr" ? "Annulation demandee" : "Cancellation requested"}</span>}
                           {rBadge && <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 border ${rBadge.color}`}>{rBadge.label}</span>}
+                          {/* ⭐ NOUVEAU : livré par livreur (via OTP) */}
+                          {o.status === "delivered" && o.delivered_via === "otp" && (
+                            <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 bg-purple-100 text-purple-800 inline-flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" />
+                              {lang === "fr" ? "Livré par livreur" : "Delivered by driver"}
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-ink-muted">{new Date(o.created_at).toLocaleDateString()}</div>
                       </div>
@@ -619,6 +635,63 @@ export default function Account() {
                           })}
                         </strong>
                         {o.scheduled_time_slot && <span>· {o.scheduled_time_slot}</span>}
+                      </div>
+                    )}
+
+                    {/* ⭐ NOUVEAU : Code OTP de livraison */}
+                    {o.delivery_otp && ["shipped", "in_transit"].includes(o.status) && (
+                      <div className="mt-3 bg-purple-50 border-l-4 border-purple-500 p-4 rounded" data-testid={`delivery-otp-${o.order_number}`}>
+                        <div className="flex items-start gap-3">
+                          <KeyRound className="w-5 h-5 text-purple-700 shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <div className="text-[11px] uppercase tracking-wider text-purple-700 font-semibold mb-1">
+                              {lang === "fr" ? "Code de livraison" : "Delivery code"}
+                            </div>
+                            <p className="text-xs text-purple-700 mb-3">
+                              {lang === "fr"
+                                ? "Donnez ce code au livreur pour confirmer la réception de votre commande."
+                                : "Give this code to the driver to confirm receipt of your order."}
+                            </p>
+
+                            <div className="flex items-center gap-3">
+                              <div className="bg-white border-2 border-purple-300 px-4 py-2 rounded">
+                                <span className="font-mono text-2xl font-bold text-purple-900 tracking-[0.4em]">
+                                  {showOtpOrderId === o.id
+                                    ? (o.delivery_otp || "").replace(/(\d{3})(\d{3})/, "$1 $2")
+                                    : "••• •••"}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setShowOtpOrderId(showOtpOrderId === o.id ? null : o.id)}
+                                className="text-xs text-purple-700 hover:text-purple-900 font-semibold underline"
+                              >
+                                {showOtpOrderId === o.id
+                                  ? (lang === "fr" ? "Masquer" : "Hide")
+                                  : (lang === "fr" ? "Afficher" : "Show")}
+                              </button>
+                              {showOtpOrderId === o.id && (
+                                <button
+                                  type="button"
+                                  onClick={() => copyOtp(o.delivery_otp)}
+                                  className="p-1.5 hover:bg-white rounded"
+                                  title={lang === "fr" ? "Copier" : "Copy"}
+                                >
+                                  <Copy className="w-4 h-4 text-purple-700" />
+                                </button>
+                              )}
+                            </div>
+
+                            {o.delivery_otp_expires_at && (
+                              <p className="text-[11px] text-purple-600 mt-2">
+                                ⏰ {lang === "fr" ? "Valable jusqu'au" : "Valid until"}{" "}
+                                {new Date(o.delivery_otp_expires_at).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-GB", {
+                                  day: "numeric", month: "long"
+                                })}
+                              </p>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
 
@@ -1116,7 +1189,7 @@ export default function Account() {
         </div>
       )}
 
-      {/* ⭐ MODIFIÉ : Modale réponse — rappel admin + requestedTypes + filtre types */}
+      {/* ⭐ Modale réponse — rappel admin + requestedTypes + filtre types */}
       {requestReturn && claimReplyMode && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => { setClaimReplyMode(false); setRequestReturn(null); }}>
           <div className="bg-white max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-border" onClick={(e) => e.stopPropagation()}>
@@ -1132,7 +1205,7 @@ export default function Account() {
               <p className="text-xs text-ink-muted mt-1">
                 {lang === "fr" ? `Commande ${requestReturn.order_number}` : `Order ${requestReturn.order_number}`}
               </p>
-              {/* ⭐ NOUVEAU : rappel de la demande admin */}
+              {/* ⭐ Rappel de la demande admin */}
               {requestReturn?.claim_info_request_message && (
                 <div className="mt-3 bg-amber-50 border-l-4 border-amber-500 p-3 text-xs">
                   <div className="font-semibold text-amber-900 mb-1">

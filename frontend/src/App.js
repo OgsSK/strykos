@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { StoreProvider, useStore } from "@/context/StoreProvider";
 import Layout from "@/components/Layout";
@@ -36,12 +36,30 @@ import NewsletterUnsubscribe from "@/pages/NewsletterUnsubscribe";
 import ConfirmEmailChange from "@/pages/ConfirmEmailChange";
 import ConfirmEmail from "@/pages/ConfirmEmail"; // ⭐ NOUVEAU
 import ScrollToTop from "@/components/ScrollToTop";
+// ⭐ NOUVEAU : espace livreur
+import Driver from "@/pages/Driver";
+import DriverLogin from "@/pages/DriverLogin";
+import DriverSetup from "@/pages/DriverSetup";
 
-function Protected({ children, admin }) {
+function Protected({ children, admin, driverOnly }) {
   const { user, authChecked } = useStore();
+  const location = useLocation();
+
   if (!authChecked) return <div className="p-20 text-center text-ink-muted">...</div>;
   if (!user) return <Navigate to="/login" replace />;
   if (admin && user.role !== "admin") return <Navigate to="/" replace />;
+
+  // ⭐ Un driver ne peut accéder qu'aux pages marquées driverOnly
+  // (sauf pages publiques : login et setup)
+  if (
+    user.role === "driver" &&
+    !driverOnly &&
+    location.pathname !== "/livreur/login" &&
+    location.pathname !== "/livreur/setup"
+  ) {
+    return <Navigate to="/livreur" replace />;
+  }
+
   return children;
 }
 
@@ -53,6 +71,19 @@ function App() {
           <ScrollToTop />
           <Toaster position="top-center" richColors />
           <Routes>
+            {/* ⭐ Espace livreur — SANS header/footer du site */}
+            <Route path="/livreur/setup" element={<DriverSetup />} />
+            <Route path="/livreur/login" element={<DriverLogin />} />
+            <Route
+              path="/livreur"
+              element={
+                <Protected driverOnly>
+                  <Driver />
+                </Protected>
+              }
+            />
+
+            {/* Site principal — AVEC header/footer */}
             <Route element={<Layout />}>
               <Route path="/" element={<Home />} />
               <Route path="/catalog" element={<Catalog />} />
@@ -67,7 +98,7 @@ function App() {
               <Route path="/register" element={<Auth mode="register" />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/confirm-email" element={<ConfirmEmail />} /> {/* ⭐ NOUVEAU */}
+              <Route path="/confirm-email" element={<ConfirmEmail />} />
               <Route path="/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route path="/newsletter/unsubscribe" element={<NewsletterUnsubscribe />} />
               <Route path="/account" element={<Protected><Account /></Protected>} />
@@ -76,6 +107,8 @@ function App() {
               <Route path="/track" element={<TrackOrder />} />
               <Route path="*" element={<NotFound />} />
             </Route>
+
+            {/* Admin */}
             <Route path="/admin" element={<Protected admin><AdminLayout /></Protected>}>
               <Route index element={<AdminDashboard />} />
               <Route path="products" element={<AdminProducts />} />

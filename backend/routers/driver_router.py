@@ -1,6 +1,6 @@
 """
 Router pour les livreurs (role=driver).
-Endpoints : setup du compte, validation OTP, stats.
+Endpoints : setup du compte, validation OTP, stats, historique, profil.
 """
 import random
 from datetime import datetime, timezone, timedelta
@@ -136,10 +136,6 @@ async def driver_validate_code(data: ValidateIn, driver: Profile = Depends(get_c
         raise HTTPException(status_code=403,
             detail="Trop de tentatives. Le code a été bloqué. Contactez l'administrateur.")
 
-    # Note : la comparaison ci-dessus est exacte, donc si on est ici, le code EST correct.
-    # Le compteur de tentatives est incrémenté côté client si le code ne matche aucune commande.
-    # Ici, on incrémente "au cas où" mais ça ne devrait jamais arriver car on a déjà matché.
-
     # ⭐ Marque la commande comme livrée
     order.status = "delivered"
     order.delivered_at = now
@@ -187,38 +183,30 @@ async def driver_me(driver: Profile = Depends(get_current_driver)):
 
 @router.get("/stats")
 async def driver_stats(driver: Profile = Depends(get_current_driver), db: AsyncSession = Depends(get_db)):
-    """Statistiques du livreur : aujourd'hui / semaine / mois / dernières livraisons."""
+    """Stats complètes du livreur."""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_start = today_start - timedelta(days=today_start.weekday())
     month_start = today_start.replace(day=1)
 
-    base_q = select(Order).where(
-        Order.delivered_by_driver_id == driver.id,
-        Order.delivered_via == "otp",
-    )
+    async def count_since(since):
+        return (await db.execute(
+            select(func.count(Order.id)).where(
+                Order.delivered_by_driver_id == driver.id,
+                Order.delivered_via == "otp",
+                Order.delivered_at >= since,
+            )
+        )).scalar() or 0
 
-    today_count = (await db.execute(
+    today_count = await count_since(today_start)
+    week_count = await count_since(week_start)
+    month_count = await count_since(month_start)
+
+    # Total toutes périodes confondues
+    total_count = (await db.execute(
         select(func.count(Order.id)).where(
             Order.delivered_by_driver_id == driver.id,
             Order.delivered_via == "otp",
-            Order.delivered_at >= today_start,
-        )
-    )).scalar() or 0
-
-    week_count = (await db.execute(
-        select(func.count(Order.id)).where(
-            Order.delivered_by_driver_id == driver.id,
-            Order.delivered_via == "otp",
-            Order.delivered_at >= week_start,
-        )
-    )).scalar() or 0
-
-    month_count = (await db.execute(
-        select(func.count(Order.id)).where(
-            Order.delivered_by_driver_id == driver.id,
-            Order.delivered_via == "otp",
-            Order.delivered_at >= month_start,
         )
     )).scalar() or 0
 
@@ -235,6 +223,7 @@ async def driver_stats(driver: Profile = Depends(get_current_driver), db: AsyncS
         "today": today_count,
         "week": week_count,
         "month": month_count,
+        "total": total_count,
         "recent": [
             {
                 "order_number": o.order_number,
@@ -245,3 +234,91 @@ async def driver_stats(driver: Profile = Depends(get_current_driver), db: AsyncS
             for o in recent
         ],
     }
+
+
+# ================================================================
+# ⭐ HISTORIQUE COMPLET DES LIVRAISONS
+# ================================================================
+
+@router.get("/history")
+async def driver_history(
+    period: str = "all",  # today | week | month | all
+    page: int = 1,
+    per_page: int = 20,
+    driver: Profile = Depends(get_current_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historique complet des livraisons du livreur, avec pagination."""
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    q = select(Order).where(
+        Order.delivered_by_driver_id == driver.id,
+        Order.delivered_via == "otp",
+    )
+
+    if period == "today":
+        q = q.where(Order.delivered_at >= today_start)
+    elif period == "week":
+        week_start = today_start - timedelta(days=today_start.weekday())
+        q = q.where(Order.delivered_at >= week_start)
+    elif period == "month":
+        month_start = today_start.replace(day=1)
+        q = q.where(Order.delivered_at >= month_start)
+
+    # Compte total pour la pagination
+    total_q = select(func.count()).select_from(q.subquery())
+    total = (await db.execute(total_q)).scalar() or 0
+
+    # Pagination
+    offset = (max(1, page) - 1) * per_page
+    q = q.order_by(Order.delivered_at.desc()).offset(offset).limit(per_page)
+    res = await db.execute(q)
+    orders = res.scalars().all()
+
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "pages": max(1, (total + per_page - 1) // per_page),
+        "orders": [
+            {
+                "order_number": o.order_number,
+                "first_name": o.first_name,
+                "last_name": o.last_name,
+                "city": (o.shipping_address or {}).get("city", ""),
+                "country": (o.shipping_address or {}).get("country", ""),
+                "delivered_at": o.delivered_at.isoformat() if o.delivered_at else None,
+                "items_count": len(o.items or []),
+            }
+            for o in orders
+        ],
+    }
+
+
+# ================================================================
+# ⭐ MISE À JOUR DU PROFIL LIVREUR
+# ================================================================
+
+class UpdateProfileIn(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    phone: str = ""
+
+
+@router.put("/profile")
+async def driver_update_profile(
+    data: UpdateProfileIn,
+    driver: Profile = Depends(get_current_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    """Permet au livreur de modifier ses infos de contact (nom, téléphone)."""
+    if data.first_name:
+        driver.first_name = data.first_name.strip()
+    if data.last_name:
+        driver.last_name = data.last_name.strip()
+    if data.phone is not None:
+        driver.phone = data.phone.strip()
+    await db.commit()
+    await db.refresh(driver)
+    return driver.to_dict()

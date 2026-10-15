@@ -43,11 +43,14 @@ export default function Auth({ mode }) {
         const u = await login(form.email, form.password);
         toast.success(t("welcome"));
 
-        // Redirection intelligente :
-        // 1. Admin → /admin
-        // 2. redirectTo présent → page d'origine
-        // 3. Sinon → /account
-        if (u.role === "admin") {
+        // ⭐ Redirection intelligente selon le rôle :
+        // 1. Driver → /livreur
+        // 2. Admin → /admin
+        // 3. redirectTo présent → page d'origine
+        // 4. Sinon → /account
+        if (u.role === "driver") {
+          nav("/livreur", { replace: true });
+        } else if (u.role === "admin") {
           nav("/admin", { replace: true });
         } else if (redirectTo) {
           nav(redirectTo, { replace: true });
