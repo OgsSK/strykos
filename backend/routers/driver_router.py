@@ -1,6 +1,6 @@
 """
 Router pour les livreurs (role=driver).
-Endpoints : setup du compte, validation OTP, stats, historique, profil.
+Endpoints : setup du compte, validation OTP, stats, historique, profil, confirmation COD.
 """
 import random
 from datetime import datetime, timezone, timedelta
@@ -14,6 +14,7 @@ from auth import (
     hash_password, verify_password, create_access_token,
     get_current_driver, decode_driver_invite_token,
 )
+from routers.commerce_router import push_history
 
 router = APIRouter(prefix="/driver", tags=["driver"])
 
@@ -102,12 +103,12 @@ class ValidateIn(BaseModel):
 @router.post("/validate-code")
 async def driver_validate_code(data: ValidateIn, driver: Profile = Depends(get_current_driver),
                                db: AsyncSession = Depends(get_db)):
-    """Valide un code OTP → passe la commande à 'delivered'."""
+    """Valide un code OTP → passe la commande à 'delivered'.
+    Si la commande est en COD, retourne requires_payment_confirmation=True."""
     code = (data.code or "").strip().replace(" ", "")
     if len(code) != 6 or not code.isdigit():
         raise HTTPException(status_code=400, detail="Code invalide (6 chiffres attendus)")
 
-    # Cherche une commande expédiée avec ce code
     order = (await db.execute(
         select(Order).where(
             Order.delivery_otp == code,
@@ -118,31 +119,36 @@ async def driver_validate_code(data: ValidateIn, driver: Profile = Depends(get_c
     if not order:
         raise HTTPException(status_code=404, detail="Aucune commande expédiée ne correspond à ce code")
 
-    # ⭐ Vérifie le lock (après 5 tentatives échouées)
     if order.delivery_otp_locked:
         raise HTTPException(status_code=403,
             detail="Ce code a été bloqué après trop de tentatives. Contactez l'administrateur.")
 
-    # ⭐ Vérifie l'expiration
     now = datetime.now(timezone.utc)
     if order.delivery_otp_expires_at and order.delivery_otp_expires_at < now:
         raise HTTPException(status_code=410,
             detail="Ce code a expiré. Contactez l'administrateur pour un nouveau code.")
 
-    # ⭐ Vérifie le nombre de tentatives
-    if (order.delivery_otp_attempts or 0) >= 5:
-        order.delivery_otp_locked = True
-        await db.commit()
-        raise HTTPException(status_code=403,
-            detail="Trop de tentatives. Le code a été bloqué. Contactez l'administrateur.")
+    # ⭐ CAS COD : on demande au livreur de confirmer qu'il a reçu le paiement
+    if order.payment_method == "cod" and order.payment_status != "paid":
+        return {
+            "ok": True,
+            "requires_payment_confirmation": True,
+            "order": {
+                "order_number": order.order_number,
+                "first_name": order.first_name,
+                "city": (order.shipping_address or {}).get("city", ""),
+                "total": float(order.total or 0),
+                "currency": order.currency,
+            },
+            "message": "Confirmez avoir reçu le paiement avant de clôturer la livraison.",
+        }
 
-    # ⭐ Marque la commande comme livrée
+    # ⭐ CAS normal (Stripe déjà payé, ou COD déjà payé)
     order.status = "delivered"
     order.delivered_at = now
     order.delivered_by_driver_id = driver.id
     order.delivered_via = "otp"
 
-    # Historique
     hist = list(order.status_history or [])
     hist.append({
         "status": "delivered",
@@ -155,7 +161,6 @@ async def driver_validate_code(data: ValidateIn, driver: Profile = Depends(get_c
     await db.commit()
     await db.refresh(order)
 
-    # ⭐ Email de confirmation au client
     try:
         from emails import send_order_email
         await send_order_email(db, order, "order_delivered")
@@ -164,12 +169,98 @@ async def driver_validate_code(data: ValidateIn, driver: Profile = Depends(get_c
 
     return {
         "ok": True,
+        "requires_payment_confirmation": False,
         "order": {
             "order_number": order.order_number,
             "first_name": order.first_name,
             "city": (order.shipping_address or {}).get("city", ""),
         },
     }
+
+
+# ================================================================
+# ⭐ CONFIRMATION DU PAIEMENT COD (par le livreur)
+# ================================================================
+
+class ConfirmCodIn(BaseModel):
+    code: str
+    payment_received: bool
+    note: str = ""
+
+
+@router.post("/confirm-cod-payment")
+async def driver_confirm_cod(
+    data: ConfirmCodIn,
+    driver: Profile = Depends(get_current_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    """Le livreur confirme (ou non) avoir reçu le paiement COD."""
+    code = (data.code or "").strip().replace(" ", "")
+    if len(code) != 6 or not code.isdigit():
+        raise HTTPException(status_code=400, detail="Code invalide")
+
+    order = (await db.execute(
+        select(Order).where(
+            Order.delivery_otp == code,
+            Order.status.in_(["shipped", "in_transit"]),
+            Order.payment_method == "cod",
+        )
+    )).scalar_one_or_none()
+
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande COD expédiée introuvable")
+
+    now = datetime.now(timezone.utc)
+
+    if data.payment_received:
+        # ✅ Le client a payé
+        order.payment_status = "paid"
+        order.cod_collected_at = now
+        order.cod_collected_by_id = driver.id
+        order.status = "delivered"
+        order.delivered_at = now
+        order.delivered_by_driver_id = driver.id
+        order.delivered_via = "otp"
+
+        push_history(order, "delivered", by=driver.email,
+                     note=f"Livré par {driver.first_name} {driver.last_name} — paiement COD reçu ({order.total:.0f} {order.currency})")
+        await db.commit()
+        await db.refresh(order)
+
+        try:
+            from emails import send_order_email
+            await send_order_email(db, order, "order_delivered")
+        except Exception:
+            pass
+
+        return {"ok": True, "status": "delivered", "payment_status": "paid"}
+    else:
+        # ❌ Le client n'a pas payé / a refusé
+        note = (data.note or "").strip()[:200]
+        push_history(order, order.status, by=driver.email,
+                     note=f"⚠️ Client n'a pas payé — livraison non finalisée{(' : ' + note) if note else ''}")
+        await db.commit()
+
+        # Notifie l'admin par email
+        try:
+            from emails import send_templated, ADMIN_NOTIFY_EMAIL, _layout, escape
+            if ADMIN_NOTIFY_EMAIL:
+                subject = f"[CAKESSHOP] ⚠️ COD non payé — {order.order_number}"
+                body = (
+                    f"<p><strong>Commande :</strong> {escape(order.order_number)}</p>"
+                    f"<p><strong>Livreur :</strong> {escape(driver.first_name)} {escape(driver.last_name)} ({escape(driver.email)})</p>"
+                    f"<p><strong>Client :</strong> {escape(order.first_name)} {escape(order.last_name)} — {escape(order.phone)}</p>"
+                    f"<p><strong>Montant attendu :</strong> {order.total:.0f} {escape(order.currency)}</p>"
+                    + (f"<p><strong>Note du livreur :</strong> {escape(note)}</p>" if note else "")
+                    + f"<p>La commande reste en statut <strong>{escape(order.status)}</strong>. Contactez le client pour résoudre.</p>"
+                )
+                await send_templated(db, to=ADMIN_NOTIFY_EMAIL, subject=subject,
+                                     html=_layout("COD non payé", body, "fr"),
+                                     template="cod_not_paid", order_id=order.id)
+        except Exception:
+            pass
+
+        return {"ok": True, "status": order.status, "payment_status": "pending"}
 
 
 # ================================================================

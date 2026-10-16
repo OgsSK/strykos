@@ -143,6 +143,8 @@ class Product(Base):
     # ⭐ NOUVEAU : texte du bouton sur la home (vide = auto)
     # Valeurs : "" | "auto" | "add_to_cart" | "choose" | "customize" | "order" | "view"
     cta_label = Column(String(40), default="")
+    # ⭐ NOUVEAU : paiement à la livraison autorisé pour ce produit
+    cod_allowed = Column(Boolean, default=True, index=True)
     video_url = Column(Text, default="")
     sales_count = Column(Integer, default=0)
     published = Column(Boolean, default=True, index=True)
@@ -223,6 +225,16 @@ class Order(Base):
     delivered_by_driver_id = Column(String(36), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
     delivered_via = Column(String(20), default="")  # "otp" | "admin_manual"
     driver_assigned_at = Column(DateTime(timezone=True), nullable=True)
+    # ⭐ Paiement à la livraison (COD)
+    payment_method = Column(String(20), default="stripe", index=True)   # "stripe" | "cod"
+    cod_collected_at = Column(DateTime(timezone=True), nullable=True)
+    cod_collected_by_id = Column(String(36), ForeignKey("profiles.id", ondelete="SET NULL"), nullable=True)
+    # ⭐ Remboursement multi-méthodes
+    refund_method = Column(String(20), default="")            # "stripe" | "cash" | "mobile_money" | "promo"
+    refund_reference = Column(String(120), default="")
+    refund_promo_code = Column(String(60), default="")
+    refund_note = Column(Text, default="")
+    refunded_at = Column(DateTime(timezone=True), nullable=True)
     shipping_address = Column(JSON, default=dict)
     shipping_method = Column(JSON, default=dict)
     items = Column(JSON, default=list)
@@ -329,6 +341,16 @@ class Order(Base):
                       "delivered_by_driver_id": self.delivered_by_driver_id,
                       "delivered_via": self.delivered_via or "",
                       "driver_assigned_at": self.driver_assigned_at.isoformat() if self.driver_assigned_at else None,
+                      # ⭐ NOUVEAU : paiement à la livraison (COD)
+                      "payment_method": self.payment_method or "stripe",
+                      "cod_collected_at": self.cod_collected_at.isoformat() if self.cod_collected_at else None,
+                      "cod_collected_by_id": self.cod_collected_by_id,
+                      # ⭐ NOUVEAU : remboursement multi-méthodes
+                      "refund_method": self.refund_method or "",
+                      "refund_reference": self.refund_reference or "",
+                      "refund_promo_code": self.refund_promo_code or "",
+                      "refund_note": self.refund_note or "",
+                      "refunded_at": self.refunded_at.isoformat() if self.refunded_at else None,
                       "shipping_origin_country": self.shipping_origin_country or "",
                       "shipping_segments": self.shipping_segments or []})
         return d

@@ -11,7 +11,7 @@ import {
   Truck, LogOut, CheckCircle2, XCircle, RotateCcw,
   User, Package, Clock, TrendingUp, KeyRound, History,
   Phone, Save, ChevronLeft, ChevronRight, Calendar, MapPin,
-  Lock, Mail, AlertTriangle, Eye, EyeOff,
+  Lock, Mail, AlertTriangle, Eye, EyeOff, Banknote,
 } from "lucide-react";
 import PasswordStrength from "@/components/PasswordStrength";
 
@@ -55,6 +55,11 @@ export default function Driver() {
   const [pendingEmail, setPendingEmail] = useState(null);
 
   const [settingsBusy, setSettingsBusy] = useState(false);
+
+  // ⭐ NOUVEAU : Modale confirmation paiement COD
+  const [codModal, setCodModal] = useState(null); // { code, order }
+  const [codNote, setCodNote] = useState("");
+  const [codBusy, setCodBusy] = useState(false);
 
   // Charge les stats au démarrage et après chaque succès
   useEffect(() => {
@@ -133,6 +138,17 @@ export default function Driver() {
     setError("");
     try {
       const { data } = await api.post("/driver/validate-code", { code });
+
+      // ⭐ NOUVEAU : si c'est une commande COD non payée, on ouvre la modale
+      if (data.requires_payment_confirmation) {
+        setCodModal({ code, order: data.order });
+        setCodNote("");
+        setDigits(["", "", "", "", "", ""]);
+        setLoading(false);
+        return;
+      }
+
+      // Cas normal : livraison validée
       setSuccess(data.order);
       setDigits(["", "", "", "", "", ""]);
       toast.success("Livraison validée !");
@@ -149,6 +165,35 @@ export default function Driver() {
     setError("");
     setDigits(["", "", "", "", "", ""]);
     setTimeout(() => inputsRef.current[0]?.focus(), 100);
+  };
+
+  // ⭐ NOUVEAU : Confirmation du paiement COD
+  const confirmCod = async (received) => {
+    if (!codModal) return;
+    setCodBusy(true);
+    try {
+      const { data } = await api.post("/driver/confirm-cod-payment", {
+        code: codModal.code,
+        payment_received: received,
+        note: received ? "" : codNote.trim(),
+      });
+
+      setCodModal(null);
+      setCodNote("");
+
+      if (received) {
+        // Succès : afficher l'écran de confirmation
+        setSuccess(codModal.order);
+        toast.success("Livraison et paiement confirmés ✅");
+      } else {
+        toast.success("Signalé à l'administrateur");
+        setDigits(["", "", "", "", "", ""]);
+        setTimeout(() => inputsRef.current[0]?.focus(), 100);
+      }
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+    setCodBusy(false);
   };
 
   // ============ Profil ============
@@ -758,6 +803,74 @@ export default function Driver() {
           </>
         )}
       </main>
+
+      {/* ⭐ NOUVELLE MODALE : Confirmation paiement COD */}
+      {codModal && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full border border-border rounded-xl overflow-hidden">
+            <div className="bg-amber-500 text-white px-5 py-4">
+              <div className="inline-flex items-center gap-2 font-heading font-bold uppercase tracking-wider">
+                <Banknote className="w-5 h-5" />
+                Paiement à la livraison
+              </div>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                <div className="font-semibold text-amber-900 mb-1">Commande {codModal.order.order_number}</div>
+                <div className="text-xs text-amber-800">
+                  Client : <strong>{codModal.order.first_name}</strong>
+                  {codModal.order.city && <> · {codModal.order.city}</>}
+                </div>
+              </div>
+
+              <div className="text-center py-3 border-y border-border">
+                <div className="text-[11px] uppercase tracking-wider text-ink-muted mb-1">Montant à encaisser</div>
+                <div className="font-heading text-3xl font-bold text-brand">
+                  {codModal.order.total?.toLocaleString("fr-FR")} {codModal.order.currency}
+                </div>
+              </div>
+
+              <div className="text-sm text-ink-soft">
+                Confirmez-vous avoir reçu le paiement <strong>en espèces</strong> du client ?
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">
+                  Note (si paiement refusé)
+                </Label>
+                <Textarea
+                  rows={2}
+                  value={codNote}
+                  onChange={(e) => setCodNote(e.target.value)}
+                  placeholder="Ex: Le client n'avait pas l'appoint..."
+                  className="mt-1 rounded-none"
+                  maxLength={200}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => confirmCod(false)}
+                  disabled={codBusy}
+                  className="flex-1 px-4 py-3 border-2 border-red-300 text-red-700 text-xs font-bold uppercase rounded-none hover:bg-red-50 disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Non payé
+                </button>
+                <button
+                  onClick={() => confirmCod(true)}
+                  disabled={codBusy}
+                  className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white text-xs font-bold uppercase rounded-none disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
+                >
+                  {codBusy ? <RotateCcw className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Payé ✓
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ⭐ Modale : Changer mot de passe */}
       {showChangePwd && (

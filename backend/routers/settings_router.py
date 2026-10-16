@@ -121,6 +121,23 @@ async def public_settings(db: AsyncSession = Depends(get_db)):
         "shipping": s.get("shipping"),
         "site": s.get("site"),
         "payment_providers": enabled_providers,
+        # ⭐ NOUVEAU : paiement à la livraison (COD)
+        "payment_methods": s.get("payment_methods") or {
+            "cod": {
+                "enabled": False,
+                "label_fr": "Payer à la livraison",
+                "label_en": "Pay on delivery",
+                "instructions_fr": "",
+                "instructions_en": "",
+                "countries": ["ML"],
+                "min_amount_xof": 0,
+                "max_amount_xof": 500000,
+                "extra_fee_xof": 0,
+                "mode": "all",
+                "refund_methods": ["cash", "mobile_money", "promo"],
+                "promo_validity_days": 180,
+            },
+        },
         # --- Sections home ---
         "features": s.get("features"),
         "testimonials": s.get("testimonials"),

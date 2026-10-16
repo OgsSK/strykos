@@ -1248,6 +1248,76 @@ def tpl_delivery_otp_client(order: dict, otp: str, lang: str):
     return subject, _layout(title, body, lang)
 
 
+# ================================================================
+# ⭐ REMBOURSEMENT MULTI-MÉTHODES
+# ================================================================
+
+def tpl_refund_multi(order: dict, lang: str, amount: float, method: str, promo_code: str = ""):
+    """Email de remboursement selon la méthode choisie par l'admin."""
+    n = escape(order["order_number"])
+    first = escape(order.get("first_name") or "")
+    amt = _money(amount, order.get("currency", "XOF"))
+
+    method_labels = {
+        "cash": ("Espèces (en main propre)", "Cash (in person)"),
+        "mobile_money": ("Wave / Orange Money", "Wave / Orange Money"),
+        "promo": ("Code promo (avoir)", "Promo code (store credit)"),
+        "stripe": ("Carte bancaire (Stripe)", "Card (Stripe)"),
+    }
+    label_fr, label_en = method_labels.get(method, ("Remboursement", "Refund"))
+    method_label = label_en if lang == "en" else label_fr
+
+    if lang == "en":
+        subject = f"Refund for order {n} — {method_label}"
+        title = "Refund processed"
+        body = (
+            f"<p>Hi {first},</p>"
+            f"<p>We've issued a refund of <strong>{amt}</strong> for your order <strong>{n}</strong>.</p>"
+            f"<p><strong>Method:</strong> {escape(method_label)}</p>"
+        )
+        if method == "cash":
+            body += "<p>Please contact us to arrange a time to receive your refund in person.</p>"
+        elif method == "mobile_money":
+            body += "<p>You will receive the amount on your Mobile Money number shortly. If not received within 24h, contact us.</p>"
+        elif method == "promo" and promo_code:
+            body += (
+                f'<div style="margin:20px 0;padding:16px 20px;background:{C_CREAM};'
+                f'border-left:4px solid {C_CARAMEL};text-align:center">'
+                f'<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;'
+                f'color:{C_SOFT};margin-bottom:6px">Your promo code</div>'
+                f'<div style="font-size:22px;font-weight:800;color:{C_CHOCOLATE};'
+                f'font-family:monospace;letter-spacing:2px">{escape(promo_code)}</div>'
+                f'<div style="font-size:12px;color:{C_SOFT};margin-top:6px">Use it on your next order.</div>'
+                f'</div>'
+            )
+    else:
+        subject = f"Remboursement commande {n} — {method_label}"
+        title = "Remboursement effectué"
+        body = (
+            f"<p>Bonjour {first},</p>"
+            f"<p>Nous avons émis un remboursement de <strong>{amt}</strong> pour votre commande <strong>{n}</strong>.</p>"
+            f"<p><strong>Méthode :</strong> {escape(method_label)}</p>"
+        )
+        if method == "cash":
+            body += "<p>Merci de nous contacter pour convenir d'un moment afin de récupérer votre remboursement en main propre.</p>"
+        elif method == "mobile_money":
+            body += "<p>Vous recevrez le montant sur votre numéro Mobile Money prochainement. Si vous ne le recevez pas sous 24h, contactez-nous.</p>"
+        elif method == "promo" and promo_code:
+            body += (
+                f'<div style="margin:20px 0;padding:16px 20px;background:{C_CREAM};'
+                f'border-left:4px solid {C_CARAMEL};text-align:center">'
+                f'<div style="font-size:11px;text-transform:uppercase;letter-spacing:1px;'
+                f'color:{C_SOFT};margin-bottom:6px">Votre code promo</div>'
+                f'<div style="font-size:22px;font-weight:800;color:{C_CHOCOLATE};'
+                f'font-family:monospace;letter-spacing:2px">{escape(promo_code)}</div>'
+                f'<div style="font-size:12px;color:{C_SOFT};margin-top:6px">Utilisable sur votre prochaine commande.</div>'
+                f'</div>'
+            )
+
+    body += _refund_message_block(order, lang)
+    return subject, _layout(title, body, lang)
+
+
 TEMPLATES = {
     "order_confirmed": tpl_order_confirmed,
     "order_shipped": tpl_order_shipped,

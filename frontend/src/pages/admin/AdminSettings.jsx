@@ -17,7 +17,7 @@ import {
 } from "@/components/admin/HomeMediaEditors";
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
-import { Plus, Trash2, Calendar } from "lucide-react";
+import { Plus, Trash2, Calendar, Truck } from "lucide-react";
 
 // ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
 const XOF_RATE = 655.957;
@@ -56,7 +56,29 @@ const COUNTRIES = [["ML", "Mali"], ["BE", "Belgique"], ["FR", "France"], ["SN", 
 export default function AdminSettings() {
   const [s, setS] = useState(null);
   const [tab, setTab] = useState("site");
-  useEffect(() => { api.get("/admin/settings").then((r) => setS(r.data)).catch(() => {}); }, []);
+  // ⭐ NOUVEAU : paiement à la livraison
+  const [paymentMethods, setPaymentMethods] = useState(null);
+  const [pmBusy, setPmBusy] = useState(false);
+
+  useEffect(() => { api.get("/admin/settings").then((r) => {
+    setS(r.data);
+    setPaymentMethods(r.data?.payment_methods || {
+      cod: {
+        enabled: false,
+        label_fr: "Payer à la livraison",
+        label_en: "Pay on delivery",
+        instructions_fr: "",
+        instructions_en: "",
+        countries: ["ML"],
+        min_amount_xof: 0,
+        max_amount_xof: 500000,
+        extra_fee_xof: 0,
+        mode: "all",
+        refund_methods: ["cash", "mobile_money", "promo"],
+        promo_validity_days: 180,
+      },
+    });
+  }).catch(() => {}); }, []);
   if (!s) return <div className="text-ink-muted">Chargement...</div>;
 
   const upd = (key, patch) => setS({ ...s, [key]: { ...s[key], ...patch } });
@@ -64,10 +86,38 @@ export default function AdminSettings() {
     try { await api.put("/admin/settings", { key, value: value ?? s[key] }); toast.success("Parametres enregistres"); }
     catch (e) { toast.error(apiError(e)); }
   };
+
+  // ⭐ NOUVEAU : helpers COD
+  const updatePaymentMethods = (k, field, value) => {
+    setPaymentMethods((prev) => ({
+      ...prev,
+      [k]: { ...(prev?.[k] || {}), [field]: value },
+    }));
+  };
+  const savePaymentMethods = async () => {
+    setPmBusy(true);
+    try {
+      await api.put("/admin/settings", { key: "payment_methods", value: paymentMethods });
+      toast.success("Paramètres COD enregistrés");
+    } catch (e) { toast.error(apiError(e)); }
+    setPmBusy(false);
+  };
+
   const site = s.site || {}, hero = s.hero || {}, info = s.info_bar || {}, rates = s.currency?.rates || {}, methods = s.shipping?.methods || [], origins = s.shipping?.origins || [], providers = s.payment_providers || {}, cartReminders = s.cart_reminders || {}, taxonomies = s.taxonomies || {}, features = s.features || { items: [] }, testimonials = s.testimonials || { items: [] };
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
   const setOrigin = (i, patch) => upd("shipping", { origins: origins.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
-  const tabs = [["site", "Coordonnees"], ["hero", "Accueil & videos"], ["shipping", "Livraison"], ["taxonomies", "Taxonomies"], ["cart", "Relances panier"], ["currency", "Devises"], ["payments", "Paiements"]];
+
+  // ⭐ Ajout de l'onglet COD
+  const tabs = [
+    ["site", "Coordonnees"],
+    ["hero", "Accueil & videos"],
+    ["shipping", "Livraison"],
+    ["taxonomies", "Taxonomies"],
+    ["cart", "Relances panier"],
+    ["currency", "Devises"],
+    ["payments", "Paiements"],
+    ["payment_methods", "Paiement livraison"],
+  ];
 
   return (
     <div data-testid="admin-settings" className="max-w-4xl">
@@ -84,13 +134,10 @@ export default function AdminSettings() {
       {tab === "site" && (
         <Card title="Coordonnees de la boutique" onSave={() => save("site")} testid="settings-site">
           <div className="grid sm:grid-cols-2 gap-3">
-            {/* === Marque (nom affiché partout) === */}
             <div className="sm:col-span-2 border border-border p-4 bg-secondary/30">
               <div className="text-xs uppercase tracking-wider font-semibold text-ink-muted mb-3">
                 Nom de la marque (affiché partout sur le site et dans les e-mails)
               </div>
-
-              {/* Aperçu live */}
               <div className="mb-4 flex items-center gap-3 border border-border bg-white p-3">
                 <span className="text-xs uppercase tracking-wider text-ink-muted">Aperçu :</span>
                 <span className="font-heading font-extrabold text-2xl tracking-tight">
@@ -98,7 +145,6 @@ export default function AdminSettings() {
                   <span className="text-brand">{site.brand_part2 || "SHOP"}</span>
                 </span>
               </div>
-
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Nom — partie 1 (principale)</Label>
@@ -227,7 +273,6 @@ export default function AdminSettings() {
             <TestimonialsEditor testimonials={testimonials} onChange={(v) => setS({ ...s, testimonials: v })} />
           </Card>
 
-          {/* ⭐ Commandes programmées — version complète */}
           <Card
             title="Commandes programmées"
             description="Contrôlez le délai minimum, les créneaux, les jours de fermeture et les jours spéciaux (fêtes, événements)."
@@ -235,8 +280,6 @@ export default function AdminSettings() {
             testid="settings-orders"
           >
             <div className="space-y-6">
-
-              {/* ---- Délai ---- */}
               <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                   <Label>Délai minimum de préparation (heures)</Label>
@@ -262,7 +305,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ---- Créneaux par défaut ---- */}
               <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <Label>Créneaux par défaut</Label>
@@ -315,7 +357,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ---- Jours de fermeture hebdo ---- */}
               <div className="border-t border-border pt-4">
                 <Label>Jours de fermeture hebdomadaire</Label>
                 <p className="text-[11px] text-ink-muted mb-3">
@@ -345,7 +386,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ---- Dates fermées ---- */}
               <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <Label>Dates fermées (fêtes, événements)</Label>
@@ -384,7 +424,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ---- Périodes de fermeture ---- */}
               <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <Label>Périodes de fermeture (vacances)</Label>
@@ -455,7 +494,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ---- Jours spéciaux ---- */}
               <div className="border-t border-border pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <Label>Jours spéciaux (horaires personnalisés)</Label>
@@ -518,8 +556,6 @@ export default function AdminSettings() {
                             }} className="h-9" />
                         </div>
                       </div>
-
-                      {/* Créneaux custom */}
                       <div className="border-t border-amber-200 pt-2">
                         <div className="flex items-center justify-between mb-2">
                           <Label className="text-xs">Créneaux pour ce jour</Label>
@@ -584,7 +620,6 @@ export default function AdminSettings() {
                 </div>
               </div>
 
-              {/* ⭐ NOUVEAU : Délai de réclamation */}
               <div className="border-t border-border pt-4">
                 <Label className="text-xs">Délai de réclamation (heures)</Label>
                 <Input
@@ -599,7 +634,6 @@ export default function AdminSettings() {
                 </p>
               </div>
 
-              {/* ⭐ NOUVEAU : Limites des médias de réclamation */}
               <div className="border-t border-border pt-4">
                 <Label className="text-xs uppercase tracking-wider text-ink-muted mb-3 block">
                   Limites des médias de réclamation
@@ -639,18 +673,17 @@ export default function AdminSettings() {
                     <Label className="text-xs">Taille vidéo (Mo)</Label>
                     <Input
                       type="number" min={1} max={200}
-                      value={(s.orders?.claim_media_max_video_mb) ?? 20}
-                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_video_mb: parseInt(e.target.value) || 20 } })}
+                      value={(s.orders?.claim_media_max_video_mb) ?? 50}
+                      onChange={(e) => setS({ ...s, orders: { ...(s.orders || {}), claim_media_max_video_mb: parseInt(e.target.value) || 50 } })}
                       className="mt-1"
                       data-testid="orders-claim-media-max-video-mb"
                     />
                   </div>
                 </div>
                 <p className="text-[11px] text-ink-muted mt-1">
-                  💡 Recommandé : 3 photos max (5 Mo) · 1 vidéo max (20 Mo ≈ 30 secondes en 1080p)
+                  💡 Recommandé : 3 photos max (5 Mo) · 1 vidéo max (50 Mo ≈ 1 min en 1080p)
                 </p>
               </div>
-
             </div>
           </Card>
 
@@ -779,7 +812,6 @@ export default function AdminSettings() {
               <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { origins: [...origins, { country: "ML", country_name: "Mali", name: "Nouveau depot", address_line: "", city: "", postal_code: "", phone: "", email: "", is_default: false, carriers: [] }] })} data-testid="add-shipping-origin">
                 <Plus className="w-4 h-4 mr-1" /> Ajouter une origine
               </Button>
-              <p className="text-xs text-ink-muted">L'origine par défaut d'un pays est utilisée lors de l'expédition d'une commande vers ce pays. Vous pourrez la changer au cas par cas dans chaque commande.</p>
             </div>
           </Card>
         </div>
@@ -863,9 +895,6 @@ export default function AdminSettings() {
                 </div>
               );
             })}
-            <p className="text-xs text-ink-muted">
-              Astuce : laissez l'image vide pour un style fond crème dégradé, ou collez une URL d'image (Unsplash, votre propre CDN, etc.).
-            </p>
           </div>
         </Card>
       )}
@@ -953,6 +982,185 @@ export default function AdminSettings() {
             </div>
           ))}
           <p className="text-xs text-ink-muted mt-3">Stripe est le seul fournisseur integre en v1. CinetPay et PawaPay (mobile money) sont prepares dans l'architecture mais necessitent des cles API et une integration dediee avant activation.</p>
+        </Card>
+      )}
+
+      {/* ⭐ NOUVEAU : Onglet Paiement à la livraison */}
+      {tab === "payment_methods" && (
+        <Card title="Paiement à la livraison (COD)" testid="settings-payment-methods">
+          <p className="text-xs text-ink-muted mb-4">
+            Permettez aux clients de payer en espèces à la réception de leur commande.
+          </p>
+
+          <label className="flex items-center gap-3 p-3 border border-border bg-secondary/30 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={paymentMethods?.cod?.enabled || false}
+              onChange={(e) => updatePaymentMethods("cod", "enabled", e.target.checked)}
+              className="w-4 h-4"
+            />
+            <div className="flex-1">
+              <div className="font-semibold text-sm">Activer le paiement à la livraison</div>
+              <div className="text-xs text-ink-muted">
+                Le client peut choisir de payer en espèces à la réception.
+              </div>
+            </div>
+          </label>
+
+          {paymentMethods?.cod?.enabled && (
+            <div className="space-y-4 mt-4">
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Label FR</Label>
+                  <Input
+                    value={paymentMethods?.cod?.label_fr || ""}
+                    onChange={(e) => updatePaymentMethods("cod", "label_fr", e.target.value)}
+                    placeholder="Payer à la livraison"
+                    className="mt-1 rounded-none"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Label EN</Label>
+                  <Input
+                    value={paymentMethods?.cod?.label_en || ""}
+                    onChange={(e) => updatePaymentMethods("cod", "label_en", e.target.value)}
+                    placeholder="Pay on delivery"
+                    className="mt-1 rounded-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">Instructions FR</Label>
+                <Textarea
+                  rows={2}
+                  value={paymentMethods?.cod?.instructions_fr || ""}
+                  onChange={(e) => updatePaymentMethods("cod", "instructions_fr", e.target.value)}
+                  placeholder="Préparez le montant exact en espèces..."
+                  className="mt-1 rounded-none"
+                />
+              </div>
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">Instructions EN</Label>
+                <Textarea
+                  rows={2}
+                  value={paymentMethods?.cod?.instructions_en || ""}
+                  onChange={(e) => updatePaymentMethods("cod", "instructions_en", e.target.value)}
+                  placeholder="Prepare the exact amount in cash..."
+                  className="mt-1 rounded-none"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">Pays éligibles (séparés par virgule)</Label>
+                <Input
+                  value={(paymentMethods?.cod?.countries || []).join(", ")}
+                  onChange={(e) =>
+                    updatePaymentMethods("cod", "countries",
+                      e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean))
+                  }
+                  placeholder="ML, SN, CI"
+                  className="mt-1 rounded-none"
+                />
+                <p className="text-[11px] text-ink-muted mt-1">
+                  Codes ISO 2 lettres. Ex: ML, BE, FR, SN, CI
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant min (XOF)</Label>
+                  <Input
+                    type="number"
+                    value={paymentMethods?.cod?.min_amount_xof ?? 0}
+                    onChange={(e) => updatePaymentMethods("cod", "min_amount_xof", parseInt(e.target.value) || 0)}
+                    className="mt-1 rounded-none"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant max (XOF)</Label>
+                  <Input
+                    type="number"
+                    value={paymentMethods?.cod?.max_amount_xof ?? 500000}
+                    onChange={(e) => updatePaymentMethods("cod", "max_amount_xof", parseInt(e.target.value) || 500000)}
+                    className="mt-1 rounded-none"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Frais COD (XOF)</Label>
+                  <Input
+                    type="number"
+                    value={paymentMethods?.cod?.extra_fee_xof ?? 0}
+                    onChange={(e) => updatePaymentMethods("cod", "extra_fee_xof", parseInt(e.target.value) || 0)}
+                    className="mt-1 rounded-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">Mode de sélection des produits</Label>
+                <select
+                  value={paymentMethods?.cod?.mode || "all"}
+                  onChange={(e) => updatePaymentMethods("cod", "mode", e.target.value)}
+                  className="mt-1 w-full border border-border h-10 px-3 bg-white text-sm"
+                >
+                  <option value="all">Tous les produits éligibles</option>
+                  <option value="selected">Uniquement les produits marqués COD</option>
+                </select>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">
+                  Validité d'un remboursement par code promo (jours)
+                </Label>
+                <Input
+                  type="number"
+                  value={paymentMethods?.cod?.promo_validity_days ?? 180}
+                  onChange={(e) => updatePaymentMethods("cod", "promo_validity_days", parseInt(e.target.value) || 180)}
+                  className="mt-1 rounded-none w-40"
+                />
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase tracking-wider text-ink-muted block mb-2">
+                  Méthodes de remboursement autorisées
+                </Label>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { value: "cash", label: "💵 Espèces" },
+                    { value: "mobile_money", label: "📱 Mobile Money" },
+                    { value: "promo", label: "🎁 Code promo" },
+                    { value: "stripe", label: "💳 Stripe" },
+                  ].map((m) => (
+                    <label key={m.value} className="flex items-center gap-2 cursor-pointer text-sm border border-border px-3 py-2 hover:bg-secondary">
+                      <input
+                        type="checkbox"
+                        checked={(paymentMethods?.cod?.refund_methods || []).includes(m.value)}
+                        onChange={(e) => {
+                          const current = paymentMethods?.cod?.refund_methods || [];
+                          const next = e.target.checked
+                            ? [...new Set([...current, m.value])]
+                            : current.filter((x) => x !== m.value);
+                          updatePaymentMethods("cod", "refund_methods", next);
+                        }}
+                      />
+                      {m.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-border">
+                <Button
+                  onClick={savePaymentMethods}
+                  disabled={pmBusy}
+                  className="bg-brand hover:bg-brand-dark rounded-none uppercase font-bold"
+                >
+                  {pmBusy ? "..." : "Enregistrer"}
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
     </div>

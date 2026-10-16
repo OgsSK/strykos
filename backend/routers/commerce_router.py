@@ -83,7 +83,6 @@ def _validate_claim_media(raw_media: list, orders_cfg: dict) -> list:
     media_urls = []
     photo_count = 0
     video_count = 0
-    # Garde-fou : limite d'entrées à traiter (évite les payloads abusifs)
     for m in (raw_media or [])[: max_photos + max_videos + 2]:
         if not isinstance(m, dict):
             continue
@@ -176,6 +175,8 @@ class CheckoutInput(BaseModel):
     customer_note: Optional[str] = None
     scheduled_date: Optional[str] = None
     scheduled_time_slot: Optional[str] = None
+    # ⭐ Mode de paiement : "stripe" | "cod"
+    payment_method: str = "stripe"
 
 
 async def _compute_order(db, items, currency, shipping_country, shipping_method_index, promo_code=None, email=None, user=None):
@@ -415,6 +416,106 @@ def _validate_scheduled(date_str: str | None, slot: str | None, settings: dict) 
     return target, slot
 
 
+# ================================================================
+# ⭐ Disponibilité du paiement à la livraison (COD)
+# ================================================================
+
+@router.post("/checkout/cod-availability")
+async def cod_availability(data: dict, db: AsyncSession = Depends(get_db)):
+    """
+    Vérifie si le paiement à la livraison est disponible pour un panier + pays.
+    Payload : { items: [{product_id, variant_id, quantity, customization}], country: "ML" }
+    """
+    settings = await get_settings(db)
+    cod = (settings.get("payment_methods", {}) or {}).get("cod", {}) or {}
+
+    if not cod.get("enabled"):
+        return {"available": False, "reason_fr": "Paiement à la livraison désactivé", "reason_en": "COD disabled"}
+
+    country = (data.get("country") or "").upper()
+    if country not in [c.upper() for c in (cod.get("countries") or [])]:
+        return {"available": False, "reason_fr": "Non disponible dans votre pays", "reason_en": "Not available in your country"}
+
+    items = data.get("items") or []
+    if not items:
+        return {"available": False, "reason_fr": "Panier vide", "reason_en": "Empty cart"}
+
+    rates = await get_rates(db)
+    currency = "XOF"
+    subtotal_display = 0.0
+    mode = cod.get("mode", "all")
+
+    # ⭐ ÉTAPE 1 : on précharge TOUS les produits en UNE requête avec selectinload
+    product_ids = [line.get("product_id") for line in items if line.get("product_id")]
+    if not product_ids:
+        return {"available": False, "reason_fr": "Panier invalide", "reason_en": "Invalid cart"}
+
+    pr = await db.execute(
+        select(Product)
+        .where(Product.id.in_(product_ids))
+        .options(selectinload(Product.variants))
+    )
+    products_by_id = {p.id: p for p in pr.scalars().unique().all()}
+
+    # ⭐ ÉTAPE 2 : validation + calcul du sous-total
+    for line in items:
+        pid = line.get("product_id")
+        product = products_by_id.get(pid)
+        if not product or not product.published:
+            return {"available": False, "reason_fr": "Produit indisponible", "reason_en": "Unavailable product"}
+
+        # ⭐ Vérifier cod_allowed uniquement en mode "selected"
+        if mode == "selected" and not product.cod_allowed:
+            return {
+                "available": False,
+                "reason_fr": f"Le produit « {product.name_fr} » n'est pas éligible au paiement à la livraison",
+                "reason_en": f"Product « {product.name_en} » is not eligible for COD",
+            }
+
+        # ⭐ Trouver la variante (préchargée, pas de lazy load)
+        variant = next((v for v in (product.variants or []) if v.id == line.get("variant_id")), None)
+        if not variant:
+            continue
+
+        pp = product_prices(product, rates)
+        extra = convert_from_eur(variant.extra_price_eur or 0, currency, rates) or 0
+        custom_price = 0
+        if line.get("customization") and product.customizable:
+            custom_price = convert_from_eur(
+                customization_price_eur(product, line.get("customization")), currency, rates
+            ) or 0
+        unit = pp[currency]["price"] + extra + custom_price
+        subtotal_display += unit * (line.get("quantity") or 1)
+
+    min_xof = int(cod.get("min_amount_xof", 0))
+    max_xof = int(cod.get("max_amount_xof", 500000))
+    extra_fee_xof = int(cod.get("extra_fee_xof", 0))
+
+    if subtotal_display < min_xof:
+        return {
+            "available": False,
+            "reason_fr": f"Montant minimum pour le paiement à la livraison : {min_xof:,} FCFA".replace(",", " "),
+            "reason_en": f"Minimum amount for COD: {min_xof} XOF",
+        }
+    if subtotal_display > max_xof:
+        return {
+            "available": False,
+            "reason_fr": f"Montant maximum dépassé ({max_xof:,} FCFA). Utilisez le paiement en ligne.".replace(",", " "),
+            "reason_en": f"Maximum amount exceeded ({max_xof} XOF). Use online payment.",
+        }
+
+    return {
+        "available": True,
+        "extra_fee_xof": extra_fee_xof,
+        "instructions_fr": cod.get("instructions_fr", ""),
+        "instructions_en": cod.get("instructions_en", ""),
+    }
+
+
+# ================================================================
+# ⭐ Checkout — Stripe OU Paiement à la livraison
+# ================================================================
+
 @router.post("/checkout/create")
 async def checkout_create(data: CheckoutInput, request: Request,
                           db: AsyncSession = Depends(get_db), user=Depends(get_optional_user)):
@@ -432,23 +533,86 @@ async def checkout_create(data: CheckoutInput, request: Request,
         data.scheduled_date, data.scheduled_time_slot, settings
     )
 
+    # ⭐ Validation du mode de paiement
+    payment_method = (data.payment_method or "stripe").strip().lower()
+    if payment_method not in ("stripe", "cod"):
+        raise HTTPException(status_code=400, detail="Mode de paiement invalide")
+
+    cod = (settings.get("payment_methods", {}) or {}).get("cod", {}) or {}
+    extra_fee_xof = 0
+
+    if payment_method == "cod":
+        # Vérifications COD
+        if not cod.get("enabled"):
+            raise HTTPException(status_code=400, detail="Le paiement à la livraison est désactivé")
+
+        country = (data.shipping.country or "").upper()
+        if country not in [c.upper() for c in (cod.get("countries") or [])]:
+            raise HTTPException(status_code=400, detail="Paiement à la livraison non disponible dans votre pays")
+
+        # ⭐ Vérifie les produits avec selectinload (évite lazy load)
+        mode = cod.get("mode", "all")
+        product_ids = [line.product_id for line in data.items]
+        pr = await db.execute(
+            select(Product)
+            .where(Product.id.in_(product_ids))
+            .options(selectinload(Product.variants))
+        )
+        products_by_id = {p.id: p for p in pr.scalars().unique().all()}
+
+        if mode == "selected":
+            for line in data.items:
+                product = products_by_id.get(line.product_id)
+                if not product:
+                    continue
+                if not product.cod_allowed:
+                    raise HTTPException(status_code=400,
+                        detail=f"Le produit « {product.name_fr} » n'est pas éligible au paiement à la livraison")
+
+        # Vérifie min/max sur le total
+        total_xof = calc["total"] if calc["currency"] == "XOF" else calc["total"] * 655.957
+        min_xof = int(cod.get("min_amount_xof", 0))
+        max_xof = int(cod.get("max_amount_xof", 500000))
+        if total_xof < min_xof:
+            raise HTTPException(status_code=400, detail=f"Montant minimum COD : {min_xof} FCFA")
+        if total_xof > max_xof:
+            raise HTTPException(status_code=400, detail=f"Montant maximum COD : {max_xof} FCFA")
+
+        # ⭐ Frais COD
+        extra_fee_xof = int(cod.get("extra_fee_xof", 0))
+
     notice = _notice(calc)
     customer_note = (data.customer_note or "").strip()[:500]
+
+    # ⭐ Gestion des montants
+    charge_currency = calc["charge_currency"]
+    charge_total = calc["charge_total"]
+    total = calc["total"]
+    shipping_cost = calc["shipping_cost"]
+
+    # ⭐ Ajoute les frais COD au total
+    if payment_method == "cod" and extra_fee_xof > 0:
+        rates = await get_rates(db)
+        extra_display = convert_from_eur(extra_fee_xof / (rates.get("XOF", 655.957) or 655.957), calc["currency"], rates)
+        total = round_currency(total + extra_display, calc["currency"])
+        extra_eur = round(extra_fee_xof / (rates.get("XOF", 655.957) or 655.957), 2)
+        charge_total = round_currency(charge_total + extra_eur, charge_currency)
 
     order = Order(
         order_number=gen_order_number(), user_id=user.id if user else None,
         email=data.shipping.email.lower().strip(), first_name=data.shipping.first_name,
         last_name=data.shipping.last_name, phone=data.shipping.phone,
         status="pending_payment", payment_status="pending",
-        currency=calc["currency"], charge_currency=calc["charge_currency"],
-        subtotal=calc["subtotal"], shipping_cost=calc["shipping_cost"], discount=calc["discount"],
-        total=calc["total"], charge_total=calc["charge_total"], payment_notice=notice,
+        currency=calc["currency"], charge_currency=charge_currency,
+        subtotal=calc["subtotal"], shipping_cost=shipping_cost, discount=calc["discount"],
+        total=total, charge_total=charge_total, payment_notice=notice,
         shipping_address=data.shipping.model_dump(), shipping_method=calc["shipping_method"],
         items=calc["items"], lang=data.lang if data.lang in ("fr", "en") else "fr",
         promo_code=calc["promo"].code if calc["promo"] else "",
         customer_note=customer_note,
         scheduled_date=scheduled_date,
         scheduled_time_slot=scheduled_slot,
+        payment_method=payment_method,   # ⭐ NOUVEAU
         status_history=[{"status": "pending_payment", "at": datetime.now(timezone.utc).isoformat(), "by": "system"}],
     )
     db.add(order)
@@ -465,6 +629,35 @@ async def checkout_create(data: CheckoutInput, request: Request,
         except Exception:
             pass
 
+    # ============================================================
+    # ⭐ CAS COD : on ne passe PAS par Stripe
+    # ============================================================
+    if payment_method == "cod":
+        push_history(order, "pending_payment", by="client", note="Commande COD créée — paiement à la livraison")
+        await db.commit()
+
+        try:
+            await send_order_email(db, order, "order_confirmed")
+        except Exception:
+            pass
+        try:
+            await notify_admin_new_order(db, order)
+        except Exception:
+            pass
+
+        return {
+            "checkout_url": None,
+            "session_id": None,
+            "order_number": order.order_number,
+            "payment_notice": notice,
+            "payment_method": "cod",
+            "order_id": order.id,
+            "message": "Commande enregistrée. Paiement à la livraison.",
+        }
+
+    # ============================================================
+    # CAS Stripe (comportement habituel)
+    # ============================================================
     origin = data.origin_url.rstrip("/")
     session_kwargs = dict(
         line_items=calc["stripe_line_items"],
@@ -485,7 +678,8 @@ async def checkout_create(data: CheckoutInput, request: Request,
                    amount=calc["charge_total"], currency=calc["charge_currency"], status="pending"))
     await db.commit()
     return {"checkout_url": session.url, "session_id": session.id,
-            "order_number": order.order_number, "payment_notice": notice}
+            "order_number": order.order_number, "payment_notice": notice,
+            "payment_method": "stripe"}
 
 
 def push_history(order, status, by="system", note=""):
@@ -658,6 +852,9 @@ async def retry_payment(order_number: str, data: dict, user=Depends(get_current_
     order = await _get_my_order(db, user, order_number)
     _assert_pending(order)
 
+    if order.payment_method == "cod":
+        raise HTTPException(status_code=400, detail="Cette commande est en paiement à la livraison")
+
     origin = (data.get("origin_url") or "").rstrip("/")
     if not origin:
         raise HTTPException(status_code=400, detail="origin_url requis")
@@ -789,11 +986,9 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     if order.status in ("return_requested", "return_approved", "return_shipped", "return_received"):
         raise HTTPException(status_code=400, detail="Une reclamation est deja en cours.")
 
-    # ⭐ Paramètres configurables
     settings = await get_settings(db)
     orders_cfg = settings.get("orders", {}) or {}
 
-    # ⭐ Délai de réclamation configurable
     claim_window_hours = int(orders_cfg.get("claim_window_hours", 48))
     if order.delivered_at:
         age = datetime.now(timezone.utc) - order.delivered_at
@@ -808,8 +1003,6 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
         raise HTTPException(status_code=400, detail="Selectionnez au moins un article concerne.")
 
     general_reason = (data.get("reason") or "").strip()[:500]
-
-    # ⭐ Validation des médias
     media_urls = _validate_claim_media(data.get("media_urls") or [], orders_cfg)
 
     items_map = {(it.get("product_id"), it.get("variant_id")): it for it in (order.items or [])}
@@ -854,11 +1047,9 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     order.exchange_price_diff = 0
     order.exchange_payment_status = ""
     order.exchange_stripe_session_id = ""
-    # ⭐ NOUVEAU : stocke les médias dans la commande
     order.claim_media_urls = media_urls
     push_history(order, "return_requested", by=user.email, note=f"Reclamation {rma_code} — {general_reason[:120]}")
 
-    # ⭐ NOUVEAU : crée le message initial du client dans la conversation
     db.add(ClaimMessage(
         order_id=order.id,
         sender="client",
@@ -871,7 +1062,6 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     await db.commit()
     await db.refresh(order)
 
-    # ⭐ Email client — template claim_requested
     try:
         lang = order.lang if order.lang in ("fr", "en") else "fr"
         products_for_email = []
@@ -891,7 +1081,6 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
     except Exception as e:
         logger.warning(f"[CLAIM] Email client échoué: {e}")
 
-    # ⭐ Email admin
     try:
         if ADMIN_NOTIFY_EMAIL:
             subject, html = tpl_claim_admin_notify(order.to_dict(), rma_code)
@@ -906,17 +1095,13 @@ async def request_return(order_number: str, data: dict, user=Depends(get_current
         "status": order.status,
         "checkout_url": None,
         "exchange_price_diff": 0,
-        "media_count": len(media_urls),   # ⭐ NOUVEAU
+        "media_count": len(media_urls),
     }
 
 
-# ⭐ NOUVELLE ROUTE : réponse du client à une demande d'infos
+# ⭐ Réponse du client à une demande d'infos
 @router.post("/orders/{order_number}/claim/reply")
 async def claim_reply(order_number: str, data: dict, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """
-    ⭐ Le client répond à une demande d'informations complémentaires de l'admin.
-    Body : { text, media_urls: [{"type","url"}] }
-    """
     order = await _get_my_order(db, user, order_number)
 
     if order.status not in ("return_requested", "return_approved", "return_received"):
@@ -930,7 +1115,6 @@ async def claim_reply(order_number: str, data: dict, user=Depends(get_current_us
     if not text and not media_urls:
         raise HTTPException(status_code=400, detail="Ajoutez un message ou des fichiers.")
 
-    # Enregistre le message
     msg = ClaimMessage(
         order_id=order.id,
         sender="client",
@@ -941,11 +1125,9 @@ async def claim_reply(order_number: str, data: dict, user=Depends(get_current_us
     )
     db.add(msg)
 
-    # Ajoute les médias à la liste globale de la commande
     existing = list(order.claim_media_urls or [])
     order.claim_media_urls = existing + media_urls
 
-    # ⭐ Réinitialise la demande d'infos (elle a été honorée)
     order.claim_info_requested_at = None
     order.claim_info_request_message = ""
     order.claim_info_request_types = []
@@ -954,7 +1136,6 @@ async def claim_reply(order_number: str, data: dict, user=Depends(get_current_us
     await db.commit()
     await db.refresh(msg)
 
-    # ⭐ Notifie l'admin (template optionnel — silencieux si absent)
     try:
         from emails import send_templated as _send, ADMIN_NOTIFY_EMAIL as _adm
         try:
@@ -971,10 +1152,9 @@ async def claim_reply(order_number: str, data: dict, user=Depends(get_current_us
     return {"ok": True, "message": msg.to_dict()}
 
 
-# ⭐ NOUVELLE ROUTE : annulation de la réclamation par le client
+# ⭐ Annulation de la réclamation par le client
 @router.post("/orders/{order_number}/claim/cancel")
 async def claim_cancel(order_number: str, user=Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """⭐ Le client annule sa propre réclamation (avant décision admin)."""
     order = await _get_my_order(db, user, order_number)
 
     if order.status not in ("return_requested", "return_approved"):

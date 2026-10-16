@@ -25,7 +25,9 @@ from emails import (send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REP
                     tpl_claim_approved, tpl_claim_refused, tpl_claim_refunded,
                     tpl_claim_info_request,
                     # ⭐ NOUVEAU : template invitation livreur
-                    tpl_driver_invitation)
+                    tpl_driver_invitation,
+                    # ⭐ NOUVEAU : template remboursement multi-méthodes
+                    tpl_refund_multi)
 from routers.commerce_router import push_history
 from sqlalchemy import select, func, delete
 
@@ -131,6 +133,8 @@ class ProductIn(BaseModel):
     customization_price_eur: float = 0
     customization_fields: list = []
     cta_label: str = ""
+    # ⭐ NOUVEAU : paiement à la livraison autorisé
+    cod_allowed: bool = True
     video_url: str = ""
     published: bool = True
     images: list[str] = []
@@ -1086,6 +1090,7 @@ ALLOWED_SETTING_KEYS = {
     "features", "testimonials",
     "cta_banner", "story", "steps", "gallery",
     "orders",
+    "payment_methods",   # ⭐ NOUVEAU
 }
 
 
@@ -1158,6 +1163,22 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
             }
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Paramètres de commande invalides")
+    # ⭐ PAYMENT_METHODS : normalisation + validation COD
+    if data.key == "payment_methods" and isinstance(value, dict):
+        cod = value.get("cod") or {}
+        try:
+            cod["min_amount_xof"] = max(0, int(cod.get("min_amount_xof", 0)))
+            cod["max_amount_xof"] = max(0, int(cod.get("max_amount_xof", 500000)))
+            cod["extra_fee_xof"] = max(0, int(cod.get("extra_fee_xof", 0)))
+            cod["promo_validity_days"] = max(1, int(cod.get("promo_validity_days", 180)))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Paramètres COD invalides")
+        cod["mode"] = cod.get("mode") if cod.get("mode") in ("all", "selected") else "all"
+        cod["refund_methods"] = [
+            m for m in (cod.get("refund_methods") or [])
+            if m in ("cash", "mobile_money", "promo")
+        ] or ["cash"]
+        value = {**value, "cod": cod}
     res = await db.execute(select(Setting).where(Setting.key == data.key))
     s = res.scalar_one_or_none()
     if s:
@@ -1687,3 +1708,192 @@ async def resend_otp_email(order_id: str, admin=Depends(get_current_admin), db: 
         raise HTTPException(status_code=502, detail=f"Erreur: {str(e)[:200]}")
 
     return {"ok": True}
+
+
+# ================================================================
+# ⭐ PAIEMENT À LA LIVRAISON : marquer payé manuellement (admin)
+# ================================================================
+
+@router.post("/orders/{order_id}/mark-cod-paid")
+async def mark_cod_paid(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """L'admin marque manuellement une commande COD comme payée."""
+    o = await _get_order(db, order_id)
+
+    if o.payment_method != "cod":
+        raise HTTPException(status_code=400, detail="Cette commande n'est pas en paiement à la livraison")
+    if o.payment_status == "paid":
+        return {"ok": True, "unchanged": True}
+
+    o.payment_status = "paid"
+    o.cod_collected_at = datetime.now(timezone.utc)
+    if not o.cod_collected_by_id:
+        o.cod_collected_by_id = None  # Marqué par admin (pas de driver)
+
+    push_history(o, o.status, by=admin.email, note="Paiement COD reçu (saisie manuelle admin)")
+    await db.commit()
+
+    return {"ok": True, "payment_status": o.payment_status}
+
+
+# ================================================================
+# ⭐ REMBOURSEMENT MULTI-MÉTHODES
+# ================================================================
+
+class RefundMultiIn(BaseModel):
+    method: str          # "cash" | "mobile_money" | "promo" | "stripe"
+    amount: Optional[float] = None      # en devise commande (XOF)
+    reference: str = ""                 # pour mobile_money
+    note: str = ""                      # visible client
+    internal_note: str = ""             # admin seulement
+
+
+@router.post("/orders/{order_id}/refund-multi")
+async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
+    """Remboursement multi-méthodes : cash, mobile money, code promo, ou Stripe."""
+    o = await _get_order(db, order_id)
+
+    if o.payment_status not in ("paid", "partially_refunded"):
+        raise HTTPException(status_code=400, detail="Seule une commande payée peut être remboursée")
+
+    method = (data.method or "").strip().lower()
+    if method not in ("cash", "mobile_money", "promo", "stripe"):
+        raise HTTPException(status_code=400, detail="Méthode de remboursement invalide")
+
+    # Montant en devise commande (XOF par défaut)
+    refund_amount = data.amount if data.amount is not None else float(o.total or 0)
+    if refund_amount <= 0:
+        raise HTTPException(status_code=400, detail="Montant invalide")
+
+    # ⭐ Référence obligatoire pour mobile money
+    if method == "mobile_money" and not (data.reference or "").strip():
+        raise HTTPException(status_code=400, detail="Numéro ou référence de transaction requis pour Mobile Money")
+
+    promo_code_generated = ""
+    stripe_refund_id = ""
+
+    # ============================================================
+    # ⭐ CAS 1 — Stripe
+    # ============================================================
+    if method == "stripe":
+        pres = await db.execute(
+            select(Payment).where(
+                Payment.order_id == o.id,
+                Payment.status.in_(["succeeded", "pending"])
+            ).order_by(Payment.created_at.desc())
+        )
+        pay = pres.scalars().first()
+        if not pay:
+            raise HTTPException(status_code=400, detail="Aucun paiement Stripe trouvé pour cette commande")
+
+        pi = pay.payment_intent
+        if not pi and pay.session_id:
+            try:
+                s = stripe.checkout.Session.retrieve(pay.session_id)
+                pi = s.payment_intent
+            except stripe.error.StripeError:
+                pi = None
+
+        if not pi:
+            raise HTTPException(status_code=400, detail="Impossible de récupérer le paiement Stripe")
+
+        # Conversion XOF → EUR pour l'API Stripe
+        rates = await get_rates(db)
+        amount_eur = refund_amount / (rates.get("XOF", 655.957) or 655.957) if o.currency == "XOF" else refund_amount
+
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=pi,
+                amount=int(round(amount_eur * 100)),
+            )
+            stripe_refund_id = refund.id
+            pay.status = "partially_refunded" if refund_amount < float(o.total or 0) else "refunded"
+            pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
+        except stripe.error.StripeError as e:
+            raise HTTPException(status_code=502, detail=f"Stripe: {e.user_message or str(e)}")
+
+    # ============================================================
+    # ⭐ CAS 2 — Code promo
+    # ============================================================
+    elif method == "promo":
+        settings = await get_settings(db)
+        validity_days = int((settings.get("payment_methods", {}).get("cod", {}) or {}).get("promo_validity_days", 180))
+
+        # Génère un code unique
+        base_code = f"REFUND-{o.order_number.replace('STK-', '')[:12]}"
+        code = base_code
+        i = 1
+        while True:
+            exists = (await db.execute(select(PromoCode).where(PromoCode.code == code))).scalar_one_or_none()
+            if not exists:
+                break
+            code = f"{base_code}-{i}"
+            i += 1
+
+        # Crée le code promo (montant fixe en devise commande → EUR pour stockage)
+        rates = await get_rates(db)
+        amount_eur = refund_amount / (rates.get("XOF", 655.957) or 655.957) if o.currency == "XOF" else refund_amount
+
+        promo = PromoCode(
+            code=code,
+            description=f"Remboursement commande {o.order_number}",
+            discount_type="fixed",
+            value=round(amount_eur, 2),
+            min_subtotal_eur=0,
+            free_shipping=False,
+            first_order_only=False,
+            usage_limit=1,
+            used_count=0,
+            active=True,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=validity_days),
+        )
+        db.add(promo)
+        promo_code_generated = code
+
+    # ============================================================
+    # ⭐ CAS 3 & 4 — Cash / Mobile Money (juste un log)
+    # ============================================================
+    # Rien de spécial, juste une note dans l'historique
+
+    # ============================================================
+    # Mise à jour de la commande
+    # ============================================================
+    is_full = abs(refund_amount - float(o.total or 0)) < 1
+    o.refund_method = method
+    o.refund_reference = (data.reference or "").strip()[:120]
+    o.refund_promo_code = promo_code_generated
+    o.refund_note = (data.internal_note or "").strip()[:500]
+    o.refunded_at = datetime.now(timezone.utc)
+    if is_full:
+        o.payment_status = "refunded"
+        o.status = "refunded"
+
+    method_labels = {"cash": "espèces", "mobile_money": "mobile money", "promo": "code promo", "stripe": "Stripe"}
+    note = f"Remboursé {refund_amount:.0f} {o.currency} via {method_labels.get(method, method)}"
+    if stripe_refund_id:
+        note += f" ({stripe_refund_id})"
+    if promo_code_generated:
+        note += f" · code: {promo_code_generated}"
+    if data.reference:
+        note += f" · réf: {data.reference[:40]}"
+    push_history(o, o.status, by=admin.email, note=note)
+
+    await db.commit()
+    await db.refresh(o)
+
+    # ⭐ Email au client (avec le bon template selon la méthode)
+    try:
+        lang = o.lang if o.lang in ("fr", "en") else "fr"
+        subject, html = tpl_refund_multi(o.to_dict(), lang, refund_amount, method, promo_code_generated)
+        await send_templated(db, to=o.email, subject=subject, html=html,
+                             template=f"refund_{method}", order_id=o.id)
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "method": method,
+        "amount": refund_amount,
+        "promo_code": promo_code_generated,
+        "stripe_refund_id": stripe_refund_id,
+        "is_full": is_full,
+    }

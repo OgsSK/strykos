@@ -271,6 +271,23 @@ DEFAULT_SETTINGS = {
         "cinetpay": {"enabled": False, "mode": "test", "currencies": ["XOF"], "countries": ["ML"]},
         "pawapay": {"enabled": False, "mode": "test", "currencies": ["XOF"], "countries": ["ML"]},
     },
+    # ⭐ NOUVEAU : paiement à la livraison (COD)
+    "payment_methods": {
+        "cod": {
+            "enabled": False,                       # Désactivé par défaut (admin l'active)
+            "label_fr": "Payer à la livraison",
+            "label_en": "Pay on delivery",
+            "instructions_fr": "Préparez le montant exact en espèces. Le livreur encaisse à la remise du colis.",
+            "instructions_en": "Prepare the exact amount in cash. The driver collects on delivery.",
+            "countries": ["ML"],                    # ⭐ Pays éligibles
+            "min_amount_xof": 0,                    # ⭐ Montant minimum
+            "max_amount_xof": 500000,               # ⭐ Montant maximum
+            "extra_fee_xof": 0,                     # ⭐ Frais supplémentaires COD
+            "mode": "all",                          # ⭐ "all" | "selected"
+            "refund_methods": ["cash", "mobile_money", "promo"],  # ⭐ Méthodes de remboursement autorisées
+            "promo_validity_days": 180,             # ⭐ Validité code promo (6 mois)
+        },
+    },
 }
 
 
@@ -466,6 +483,8 @@ def serialize_product(product, rates, brand=None, category=None, full=False):
         "customization_fields": product.customization_fields or [],
         # ⭐ NOUVEAU : texte du bouton sur la home (vide = auto)
         "cta_label": product.cta_label or "",
+        # ⭐ NOUVEAU : paiement à la livraison autorisé
+        "cod_allowed": bool(getattr(product, "cod_allowed", True)),
         "images": [resolve_media(img.url) for img in product.images] if product.images else [],
         "video_url": resolve_media(product.video_url),
         "published": product.published,

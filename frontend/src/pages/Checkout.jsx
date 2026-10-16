@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Check, Tag, X, MapPin, Loader2, Save, Plus, Calendar, Minus, Trash2 } from "lucide-react";
+import { Check, Tag, X, MapPin, Loader2, Save, Plus, Calendar, Minus, Trash2, Banknote, CreditCard } from "lucide-react";
 import { countryName, reverseGeocode } from "@/lib/countries";
 import { mediaSrc } from "@/lib/adminUtils";
 
@@ -44,6 +44,10 @@ export default function Checkout() {
   const [scheduledSlot, setScheduledSlot] = useState("");
   const [availableSlots, setAvailableSlots] = useState([]);
   const [closureInfo, setClosureInfo] = useState(null);
+
+  // ⭐ Paiement à la livraison
+  const [paymentMethod, setPaymentMethod] = useState("stripe"); // "stripe" | "cod"
+  const [codStatus, setCodStatus] = useState(null); // { available, reason_fr, reason_en, extra_fee_xof, instructions_fr, instructions_en }
 
   const availableCountries = useMemo(() => {
     const methods = settings?.shipping?.methods || [];
@@ -166,6 +170,41 @@ export default function Checkout() {
   const shippingDisplay = promo?.free_shipping ? 0 : convertEur(selectedMethod.cost_eur);
   const total = cartSubtotal - discountDisplay + shippingDisplay;
 
+  // ⭐ Calcul du frais COD (si sélectionné)
+  const codExtraFeeXof = codStatus?.available ? (codStatus.extra_fee_xof || 0) : 0;
+  const codExtraFeeDisplay = paymentMethod === "cod"
+    ? Math.round((codExtraFeeXof / 655.957) * (currency === "XOF" ? 655.957 : 1))
+    : 0;
+  const totalWithCod = total + codExtraFeeDisplay;
+
+  // ⭐ Vérification disponibilité COD (déclenchée à chaque changement)
+  useEffect(() => {
+    if (step !== 2) return;
+    if (cart.length === 0) return;
+
+    const payload = {
+      items: cart.map((i) => ({
+        product_id: i.product_id,
+        variant_id: i.variant_id,
+        quantity: i.quantity,
+        customization: i.customization,
+      })),
+      country: (form.country || "").toUpperCase(),
+    };
+
+    api.post("/checkout/cod-availability", payload)
+      .then(({ data }) => {
+        setCodStatus(data);
+        if (paymentMethod === "cod" && !data.available) {
+          setPaymentMethod("stripe");
+        }
+      })
+      .catch(() => {
+        setCodStatus({ available: false, reason_fr: "Indisponible", reason_en: "Unavailable" });
+        if (paymentMethod === "cod") setPaymentMethod("stripe");
+      });
+  }, [step, form.country, cart.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const applyPromo = async () => {
     if (!promoInput.trim()) return;
     setPromoError("");
@@ -175,10 +214,8 @@ export default function Checkout() {
       else { setPromo(null); setPromoError(t(data.error) || t("promo_invalid")); }
     } catch (e) { setPromoError(apiError(e)); }
   };
-  const chargeDifferent = !["EUR", "USD"].includes(currency);
 
   if (cart.length === 0) {
-    // Si on revient à l'étape 3 et que le panier est vide → retour au panier
     if (step === 2) {
       nav("/cart");
     }
@@ -308,13 +345,25 @@ export default function Checkout() {
       return;
     }
 
+    // ⭐ Si COD sélectionné, vérifier qu'il est bien disponible
+    if (paymentMethod === "cod") {
+      if (!codStatus?.available) {
+        toast.error(lang === "fr"
+          ? (codStatus?.reason_fr || "Paiement à la livraison indisponible")
+          : (codStatus?.reason_en || "Cash on delivery unavailable"));
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      if (user) {
+      // ⭐ Pour COD, on ne cherche PAS de commande pending à reprendre
+      if (user && paymentMethod === "stripe") {
         try {
           const { data: myOrders } = await api.get("/orders");
           const pendingMatch = (myOrders || []).find((o) =>
             o.status === "pending_payment" && o.payment_status === "pending" &&
+            o.payment_method !== "cod" &&
             itemsMatch(o.items || [], itemsPayload)
           );
           if (pendingMatch) {
@@ -334,7 +383,23 @@ export default function Checkout() {
         customer_note: customerNote || null,
         scheduled_date: scheduledDate,
         scheduled_time_slot: scheduledSlot,
+        payment_method: paymentMethod,
       });
+
+      // ⭐ CAS COD — pas de redirection Stripe
+      if (data.payment_method === "cod") {
+        toast.success(lang === "fr"
+          ? "Commande enregistrée ! Paiement à la livraison."
+          : "Order registered! Pay on delivery.",
+          { duration: 5000 });
+        nav(
+          `/order/confirmation?order=${data.order_number}&cod=1&email=${encodeURIComponent(form.email)}`,
+          { replace: true }
+        );
+        return;
+      }
+
+      // CAS Stripe : redirection habituelle
       window.location.href = data.checkout_url;
     } catch (e) {
       toast.error(apiError(e));
@@ -663,6 +728,88 @@ export default function Checkout() {
                 </p>
               </div>
 
+              {/* ⭐ Mode de paiement */}
+              <div className="mt-6 border border-border p-4" data-testid="payment-method-picker">
+                <div className="font-semibold text-ink mb-3">
+                  {lang === "fr" ? "Mode de paiement" : "Payment method"}
+                </div>
+
+                <div className="space-y-2">
+                  {/* Option Stripe */}
+                  <label className={`flex items-start gap-3 p-3 border cursor-pointer transition-colors ${paymentMethod === "stripe" ? "border-brand bg-brand/5" : "border-border hover:border-brand/50"}`}>
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      checked={paymentMethod === "stripe"}
+                      onChange={() => setPaymentMethod("stripe")}
+                      className="mt-1"
+                      data-testid="payment-method-stripe"
+                    />
+                    <CreditCard className="w-5 h-5 text-brand shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <div className="font-semibold text-sm">
+                        {lang === "fr" ? "Carte bancaire (Stripe)" : "Credit card (Stripe)"}
+                      </div>
+                      <div className="text-xs text-ink-muted mt-0.5">
+                        {lang === "fr"
+                          ? "Paiement en ligne sécurisé. Redirection vers Stripe."
+                          : "Secure online payment. Redirect to Stripe."}
+                      </div>
+                    </div>
+                  </label>
+
+                  {/* Option COD — visible uniquement si disponible */}
+                  {codStatus?.available && (
+                    <label className={`flex items-start gap-3 p-3 border cursor-pointer transition-colors ${paymentMethod === "cod" ? "border-brand bg-brand/5" : "border-border hover:border-brand/50"}`}>
+                      <input
+                        type="radio"
+                        name="payment-method"
+                        checked={paymentMethod === "cod"}
+                        onChange={() => setPaymentMethod("cod")}
+                        className="mt-1"
+                        data-testid="payment-method-cod"
+                      />
+                      <Banknote className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-sm">
+                          {lang === "fr" ? "Payer à la livraison" : "Pay on delivery"}
+                        </div>
+                        <div className="text-xs text-ink-muted mt-0.5">
+                          {lang === "fr"
+                            ? "Réglez en espèces au moment de la réception."
+                            : "Pay in cash when you receive your order."}
+                        </div>
+                        {codStatus.extra_fee_xof > 0 && (
+                          <div className="text-xs text-amber-700 font-semibold mt-1">
+                            {lang === "fr"
+                              ? `+ ${codStatus.extra_fee_xof.toLocaleString("fr-FR")} FCFA de frais`
+                              : `+ ${codStatus.extra_fee_xof.toLocaleString("en-GB")} XOF fee`}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  )}
+                </div>
+
+                {/* Instructions COD */}
+                {paymentMethod === "cod" && codStatus?.available && (codStatus.instructions_fr || codStatus.instructions_en) && (
+                  <div className="mt-3 bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                    💡 {lang === "fr"
+                      ? (codStatus.instructions_fr || "Préparez le montant exact en espèces.")
+                      : (codStatus.instructions_en || "Prepare the exact amount in cash.")}
+                  </div>
+                )}
+
+                {/* Message si COD indisponible */}
+                {codStatus && !codStatus.available && (
+                  <p className="mt-2 text-xs text-ink-muted italic">
+                    {lang === "fr"
+                      ? (codStatus.reason_fr || "Paiement à la livraison indisponible pour ce panier.")
+                      : (codStatus.reason_en || "Cash on delivery unavailable for this cart.")}
+                  </p>
+                )}
+              </div>
+
               {/* Note client */}
               <div className="mt-4">
                 <Label htmlFor="customer_note">
@@ -680,20 +827,15 @@ export default function Checkout() {
                 </p>
               </div>
 
-              {chargeDifferent && (
-                <div className="mt-4 bg-amber-50 border border-amber-200 p-4 text-sm" data-testid="payment-notice">
-                  <strong>{t("paymentNotice")}: </strong>
-                  {lang === "fr"
-                    ? `Le paiement sera traité en EUR (équivalent de ${fmt(total)}). Stripe ne facture pas en XOF pour le moment.`
-                    : `Payment will be processed in EUR (equivalent of ${fmt(total)}). Stripe does not charge in XOF yet.`}
-                </div>
-              )}
-
               <div className="flex gap-3 mt-6">
                 <Button variant="outline" onClick={() => setStep(1)} className="rounded-none">←</Button>
                 <Button onClick={placeOrder} disabled={loading} data-testid="place-order-btn"
                   className="flex-1 bg-brand hover:bg-brand-dark text-white rounded-none h-12 uppercase font-bold tracking-wide">
-                  {loading ? t("loading") : `${t("payWithStripe")}`}
+                  {loading
+                    ? t("loading")
+                    : paymentMethod === "cod"
+                      ? (lang === "fr" ? "Confirmer la commande (COD)" : "Confirm order (COD)")
+                      : `${t("payWithStripe")}`}
                 </Button>
               </div>
             </div>
@@ -706,6 +848,13 @@ export default function Checkout() {
           <div className="flex justify-between text-sm py-1"><span>{t("subtotal")}</span><span>{fmt(cartSubtotal)}</span></div>
           {promo && <div className="flex justify-between text-sm py-1 text-green-700" data-testid="checkout-discount"><span>{t("discount")} ({promo.code})</span><span>-{fmt(discountDisplay)}</span></div>}
           <div className="flex justify-between text-sm py-1"><span>{t("shipping")}</span><span>{promo?.free_shipping ? <span className="text-green-700">{t("freeShipping")}</span> : fmt(shippingDisplay)}</span></div>
+          {/* ⭐ Frais COD */}
+          {paymentMethod === "cod" && codExtraFeeDisplay > 0 && (
+            <div className="flex justify-between text-sm py-1 text-amber-700">
+              <span>{lang === "fr" ? "Frais paiement à la livraison" : "COD fee"}</span>
+              <span>+{fmt(codExtraFeeDisplay)}</span>
+            </div>
+          )}
           <div className="mt-3 pt-3 border-t border-border" data-testid="promo-box">
             <Label className="text-xs uppercase tracking-wider">{t("promoCode")}</Label>
             {promo ? (
@@ -721,8 +870,27 @@ export default function Checkout() {
             )}
             {promoError && <p className="text-xs text-brand mt-1" data-testid="promo-error">{promoError}</p>}
           </div>
-          <div className="flex justify-between font-bold py-3 border-t border-border mt-2"><span>{t("total")}</span><span data-testid="checkout-total">{fmt(total)}</span></div>
-          <div className="text-xs text-ink-muted mt-2">{currency !== "EUR" && currency !== "USD" ? (lang === "fr" ? "Facture en EUR" : "Billed in EUR") : ""}</div>
+          <div className="flex justify-between font-bold py-3 border-t border-border mt-2">
+            <span>{t("total")}</span>
+            <span data-testid="checkout-total">
+              {paymentMethod === "cod" ? fmt(totalWithCod) : fmt(total)}
+            </span>
+          </div>
+          {/* ⭐ RETIRÉ : plus de texte "Facture en EUR" */}
+          {/* ⭐ Info COD dans le récap */}
+          {paymentMethod === "cod" && (
+            <div className="mt-3 pt-3 border-t border-border text-xs text-amber-800">
+              <div className="inline-flex items-center gap-1.5 font-semibold">
+                <Banknote className="w-3.5 h-3.5" />
+                {lang === "fr" ? "Paiement à la livraison" : "Cash on delivery"}
+              </div>
+              <div className="mt-1 text-ink-muted">
+                {lang === "fr"
+                  ? "Vous réglerez en espèces au moment de la réception."
+                  : "You will pay in cash when you receive your order."}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

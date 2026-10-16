@@ -11,7 +11,7 @@ import { mediaSrc, downloadCsv } from "@/lib/adminUtils";
 import { toast } from "sonner";
 import {
   Plus, Trash2, Pencil, Copy, Eye, EyeOff, Search, Download,
-  ArrowUp, ArrowDown, Wand2, ChevronDown
+  ArrowUp, ArrowDown, Wand2, ChevronDown, Banknote
 } from "lucide-react";
 
 // ⭐ Devise principale = FCFA. L'EUR est calculé automatiquement pour Stripe.
@@ -41,6 +41,7 @@ const EMPTY = {
   product_type: "", colors: "",
   customizable: false, customization_price_eur: 0, customization_fields: [],
   cta_label: "",   // ⭐ NOUVEAU : texte du bouton sur la home
+  cod_allowed: true,   // ⭐ NOUVEAU : paiement à la livraison autorisé
   video_url: "", published: true, images: [], variants: [],
 };
 
@@ -178,6 +179,7 @@ export default function AdminProducts() {
       customization_price_eur: p.customization_price_eur || 0,
       customization_fields: p.customization_fields || [],
       cta_label: p.cta_label || "",   // ⭐ NOUVEAU : mappe le libellé du bouton
+      cod_allowed: p.cod_allowed !== false,   // ⭐ NOUVEAU : paiement à la livraison
       video_url: p.video_url || "", published: p.published,
       images: p.images || [],
       variants: (p.variants || []).map((v) => ({ id: v.id, size: v.size, color: v.color, sku: v.sku, stock: v.stock, extra_price_eur: v.extra_price_eur })),
@@ -265,6 +267,8 @@ export default function AdminProducts() {
       })),
       // ⭐ NOUVEAU : normalisation cta_label (lowercase, trim, max 40 chars)
       cta_label: (form.cta_label || "").trim().toLowerCase().slice(0, 40),
+      // ⭐ NOUVEAU : paiement à la livraison
+      cod_allowed: form.cod_allowed !== false,
       brand_id: form.brand_id || null, category_id: form.category_id || null,
       colors: String(form.colors).split(",").map((s) => s.trim()).filter(Boolean),
       variants: form.variants.map((v) => ({ ...v, stock: parseInt(v.stock) || 0, extra_price_eur: parseFloat(v.extra_price_eur) || 0 })),
@@ -350,7 +354,15 @@ export default function AdminProducts() {
                     <div className="flex items-center gap-3">
                       <img src={mediaSrc(p.images?.[0])} alt="" className="w-10 h-12 object-cover bg-secondary rounded" />
                       <div>
-                        <div className="font-medium">{p.name_fr}</div>
+                        <div className="font-medium flex items-center gap-2">
+                          {p.name_fr}
+                          {/* ⭐ NOUVEAU : indicateur COD */}
+                          {p.cod_allowed === false && (
+                            <span className="text-[10px] uppercase tracking-wider bg-gray-100 text-gray-600 px-1.5 py-0.5 inline-flex items-center gap-1">
+                              <Banknote className="w-2.5 h-2.5" /> Non-COD
+                            </span>
+                          )}
+                        </div>
                         <div className="text-xs text-ink-muted">{p.sku || p.slug}</div>
                       </div>
                     </div>
@@ -588,6 +600,29 @@ export default function AdminProducts() {
                     <input type="checkbox" checked={form[k]} onChange={(e) => setF(k, e.target.checked)} data-testid={`pf-${k}`} /> {l}
                   </label>
                 ))}
+              </div>
+
+              {/* ⭐ NOUVEAU : Paiement à la livraison */}
+              <div className="mt-4">
+                <label className="flex items-center gap-3 p-3 border border-border bg-secondary/30 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.cod_allowed !== false}
+                    onChange={(e) => setF("cod_allowed", e.target.checked)}
+                    data-testid="pf-cod-allowed"
+                    className="w-4 h-4"
+                  />
+                  <div className="flex-1">
+                    <div className="font-semibold text-sm inline-flex items-center gap-1.5">
+                      <Banknote className="w-4 h-4 text-brand" />
+                      Paiement à la livraison autorisé
+                    </div>
+                    <div className="text-xs text-ink-muted">
+                      Le client peut payer ce produit en espèces à la réception.
+                      Décochez pour l'exclure du paiement à la livraison.
+                    </div>
+                  </div>
+                </label>
               </div>
 
               {/* ⭐ NOUVEAU : Texte du bouton (accueil) */}

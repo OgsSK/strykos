@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { money, fmtDate, mediaSrc, STATUSES, STATUS_LABELS, STATUS_COLORS } from "@/lib/adminUtils";
 import { toast } from "sonner";
-import { ArrowLeft, Truck, Mail, RotateCcw, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Send, Image as ImageIcon, Film, Loader2, Copy, RefreshCw, KeyRound } from "lucide-react";
+import { ArrowLeft, Truck, Mail, RotateCcw, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Send, Image as ImageIcon, Film, Loader2, Copy, RefreshCw, KeyRound, Banknote } from "lucide-react";
 
 // ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
 const XOF_RATE = 655.957;
@@ -49,18 +49,30 @@ export default function AdminOrderDetail() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundMessage, setRefundMessage] = useState("");
 
-  // ⭐ NOUVEAU : Réclamation — conversation + demande d'infos
+  // ⭐ Réclamation — conversation + demande d'infos
   const [claimMessages, setClaimMessages] = useState([]);
   const [showClaimInfoModal, setShowClaimInfoModal] = useState(false);
   const [claimInfoMessage, setClaimInfoMessage] = useState("");
-  const [claimInfoTypes, setClaimInfoTypes] = useState(["photo"]); // ["photo","video"]
+  const [claimInfoTypes, setClaimInfoTypes] = useState(["photo"]);
   const [claimInfoBusy, setClaimInfoBusy] = useState(false);
 
-  // ⭐ NOUVEAU : OTP livraison
+  // ⭐ OTP livraison
   const [otpBusy, setOtpBusy] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
 
-  // ⭐ MODIFIÉ : charge aussi la conversation
+  // ⭐ Remboursement multi-méthodes
+  const [showRefundMultiModal, setShowRefundMultiModal] = useState(false);
+  const [refundMulti, setRefundMulti] = useState({
+    method: "stripe",
+    amount: "",
+    reference: "",
+    note: "",
+    internal_note: "",
+    from_claim: false,   // ⭐ NOUVEAU : indique si on rembourse une réclamation
+  });
+  const [refundMultiBusy, setRefundMultiBusy] = useState(false);
+
+  // ⭐ Charge la commande + conversation
   const load = async () => {
     try {
       const { data } = await api.get(`/admin/orders/${id}`);
@@ -72,7 +84,6 @@ export default function AdminOrderDetail() {
         tracking_number: data.tracking_number || "",
         tracking_url: data.tracking_url || "",
       }));
-      // ⭐ Charge la conversation si une réclamation existe
       if (data.return_rma_code) {
         try {
           const { data: msgs } = await api.get(`/admin/orders/${id}/claim/messages`);
@@ -103,14 +114,14 @@ export default function AdminOrderDetail() {
     setOriginCountry(o.shipping_origin_country || "");
   }, [o?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ⭐ NOUVEAU : utilitaire OTP — copie
+  // ⭐ OTP — copie
   const copyOtp = () => {
     if (!o?.delivery_otp) return;
     navigator.clipboard.writeText(o.delivery_otp);
     toast.success("Code copié");
   };
 
-  // ⭐ NOUVEAU : utilitaire OTP — régénérer
+  // ⭐ OTP — régénérer
   const regenerateOtp = async () => {
     if (!window.confirm(`Générer un nouveau code OTP ?\n\nL'ancien code ne fonctionnera plus.`)) return;
     setOtpBusy(true);
@@ -124,7 +135,7 @@ export default function AdminOrderDetail() {
     setOtpBusy(false);
   };
 
-  // ⭐ NOUVEAU : utilitaire OTP — renvoyer l'email
+  // ⭐ OTP — renvoyer l'email
   const resendOtpEmail = async () => {
     setOtpBusy(true);
     try {
@@ -134,6 +145,80 @@ export default function AdminOrderDetail() {
       toast.error(apiError(e));
     }
     setOtpBusy(false);
+  };
+
+  // ⭐ Marquer une commande COD comme payée
+  const markCodPaid = async () => {
+    if (!window.confirm(`Marquer cette commande COD comme payée ?`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/admin/orders/${o.id}/mark-cod-paid`, {});
+      toast.success("Commande marquée comme payée");
+      load();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+    setBusy(false);
+  };
+
+  // ⭐ Remboursement multi-méthodes
+  const submitRefundMulti = async () => {
+    const amount = refundMulti.amount.trim() === "" ? null : parseFloat(refundMulti.amount);
+    if (amount !== null && (isNaN(amount) || amount <= 0)) {
+      toast.error("Montant invalide");
+      return;
+    }
+    if (refundMulti.method === "mobile_money" && !refundMulti.reference.trim()) {
+      toast.error("Référence Mobile Money requise");
+      return;
+    }
+
+    setRefundMultiBusy(true);
+    try {
+      // ⭐ Si on vient d'une réclamation, approuver d'abord
+      if (refundMulti.from_claim && isReturnRequested) {
+        await api.post(`/admin/orders/${o.id}/approve-return`);
+      }
+
+      const { data } = await api.post(`/admin/orders/${o.id}/refund-multi`, {
+        method: refundMulti.method,
+        amount,
+        reference: refundMulti.reference,
+        note: refundMulti.note,
+        internal_note: "",
+      });
+
+      // ⭐ Si la réclamation a été traitée, mettre à jour son statut à "refunded"
+      if (refundMulti.from_claim) {
+        try {
+          await api.post(`/admin/orders/${o.id}/refund-return`, {
+            amount: data.amount,
+            message: refundMulti.note,
+          });
+        } catch (e) {
+          // Ignore si déjà remboursé par refund-multi
+        }
+      }
+
+      toast.success(
+        data.promo_code
+          ? `Remboursé · Code promo : ${data.promo_code}`
+          : "Remboursement effectué"
+      );
+      setShowRefundMultiModal(false);
+      setRefundMulti({
+        method: "stripe",
+        amount: "",
+        reference: "",
+        note: "",
+        internal_note: "",
+        from_claim: false,
+      });
+      load();
+    } catch (e) {
+      toast.error(apiError(e));
+    }
+    setRefundMultiBusy(false);
   };
 
   if (!o) return <div className="text-ink-muted">Chargement...</div>;
@@ -160,14 +245,30 @@ export default function AdminOrderDetail() {
   const saveNotes = () => run(() => api.put(`/admin/orders/${o.id}/notes`, { admin_notes: notes }), "Notes enregistrées");
   const resend = (template) => run(() => api.post(`/admin/orders/${o.id}/resend-email`, { template }), "E-mail renvoyé");
 
-  // ⭐ Ouvrir la modale réclamation
+  // ⭐ Ouvrir la modale réclamation — ⭐ DÉTECTE LE MODE DE PAIEMENT
   const openClaimModal = () => {
     setClaimAmount("");
     setClaimMessage("");
+
+    // ⭐ Si la commande a été payée en COD → ouvrir la modale multi-méthodes (Espèces par défaut)
+    if (o.payment_method === "cod") {
+      setRefundMulti({
+        method: "cash",
+        amount: "",
+        reference: "",
+        note: "",
+        internal_note: "",
+        from_claim: true,       // ⭐ Marque qu'on vient d'une réclamation
+      });
+      setShowRefundMultiModal(true);
+      return;
+    }
+
+    // Sinon (Stripe) → modale habituelle
     setShowClaimModal(true);
   };
 
-  // ⭐ Confirmer : accepter + rembourser en 1 action
+  // ⭐ Confirmer : accepter + rembourser en 1 action (Stripe uniquement)
   const confirmClaim = async () => {
     const inputXof = claimAmount.trim() === "" ? null : parseFloat(claimAmount);
     if (inputXof !== null && (isNaN(inputXof) || inputXof <= 0)) {
@@ -251,7 +352,7 @@ export default function AdminOrderDetail() {
     setShowReturnRefuse(false); setReturnRefuseReason("");
   };
 
-  // ⭐ NOUVEAU : Admin demande des infos complémentaires
+  // ⭐ Admin demande des infos complémentaires
   const submitClaimInfo = async () => {
     if (!claimInfoMessage.trim()) {
       toast.error("Écrivez un message au client");
@@ -351,7 +452,7 @@ export default function AdminOrderDetail() {
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <span className={`text-xs px-2 py-1 font-semibold ${STATUS_COLORS[o.status]}`} data-testid="order-detail-status">{STATUS_LABELS[o.status]}</span>
-          {/* ⭐ NOUVEAU : badge de mode de livraison */}
+          {/* ⭐ Badge livraison */}
           {o.delivered_via === "otp" && (
             <span className="text-xs px-2 py-1 font-semibold bg-purple-100 text-purple-800">
               ✅ Livré par livreur (OTP)
@@ -360,6 +461,12 @@ export default function AdminOrderDetail() {
           {o.delivered_via === "admin_manual" && (
             <span className="text-xs px-2 py-1 font-semibold bg-gray-100 text-gray-700">
               👤 Livré manuellement (admin)
+            </span>
+          )}
+          {/* ⭐ Badge COD */}
+          {o.payment_method === "cod" && (
+            <span className="text-xs px-2 py-1 font-semibold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
+              <Banknote className="w-3.5 h-3.5" /> Paiement livraison
             </span>
           )}
           <span className={`text-xs px-2 py-1 font-semibold ${o.payment_status === "paid" ? "bg-green-100 text-green-800" : isAlreadyRefunded ? "bg-red-100 text-red-800" : "bg-amber-100 text-amber-800"}`}>Paiement: {o.payment_status}</span>
@@ -418,7 +525,7 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
-      {/* ⭐ Bannière : réclamation client — AVEC médias + conversation */}
+      {/* Bannière : réclamation client */}
       {(isReturnRequested || isReturnApproved) && !isAlreadyRefunded && (
         <div className="border-2 border-orange-300 bg-orange-50 p-5 mb-5" data-testid="return-request-panel">
           <div className="flex items-start gap-3 mb-4">
@@ -433,7 +540,6 @@ export default function AdminOrderDetail() {
                 {o.return_requested_at && ` · reçue le ${fmtDate(o.return_requested_at, true)}`}
               </p>
 
-              {/* ⭐ Demande d'infos en cours */}
               {o.claim_info_requested_at && (
                 <div className="text-sm bg-amber-100 border border-amber-400 rounded p-3 mb-3">
                   <div className="font-bold text-amber-900 mb-1">
@@ -451,7 +557,6 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
-              {/* ⭐ Conversation (messages + médias) */}
               {claimMessages.length > 0 && (
                 <div className="mb-3 space-y-2">
                   <div className="text-xs uppercase tracking-wider font-semibold text-ink-muted">
@@ -501,7 +606,6 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
-              {/* ⭐ Fallback : médias orphelins (ancien format) */}
               {claimMessages.length === 0 && (o.claim_media_urls?.length > 0) && (
                 <div className="text-sm bg-white border border-orange-200 p-3 mb-3">
                   <div className="text-xs uppercase tracking-wider text-ink-muted mb-2">
@@ -521,7 +625,6 @@ export default function AdminOrderDetail() {
                 </div>
               )}
 
-              {/* Articles concernés */}
               <div className="text-sm bg-white border border-orange-200 p-3">
                 <div className="text-xs uppercase tracking-wider text-ink-muted mb-2">Articles concernés :</div>
                 <ul className="space-y-1.5">
@@ -619,7 +722,7 @@ export default function AdminOrderDetail() {
             </div>
           )}
 
-          {/* ⭐ NOUVEAU : Code OTP de livraison */}
+          {/* Code OTP de livraison */}
           {(o.status === "shipped" || o.status === "in_transit") && o.delivery_otp && (
             <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded-sm" data-testid="delivery-otp-panel">
               <div className="flex items-start gap-3">
@@ -889,7 +992,7 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
-          {/* ⭐ Payments — affichage détaillé remboursement */}
+          {/* Payments */}
           <div className="bg-white border border-border p-5 text-sm">
             <h3 className="font-semibold uppercase text-sm mb-3">Paiement</h3>
             {(o.payments || []).map((p) => {
@@ -926,10 +1029,30 @@ export default function AdminOrderDetail() {
               );
             })}
 
+            {/* Bouton "Marquer payé (COD)" */}
+            {o.payment_method === "cod" && o.payment_status !== "paid" && (
+              <Button onClick={markCodPaid} disabled={busy}
+                className="mt-3 w-full rounded-none bg-green-600 hover:bg-green-700 text-white">
+                <CheckCircle2 className="w-4 h-4 mr-1" />
+                Marquer payé (COD — {money(o.total, o.currency)})
+              </Button>
+            )}
+
+            {/* Bouton remboursement multi-méthodes */}
             {o.payment_status === "paid" && !hasActiveClaim && (
-              <Button onClick={openRefundModal} disabled={busy} variant="outline"
+              <Button onClick={() => {
+                setRefundMulti({
+                  method: o.payment_method === "cod" ? "cash" : "stripe",
+                  amount: "",
+                  reference: "",
+                  note: "",
+                  internal_note: "",
+                  from_claim: false,
+                });
+                setShowRefundMultiModal(true);
+              }} disabled={busy} variant="outline"
                 className="mt-2 w-full rounded-none border-amber-400 text-amber-700 hover:bg-amber-50">
-                <RotateCcw className="w-4 h-4 mr-1" /> Rembourser via Stripe
+                <RotateCcw className="w-4 h-4 mr-1" /> Rembourser
               </Button>
             )}
 
@@ -947,7 +1070,7 @@ export default function AdminOrderDetail() {
         </div>
       </div>
 
-      {/* ⭐ Modale réclamation : montant FCFA + message */}
+      {/* Modale réclamation (Stripe) : montant FCFA + message */}
       {showClaimModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowClaimModal(false)}>
           <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
@@ -1008,7 +1131,7 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
-      {/* ⭐ Modale remboursement direct (FCFA → EUR conversion) */}
+      {/* Modale remboursement direct (legacy Stripe) */}
       {showRefundModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowRefundModal(false)}>
           <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
@@ -1049,7 +1172,132 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
-      {/* ⭐ Modale : Demander des infos au client */}
+      {/* Modale remboursement multi-méthodes — ⭐ ADAPTÉE AU CONTEXTE */}
+      {showRefundMultiModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowRefundMultiModal(false)}>
+          <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <RotateCcw className="w-6 h-6 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-bold text-lg mb-1">
+                  {refundMulti.from_claim
+                    ? "Accepter et rembourser la réclamation"
+                    : "Rembourser la commande"}
+                </h3>
+                <p className="text-xs text-ink-soft">
+                  Commande <strong>{o.order_number}</strong> · Total : {money(o.total, o.currency)}
+                  {refundMulti.from_claim && o.return_rma_code && (
+                    <> · Réclamation <span className="font-mono">{o.return_rma_code}</span></>
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Info COD */}
+            {o.payment_method === "cod" && (
+              <div className="mb-4 bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
+                💡 <strong>Commande payée en espèces.</strong> Le remboursement doit être effectué manuellement (espèces, mobile money) ou via code promo.
+              </div>
+            )}
+
+            <Label className="text-xs uppercase tracking-wider text-ink-muted">Méthode de remboursement</Label>
+            <div className="grid grid-cols-2 gap-2 mt-2 mb-4">
+              {/* ⭐ Ordre des boutons selon le mode de paiement */}
+              {(o.payment_method === "cod"
+                ? [
+                    { v: "cash", l: "💵 Espèces" },
+                    { v: "mobile_money", l: "📱 Mobile Money" },
+                    { v: "promo", l: "🎁 Code promo" },
+                  ]
+                : [
+                    { v: "stripe", l: "💳 Stripe (CB)" },
+                    { v: "cash", l: "💵 Espèces" },
+                    { v: "mobile_money", l: "📱 Mobile Money" },
+                    { v: "promo", l: "🎁 Code promo" },
+                  ]
+              ).map((m) => (
+                <button
+                  key={m.v}
+                  type="button"
+                  onClick={() => setRefundMulti({ ...refundMulti, method: m.v })}
+                  className={`text-xs px-3 py-2 border font-semibold uppercase ${
+                    refundMulti.method === m.v
+                      ? "bg-ink text-white border-ink"
+                      : "border-border hover:bg-secondary"
+                  }`}
+                >
+                  {m.l}
+                </button>
+              ))}
+            </div>
+
+            <Label className="text-xs uppercase tracking-wider text-ink-muted">
+              Montant à rembourser ({o.currency})
+            </Label>
+            <Input
+              type="number"
+              value={refundMulti.amount}
+              onChange={(e) => setRefundMulti({ ...refundMulti, amount: e.target.value })}
+              placeholder={`Vide = total (${o.total} ${o.currency})`}
+              className="mt-1 rounded-none"
+            />
+
+            {refundMulti.method === "mobile_money" && (
+              <div className="mt-3">
+                <Label className="text-xs uppercase tracking-wider text-ink-muted">
+                  Numéro ou ID transaction *
+                </Label>
+                <Input
+                  value={refundMulti.reference}
+                  onChange={(e) => setRefundMulti({ ...refundMulti, reference: e.target.value })}
+                  placeholder="Ex: 78XX XX XX ou ID transaction"
+                  className="mt-1 rounded-none"
+                />
+              </div>
+            )}
+
+            <Label className="text-xs uppercase tracking-wider text-ink-muted mt-3 block">
+              💬 Message au client (optionnel)
+            </Label>
+            <Textarea
+              rows={3}
+              value={refundMulti.note}
+              onChange={(e) => setRefundMulti({ ...refundMulti, note: e.target.value })}
+              placeholder="Message envoyé dans l'email de remboursement..."
+              className="mt-1 rounded-none"
+              maxLength={1000}
+            />
+
+            <div className="flex gap-2 justify-end mt-5">
+              <button
+                onClick={() => {
+                  setShowRefundMultiModal(false);
+                  setRefundMulti({
+                    method: "stripe",
+                    amount: "",
+                    reference: "",
+                    note: "",
+                    internal_note: "",
+                    from_claim: false,
+                  });
+                }}
+                className="px-4 py-2 border border-border text-xs font-bold uppercase hover:bg-secondary"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={submitRefundMulti}
+                disabled={refundMultiBusy}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold uppercase disabled:opacity-50"
+              >
+                {refundMultiBusy ? "..." : (refundMulti.from_claim ? "Accepter et rembourser" : "Confirmer le remboursement")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale : Demander des infos au client */}
       {showClaimInfoModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowClaimInfoModal(false)}>
           <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
