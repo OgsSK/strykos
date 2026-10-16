@@ -472,3 +472,10 @@ async def startup():
         logger.info("Startup seeding complete")
     except Exception as e:
         logger.warning(f"Startup seeding skipped: {e}")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    from database import engine
+    await engine.dispose()
+    logger.info("Database connections closed")

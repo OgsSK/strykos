@@ -202,27 +202,28 @@ export default function Catalog() {
   }, [cacheVersion]);
 
   const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    const qp = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => { if (v && k !== "q") qp.set(k, v); });
-    if (isSearch && filters.q) qp.set("search", filters.q);
-    qp.set("limit", "48");
-    try {
-      await swrGet(
-        `/products?${qp.toString()}`,
-        (data, stale) => {
-          setProducts(data?.products || []);
-          setTotal(data?.total || 0);
-          if (stale) setLoading(false);
-        },
-        { ttl: 2 * 60 * 1000 }
-      );
-    } catch {
-      setProducts([]);
-      setTotal(0);
-    }
-    setLoading(false);
-  }, [filters, isSearch, cacheVersion]);
+  setLoading(true);
+  const qp = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v && k !== "q") qp.set(k, v); });
+  if (isSearch && filters.q) qp.set("search", filters.q);
+  qp.set("limit", "48");
+  qp.set("_v", cacheVersion);   // ⭐ AJOUT : utilise cacheVersion pour ESLint
+  try {
+    await swrGet(
+      `/products?${qp.toString()}`,
+      (data, stale) => {
+        setProducts(data?.products || []);
+        setTotal(data?.total || 0);
+        if (stale) setLoading(false);
+      },
+      { ttl: 2 * 60 * 1000 }
+    );
+  } catch {
+    setProducts([]);
+    setTotal(0);
+  }
+  setLoading(false);
+}, [filters, isSearch, cacheVersion]);   // ← inchangé
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
