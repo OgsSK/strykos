@@ -2,8 +2,8 @@ name: Keep Backend Awake
 
 on:
   schedule:
-    # Toutes les 10 minutes (cron UTC, pas d'heure locale)
-    - cron: '*/10 * * * *'
+    # Toutes les 5 minutes (cron UTC, pas d'heure locale)
+    - cron: '*/5 * * * *'
   # Permet de lancer manuellement depuis l'onglet Actions
   workflow_dispatch:
 
