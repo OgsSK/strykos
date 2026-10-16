@@ -3,31 +3,50 @@ from pathlib import Path
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 load_dotenv(Path(__file__).parent / '.env')
 
 DATABASE_URL = os.environ['DATABASE_URL']
-ASYNC_DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
 
-# ⭐ FIX Supabase EMAXCONNSESSION :
-# - pool_size réduit à 3 (au lieu de 10) → moins de connexions maintenues
-# - max_overflow=2 → +2 en pic max
-# - statement_cache_size=0 → OBLIGATOIRE pour le mode transaction (port 6543)
-# - pool_recycle=300 → libère les connexions zombies après 5 min
+# ⭐ FIX : asyncpg n'accepte PAS 'sslmode' → on le retire de l'URL
+def _clean_url_for_asyncpg(url: str) -> str:
+    """Convertit postgresql:// en postgresql+asyncpg:// et retire sslmode (asyncpg utilise 'ssl')."""
+    # Convertir le schéma
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+
+    # Parser et retirer sslmode des query params
+    parsed = urlparse(url)
+    qs = parse_qs(parsed.query)
+    qs.pop("sslmode", None)          # ⭐ retirer sslmode
+    qs.pop("sslcert", None)          # ⭐ retirer sslcert (non supporté)
+    qs.pop("sslkey", None)
+    qs.pop("sslrootcert", None)
+    qs.pop("sslcrl", None)
+    new_query = urlencode(qs, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+ASYNC_DATABASE_URL = _clean_url_for_asyncpg(DATABASE_URL)
+
+# ⭐ Config Supabase-safe : pool réduit + SSL via connect_args
 engine = create_async_engine(
     ASYNC_DATABASE_URL,
-    pool_size=3,                    # ⭐ 3 connexions persistantes
-    max_overflow=2,                 # ⭐ +2 en pic = 5 max par worker
+    pool_size=3,
+    max_overflow=2,
     pool_timeout=30,
-    pool_recycle=300,               # ⭐ 5 min au lieu de 30 min
+    pool_recycle=300,
     pool_pre_ping=True,
     echo=False,
     connect_args={
-        "statement_cache_size": 0,   # ⭐ OBLIGATOIRE pour PgBouncer transaction mode
+        "statement_cache_size": 0,   # OBLIGATOIRE pour PgBouncer transaction mode
         "command_timeout": 30,
+        "ssl": "require",            # ⭐ asyncpg : 'ssl' au lieu de 'sslmode'
         "server_settings": {
             "application_name": "strykos-api",
-            "jit": "off",            # ⭐ Désactive JIT (plus rapide pour petites requêtes)
+            "jit": "off",
         },
     },
 )
