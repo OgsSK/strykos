@@ -43,6 +43,13 @@ async def root():
     return {"message": "CAKESSHOP API", "status": "ok"}
 
 
+# ⭐ NOUVEAU : endpoint health dédié aux monitors (UptimeRobot, etc.)
+# Accepte GET ET HEAD pour compatibilité totale
+@api_router.api_route("/health", methods=["GET", "HEAD"])
+async def health():
+    return {"status": "ok", "service": "cakes-api"}
+
+
 api_router.include_router(auth_router)
 api_router.include_router(catalog_router)
 api_router.include_router(commerce_router)
