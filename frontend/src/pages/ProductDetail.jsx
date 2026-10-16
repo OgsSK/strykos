@@ -18,7 +18,8 @@ import { mediaSrc } from "@/lib/adminUtils";
 export default function ProductDetail() {
   const { slug } = useParams();
   const nav = useNavigate();
-  const { lang, t, fmt, priceOf, convertEur, addToCart, wishlist, toggleWishlist, user, brand } = useStore();
+  // ⭐ MODIFIÉ : cacheVersion ajouté
+  const { lang, t, fmt, priceOf, convertEur, addToCart, wishlist, toggleWishlist, user, brand, cacheVersion } = useStore();
   const [product, setProduct] = useState(null);
   const [activeImg, setActiveImg] = useState(0);
   const [variant, setVariant] = useState(null);
@@ -26,7 +27,9 @@ export default function ProductDetail() {
   // ⭐ Personnalisation : state keyed par field.key
   const [customValues, setCustomValues] = useState({});
 
+  // ⭐ MODIFIÉ : dépend de cacheVersion + garde si pas de slug
   useEffect(() => {
+    if (!slug) return;               // ⭐ GARDE : évite /products/undefined
     window.scrollTo(0, 0);
     let first = true;
     swrGet(`/products/${slug}`, (data) => {
@@ -46,7 +49,7 @@ export default function ProductDetail() {
         first = false;
       }
     }, { ttl: 3 * 60 * 1000 }).catch(() => setProduct(false));
-  }, [slug]);
+  }, [slug, cacheVersion]);   // ⭐ cacheVersion ajouté aux deps
 
   // ⭐ Calcule le surcoût personnalisation (somme des champs non vides)
   const customPriceEur = useMemo(() => {

@@ -16,8 +16,8 @@ from models import (Product, ProductImage, ProductVariant, Brand, Category, Orde
                     # ⭐ NOUVEAU : messagerie réclamation
                     ClaimMessage)
 from auth import get_current_admin, create_driver_invite_token
-# ⭐ AJOUT : get_rates + convert_from_eur pour le fix FCFA
-from utils import get_rates, serialize_product, get_settings, normalize_media, convert_from_eur
+# ⭐ AJOUT : get_rates + convert_from_eur pour le fix FCFA + bump_cache_version
+from utils import get_rates, serialize_product, get_settings, normalize_media, convert_from_eur, bump_cache_version
 from emails import (send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO,
                     ADMIN_NOTIFY_EMAIL, send_templated,
                     tpl_cancellation_approved, tpl_cancellation_refused,
@@ -246,6 +246,10 @@ async def create_product(data: ProductIn, db: AsyncSession = Depends(get_db)):
         db.add(ProductVariant(product_id=p.id, size=v.size, color=v.color, sku=v.sku,
                               stock=v.stock, extra_price_eur=v.extra_price_eur))
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"id": p.id, "ok": True}
 
 
@@ -279,6 +283,10 @@ async def update_product(product_id: str, data: ProductIn, db: AsyncSession = De
             db.add(ProductVariant(product_id=p.id, size=v.size, color=v.color, sku=v.sku,
                                   stock=v.stock, extra_price_eur=v.extra_price_eur))
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -290,6 +298,10 @@ async def toggle_publish(product_id: str, data: dict, db: AsyncSession = Depends
         raise HTTPException(status_code=404, detail="Produit introuvable")
     p.published = bool(data.get("published", True))
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "published": p.published}
 
 
@@ -304,6 +316,10 @@ async def delete_product(product_id: str, hard: bool = False, db: AsyncSession =
     else:
         p.published = False
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "hard": hard}
 
 
@@ -328,6 +344,10 @@ async def duplicate_product(product_id: str, db: AsyncSession = Depends(get_db))
     for v in p.variants:
         db.add(ProductVariant(product_id=np.id, size=v.size, color=v.color, sku=v.sku, stock=0, extra_price_eur=v.extra_price_eur))
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "id": np.id, "slug": slug}
 
 
@@ -344,6 +364,10 @@ async def adjust_stock(data: StockAdjust, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Variante introuvable")
     v.stock = max(0, data.stock)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "stock": v.stock}
 
 
@@ -373,6 +397,10 @@ async def create_brand(data: BrandIn, db: AsyncSession = Depends(get_db)):
     b = Brand(**{**data.model_dump(), "logo_url": normalize_media(data.logo_url)})
     db.add(b)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "id": b.id}
 
 
@@ -385,6 +413,10 @@ async def update_brand(brand_id: str, data: BrandIn, db: AsyncSession = Depends(
     for k, v in data.model_dump().items():
         setattr(b, k, normalize_media(v) if k == "logo_url" else v)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -396,6 +428,10 @@ async def delete_brand(brand_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Marque introuvable")
     await db.delete(b)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -425,6 +461,10 @@ async def create_category(data: CategoryIn, db: AsyncSession = Depends(get_db)):
     c = Category(**data.model_dump())
     db.add(c)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "id": c.id}
 
 
@@ -437,6 +477,10 @@ async def update_category(category_id: str, data: CategoryIn, db: AsyncSession =
     for k, v in data.model_dump().items():
         setattr(c, k, v)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -448,6 +492,10 @@ async def delete_category(category_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Categorie introuvable")
     await db.delete(c)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -1011,6 +1059,10 @@ async def create_promo(data: PromoIn, db: AsyncSession = Depends(get_db)):
     p = PromoCode(**{**data.model_dump(), "code": code})
     db.add(p)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True, "id": p.id}
 
 
@@ -1028,6 +1080,10 @@ async def update_promo(promo_id: str, data: PromoIn, db: AsyncSession = Depends(
     for k, v in data.model_dump().items():
         setattr(p, k, code if k == "code" else v)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -1039,6 +1095,10 @@ async def delete_promo(promo_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Code introuvable")
     await db.delete(p)
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 
@@ -1186,6 +1246,10 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
     else:
         db.add(Setting(key=data.key, value=value))
     await db.commit()
+
+    # ⭐ NOUVEAU : bump la version pour invalider les caches client
+    await bump_cache_version(db)
+
     return {"ok": True}
 
 

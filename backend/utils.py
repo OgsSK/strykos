@@ -1,9 +1,12 @@
 import os
 import random
 import string
+import logging
 from datetime import datetime, timezone, date as date_cls
 from sqlalchemy import select
 from models import Setting
+
+logger = logging.getLogger("cakes.utils")
 
 SUPPORTED_CURRENCIES = ["EUR", "USD", "XOF"]
 STRIPE_SUPPORTED = {"EUR", "USD"}  # XOF settled in EUR for Stripe in v1
@@ -647,3 +650,36 @@ def is_date_closed(target_date: date_cls, orders_cfg: dict) -> tuple:
     """Retourne (is_closed, reason_fr, reason_en)."""
     ok, _, r_fr, r_en = get_available_slots_for_date(target_date, orders_cfg)
     return (not ok), r_fr, r_en
+
+
+# ================================================================
+# ⭐ Versioning global du cache
+# ================================================================
+
+async def bump_cache_version(db) -> str:
+    """
+    Incrémente la version globale du cache.
+    À appeler après CHAQUE modification admin (setting, produit, catégorie).
+    """
+    import uuid as _uuid
+    new_version = str(_uuid.uuid4())[:8]
+    payload = {"v": new_version, "at": datetime.now(timezone.utc).isoformat()}
+
+    res = await db.execute(select(Setting).where(Setting.key == "_cache_version"))
+    row = res.scalar_one_or_none()
+    if row:
+        row.value = payload
+    else:
+        db.add(Setting(key="_cache_version", value=payload))
+    await db.commit()
+    logger.info(f"Cache version bumped → {new_version}")
+    return new_version
+
+
+async def get_cache_version(db) -> str:
+    """Retourne la version actuelle du cache (ou '0' si pas encore initialisée)."""
+    res = await db.execute(select(Setting).where(Setting.key == "_cache_version"))
+    row = res.scalar_one_or_none()
+    if not row or not row.value:
+        return "0"
+    return row.value.get("v", "0")

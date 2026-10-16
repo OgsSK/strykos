@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { api, setAuthToken } from "@/lib/api";
-import { swrGetShared, invalidateCache } from "@/lib/cache";
+import { swrGetShared, invalidateCache, clearAllCache } from "@/lib/cache";
 import { translations, formatMoney } from "@/i18n/translations";
 import { toast } from "sonner";
+// ⭐ NOUVEAU : polling de version pour invalidation intelligente du cache
+import { startCacheVersionPolling, onCacheVersionChange } from "@/lib/cacheVersion";
 
 const StoreContext = createContext(null);
 export const useStore = () => useContext(StoreContext);
@@ -20,6 +22,9 @@ export function StoreProvider({ children }) {
   });
   const [settings, setSettings] = useState(() => { try { return JSON.parse(localStorage.getItem("strykos_cache:/settings") || "null")?.data || null; } catch { return null; } });
   const rates = settings?.currency?.rates || DEFAULT_RATES;
+
+  // ⭐ NOUVEAU : compteur de version cache — incrémenté à chaque changement admin
+  const [cacheVersion, setCacheVersion] = useState(0);
 
   // ---- Brand ----
   const brand = useMemo(() => {
@@ -73,6 +78,36 @@ export function StoreProvider({ children }) {
   useEffect(() => {
     swrGetShared("/settings", (d) => setSettings(d), { ttl: 2 * 60 * 1000 }).catch(() => {});
   }, []);
+
+  // ⭐ NOUVEAU : polling de version pour invalidation intelligente du cache
+  useEffect(() => {
+    // Démarre le polling (toutes les 30s par défaut)
+    const stopPolling = startCacheVersionPolling(30000);
+
+    // Écoute les changements de version
+    const unsubscribe = onCacheVersionChange(async (newVersion) => {
+      console.log("🔄 Rechargement des données suite à un changement admin (v =", newVersion, ")");
+
+      // ⭐ Vide TOUT le cache SWR d'un coup (localStorage + inflight)
+      clearAllCache();
+
+      // ⭐ Incrémente le compteur → déclenche le re-render des composants qui écoutent
+      setCacheVersion(v => v + 1);
+
+      // ⭐ Recharge les settings immédiatement (pour mettre à jour brand, hero, etc.)
+      try {
+        const settingsRes = await api.get(`/settings?_v=${newVersion}`);
+        setSettings(settingsRes.data);
+      } catch (e) {
+        console.error("Erreur rechargement après bump version", e);
+      }
+    });
+
+    return () => {
+      stopPolling();
+      unsubscribe();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- auth ----
   const [user, setUserState] = useState(() => {
@@ -288,6 +323,7 @@ export function StoreProvider({ children }) {
     setUser,  // ⭐ AJOUTÉ — utilisé par ConfirmEmail.jsx pour connecter l'utilisateur après confirmation
     wishlist, toggleWishlist, loadWishlist,
     cart, cartCount, addToCart, updateQty, removeFromCart, clearCart, cartUnitPrice, cartSubtotal,
+    cacheVersion,   // ⭐ NOUVEAU — exposé pour permettre aux composants de re-fetch
   };
 
   useEffect(() => {

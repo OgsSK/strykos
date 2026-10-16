@@ -4,9 +4,14 @@ import { useStore } from "@/context/StoreProvider";
 import { swrGetShared } from "@/lib/cache";
 
 export default function BrandsPage() {
-  const { t, lang } = useStore();
+  const { t, lang, cacheVersion } = useStore();   // ⭐ cacheVersion ajouté
   const [brands, setBrands] = useState([]);
-  useEffect(() => { swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {}); }, []);
+
+  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
+  useEffect(() => {
+    swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {});
+  }, [cacheVersion]);
+
   const intl = brands.filter((b) => !b.is_local);
   const local = brands.filter((b) => b.is_local);
 

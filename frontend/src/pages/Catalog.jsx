@@ -39,7 +39,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       </div>
 
-      {/* ---- Équipes (peut être vide) ---- */}
+      {/* ---- Équipes ---- */}
       {teams && teams.length > 0 && (
         <div>
           <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
@@ -60,7 +60,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       )}
 
-      {/* ---- Clubs (peut être vide) ---- */}
+      {/* ---- Clubs ---- */}
       {clubs && clubs.length > 0 && (
         <div>
           <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
@@ -81,7 +81,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       )}
 
-      {/* ---- Prix (devise dynamique) ---- */}
+      {/* ---- Prix ---- */}
       <div>
         <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
           {t("price")} ({currencyLabel})
@@ -107,7 +107,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       </div>
 
-      {/* ---- Tailles DYNAMIQUES — cachées si aucune ---- */}
+      {/* ---- Tailles dynamiques ---- */}
       {availableSizes.length > 0 && (
         <div>
           <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
@@ -156,7 +156,8 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
 }
 
 export default function Catalog() {
-  const { t, lang, currency } = useStore();
+  // ⭐ cacheVersion ajouté
+  const { t, lang, currency, cacheVersion } = useStore();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const isSearch = location.pathname === "/search";
@@ -167,7 +168,6 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // ⭐ Label devise pour l'affichage
   const currencyLabel = currency === "XOF" ? "FCFA" : currency === "USD" ? "USD" : "EUR";
 
   const filters = useMemo(() => ({
@@ -191,12 +191,15 @@ export default function Catalog() {
     setParams(next);
   };
 
+  // ⭐ cacheVersion en dep
   useEffect(() => {
     swrGetShared("/brands", (d) => setBrands(d), { ttl: 10 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
+
+  // ⭐ cacheVersion en dep
   useEffect(() => {
     swrGetShared("/taxonomies", (d) => setTaxonomies(d), { ttl: 10 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
@@ -208,8 +211,8 @@ export default function Catalog() {
       await swrGet(
         `/products?${qp.toString()}`,
         (data, stale) => {
-          setProducts(data.products);
-          setTotal(data.total);
+          setProducts(data?.products || []);
+          setTotal(data?.total || 0);
           if (stale) setLoading(false);
         },
         { ttl: 2 * 60 * 1000 }
@@ -219,19 +222,17 @@ export default function Catalog() {
       setTotal(0);
     }
     setLoading(false);
-  }, [filters, isSearch]);
+  }, [filters, isSearch, cacheVersion]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  // ⭐ Tailles disponibles extraites dynamiquement des produits chargés
+  // ⭐ Tailles disponibles extraites dynamiquement
   const availableSizes = useMemo(() => {
     const set = new Set();
     products.forEach((p) => {
-      // 1) Tableau "sizes" compact (si le backend le renvoie)
       (p.sizes || []).forEach((s) => {
         if (s) set.add(String(s).trim());
       });
-      // 2) Sinon fallback sur les variantes complètes
       (p.variants || []).forEach((v) => {
         if (v.size) set.add(String(v.size).trim());
       });

@@ -13,12 +13,13 @@ import Features from "@/components/Features";
 import Testimonials from "@/components/Testimonials";
 
 export default function Home() {
-  const { settings, lang } = useStore();
+  const { settings, lang, cacheVersion } = useStore();  // ⭐ cacheVersion ajouté
   const [data, setData] = useState(null);
 
+  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
   useEffect(() => {
     swrGetShared("/home", (d) => setData(d), { ttl: 3 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
 
   const sec = settings?.sections || {};
 

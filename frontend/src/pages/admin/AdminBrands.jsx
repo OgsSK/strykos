@@ -9,6 +9,8 @@ import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { mediaSrc } from "@/lib/adminUtils";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2 } from "lucide-react";
+// ⭐ NOUVEAU : forcer le check de version après chaque save marque
+import { forceCheckVersion } from "@/lib/cacheVersion";
 
 const EMPTY = { name: "", slug: "", logo_url: "", description_fr: "", description_en: "", is_local: false, published: true };
 const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -22,17 +24,31 @@ export default function AdminBrands() {
   useEffect(() => { load(); }, []);
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ⭐ MODIFIÉ : force le check de version après save
   const save = async () => {
     if (!form.name) return toast.error("Nom requis");
     const payload = { ...form, slug: form.slug || slugify(form.name) };
     try {
-      if (editing) await api.put(`/admin/brands/${editing}`, payload); else await api.post("/admin/brands", payload);
-      toast.success("Marque enregistree"); setOpen(false); load();
+      if (editing) await api.put(`/admin/brands/${editing}`, payload);
+      else await api.post("/admin/brands", payload);
+      toast.success("Marque enregistree");
+      setOpen(false);
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
+
+  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (b) => {
     if (!window.confirm(`Supprimer la marque "${b.name}" ? Les produits associes perdront leur marque.`)) return;
-    try { await api.delete(`/admin/brands/${b.id}`); toast.success("Supprimee"); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.delete(`/admin/brands/${b.id}`);
+      toast.success("Supprimee");
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
 
   return (

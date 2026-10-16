@@ -118,7 +118,8 @@ function MegaMenu({ categories, lang }) {
 }
 
 export default function Header() {
-  const { t, lang, changeLang, currency, setCurrency, cartCount, wishlist, user, settings } = useStore();
+  // ⭐ MODIFIÉ : cacheVersion ajouté
+  const { t, lang, changeLang, currency, setCurrency, cartCount, wishlist, user, settings, cacheVersion } = useStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [q, setQ] = useState("");
   const [suggest, setSuggest] = useState([]);
@@ -126,9 +127,10 @@ export default function Header() {
   const [mobileExpanded, setMobileExpanded] = useState(null);
   const routerNav = useNavigate();
 
+  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
   useEffect(() => {
     swrGetShared("/nav", (d) => setNav(d), { ttl: 5 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
 
   const infoMsgs = settings?.info_bar?.enabled
     ? (lang === "fr" ? settings.info_bar.messages_fr : settings.info_bar.messages_en) || [] : [];

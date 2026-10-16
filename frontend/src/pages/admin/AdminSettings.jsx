@@ -18,6 +18,8 @@ import {
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
 import { Plus, Trash2, Calendar, Truck } from "lucide-react";
+// ⭐ NOUVEAU : forcer le check de version après chaque save admin
+import { forceCheckVersion } from "@/lib/cacheVersion";
 
 // ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
 const XOF_RATE = 655.957;
@@ -82,9 +84,15 @@ export default function AdminSettings() {
   if (!s) return <div className="text-ink-muted">Chargement...</div>;
 
   const upd = (key, patch) => setS({ ...s, [key]: { ...s[key], ...patch } });
+
+  // ⭐ MODIFIÉ : force le check de version après chaque save
   const save = async (key, value) => {
-    try { await api.put("/admin/settings", { key, value: value ?? s[key] }); toast.success("Parametres enregistres"); }
-    catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.put("/admin/settings", { key, value: value ?? s[key] });
+      toast.success("Parametres enregistres");
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
 
   // ⭐ NOUVEAU : helpers COD
@@ -94,11 +102,15 @@ export default function AdminSettings() {
       [k]: { ...(prev?.[k] || {}), [field]: value },
     }));
   };
+
+  // ⭐ MODIFIÉ : force le check de version après save COD
   const savePaymentMethods = async () => {
     setPmBusy(true);
     try {
       await api.put("/admin/settings", { key: "payment_methods", value: paymentMethods });
       toast.success("Paramètres COD enregistrés");
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
     setPmBusy(false);
   };

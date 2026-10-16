@@ -6,6 +6,8 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+// ⭐ NOUVEAU : forcer le check de version après chaque save catégorie
+import { forceCheckVersion } from "@/lib/cacheVersion";
 
 const EMPTY = { slug: "", name_fr: "", name_en: "", type: "", parent_id: "", position: 0, published: true };
 const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -55,6 +57,7 @@ export default function AdminCategories() {
     setOpen(true);
   };
 
+  // ⭐ MODIFIÉ : force le check de version après save
   const save = async () => {
     if (!form.name_fr || !form.name_en) return toast.error("Noms FR et EN requis");
     const payload = {
@@ -69,11 +72,14 @@ export default function AdminCategories() {
       toast.success("Categorie enregistree");
       setOpen(false);
       load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) {
       toast.error(apiError(e));
     }
   };
 
+  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (c) => {
     const hasChildren = childrenOf[c.id]?.length > 0;
     const msg = hasChildren
@@ -84,6 +90,8 @@ export default function AdminCategories() {
       await api.delete(`/admin/categories/${c.id}`);
       toast.success("Supprimee");
       load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) {
       toast.error(apiError(e));
     }

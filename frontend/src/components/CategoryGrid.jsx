@@ -100,12 +100,13 @@ function LinkColumn({ column, lang }) {
 }
 
 export default function CategoryGrid({ icons }) {
-  const { t, lang } = useStore();
+  const { t, lang, cacheVersion } = useStore();   // ⭐ cacheVersion ajouté
   const [nav, setNav] = useState(null);
 
+  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
   useEffect(() => {
     swrGetShared("/nav", (d) => setNav(d), { ttl: 5 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
 
   const L = (o, k) => o?.[`${k}_${lang}`] || o?.[`${k}_fr`] || "";
 

@@ -1,8 +1,29 @@
 import { api } from "@/lib/api";
+import { getCurrentVersion } from "@/lib/cacheVersion";
 
 const PREFIX = "strykos_cache:";
 const VERSION = "v1";
 const MAX_ENTRIES = 60;
+
+// ⭐ GARDE : détecte les URLs invalides
+function _isInvalidPath(path) {
+  if (!path) return true;
+  if (typeof path !== "string") return true;
+  return path.includes("/undefined") ||
+         path.includes("/null") ||
+         path.endsWith("/undefined") ||
+         path.endsWith("/null");
+}
+
+// ⭐ NOUVEAU : ajoute ?_v=<version> pour bypasser le cache HTTP navigateur
+function _withVersion(path) {
+  if (!path || typeof path !== "string") return path;
+  // Évite les doublons
+  if (path.includes("_v=")) return path;
+  const v = getCurrentVersion();
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}_v=${v}`;
+}
 
 function read(key) {
   try {
@@ -18,7 +39,7 @@ function write(key, data) {
   try {
     localStorage.setItem(PREFIX + key, JSON.stringify({ v: VERSION, t: Date.now(), data }));
     prune();
-  } catch { /* quota exceeded: silently skip */ }
+  } catch { }
 }
 
 function prune() {
@@ -32,15 +53,34 @@ export function invalidateCache(prefix = "") {
   Object.keys(localStorage).filter((k) => k.startsWith(PREFIX + prefix)).forEach((k) => localStorage.removeItem(k));
 }
 
-/* Stale-while-revalidate GET: returns cached data instantly (if any) via onData,
-   then fetches the network and calls onData again only when the payload changed. */
+const inflight = new Map();
+
+export function clearAllCache() {
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith(PREFIX))
+    .forEach((k) => localStorage.removeItem(k));
+  inflight.clear();
+  console.log("🗑️ Cache SWR vidé (localStorage + inflight)");
+}
+
+/* Stale-while-revalidate GET */
 export function swrGet(path, onData, { ttl = 5 * 60 * 1000, force = false } = {}) {
-  const key = path;
+  // ⭐ GARDE : bloque les URLs invalides
+  if (_isInvalidPath(path)) {
+    console.warn("⚠️ swrGet ignoré (URL invalide) :", path);
+    try { onData && onData(null, true); } catch { }
+    return Promise.resolve(null);
+  }
+
+  // ⭐ Cache-busting : URL versionnée pour le fetch
+  const url = _withVersion(path);
+  const key = url;   // clé cache = URL versionnée
+
   const cached = read(key);
   const fresh = cached && Date.now() - cached.t < ttl;
   if (cached) onData(cached.data, true);
   if (fresh && !force) return Promise.resolve(cached.data);
-  return api.get(path).then((r) => {
+  return api.get(url).then((r) => {
     const data = r.data;
     const same = cached && JSON.stringify(cached.data) === JSON.stringify(data);
     write(key, data);
@@ -49,14 +89,23 @@ export function swrGet(path, onData, { ttl = 5 * 60 * 1000, force = false } = {}
   }).catch((e) => { if (!cached) throw e; return cached.data; });
 }
 
-const inflight = new Map();
-/* De-duplicated fetch for components mounting simultaneously */
+/* De-duplicated fetch */
 export function swrGetShared(path, onData, opts) {
-  if (!inflight.has(path)) {
-    inflight.set(path, swrGet(path, onData, opts).finally(() => inflight.delete(path)));
+  // ⭐ GARDE
+  if (_isInvalidPath(path)) {
+    console.warn("⚠️ swrGetShared ignoré (URL invalide) :", path);
+    try { onData && onData(null, true); } catch { }
+    return Promise.resolve(null);
+  }
+
+  // ⭐ Cache-busting
+  const url = _withVersion(path);
+
+  if (!inflight.has(url)) {
+    inflight.set(url, swrGet(path, onData, opts).finally(() => inflight.delete(url)));
   } else {
-    const cached = read(path);
+    const cached = read(url);
     if (cached) onData(cached.data, true);
   }
-  return inflight.get(path);
+  return inflight.get(url);
 }

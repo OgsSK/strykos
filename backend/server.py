@@ -4,11 +4,11 @@ load_dotenv(Path(__file__).parent / '.env')
 
 import os
 import logging
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, Depends, Request
 from starlette.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-from database import AsyncSessionLocal
+from database import get_db, AsyncSessionLocal
 from models import Profile, Setting
 from auth import hash_password, verify_password
 from utils import DEFAULT_SETTINGS
@@ -26,10 +26,9 @@ from routers.sitemap_router import router as sitemap_router
 from routers.cart_router import router as cart_router
 # ⭐ NOUVEAU : router livreur
 from routers.driver_router import router as driver_router
-from fastapi import Request
 from storage import init_storage
 from routers.cron_router import router as cron_router
-
+from sqlalchemy.ext.asyncio import AsyncSession          # ⭐ AJOUT
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("strykos")
@@ -48,6 +47,26 @@ async def root():
 @api_router.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "cakes-api"}
+
+
+# ⭐ NOUVEAU : endpoint version pour invalidation intelligente du cache
+@api_router.get("/version")
+async def public_version(db: AsyncSession = Depends(get_db)):
+    """
+    Retourne la version globale du cache.
+    Jamais mise en cache côté navigateur → toujours fraîche.
+    """
+    from utils import get_cache_version
+    from fastapi.responses import JSONResponse
+    v = await get_cache_version(db)
+    return JSONResponse(
+        content={"v": v},
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 api_router.include_router(auth_router)

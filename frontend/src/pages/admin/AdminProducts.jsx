@@ -13,6 +13,8 @@ import {
   Plus, Trash2, Pencil, Copy, Eye, EyeOff, Search, Download,
   ArrowUp, ArrowDown, Wand2, ChevronDown, Banknote
 } from "lucide-react";
+// ⭐ NOUVEAU : forcer le check de version après chaque save produit
+import { forceCheckVersion } from "@/lib/cacheVersion";
 
 // ⭐ Devise principale = FCFA. L'EUR est calculé automatiquement pour Stripe.
 const XOF_RATE = 655.957;
@@ -247,6 +249,7 @@ export default function AdminProducts() {
     setF("customization_fields", fields);
   };
 
+  // ⭐ MODIFIÉ : force le check de version après save produit
   const save = async () => {
     if (!form.name_fr || !form.name_en || form.price_eur === "") return toast.error("Nom FR/EN et prix EUR requis");
     setSaving(true);
@@ -276,20 +279,46 @@ export default function AdminProducts() {
     try {
       if (editing) await api.put(`/admin/products/${editing}`, payload);
       else await api.post("/admin/products", payload);
-      toast.success("Produit enregistré"); setOpen(false); load();
+      toast.success("Produit enregistré");
+      setOpen(false);
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
     setSaving(false);
   };
 
+  // ⭐ MODIFIÉ : force le check de version après toggle publish
   const togglePublish = async (p) => {
-    try { await api.put(`/admin/products/${p.id}/publish`, { published: !p.published }); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.put(`/admin/products/${p.id}/publish`, { published: !p.published });
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
+
+  // ⭐ MODIFIÉ : force le check de version après duplicate
   const duplicate = async (p) => {
-    try { await api.post(`/admin/products/${p.id}/duplicate`); toast.success("Produit dupliqué (brouillon)"); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.post(`/admin/products/${p.id}/duplicate`);
+      toast.success("Produit dupliqué (brouillon)");
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
+
+  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (p) => {
     if (!window.confirm(`Supprimer définitivement "${p.name_fr}" ? Cette action est irréversible.`)) return;
-    try { await api.delete(`/admin/products/${p.id}?hard=true`); toast.success("Produit supprimé"); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.delete(`/admin/products/${p.id}?hard=true`);
+      toast.success("Produit supprimé");
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
 
   const filtered = products.filter((p) => {

@@ -56,12 +56,13 @@ function IconTile({ item, index, lang }) {
 }
 
 export default function CategoryTiles({ icons, limit = 12 }) {
-  const { lang } = useStore();
+  const { lang, cacheVersion } = useStore();   // ⭐ cacheVersion ajouté
   const [nav, setNav] = useState(null);
 
+  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
   useEffect(() => {
     swrGetShared("/nav", (d) => setNav(d), { ttl: 5 * 60 * 1000 }).catch(() => {});
-  }, []);
+  }, [cacheVersion]);
 
   const L = (o, k) => o?.[`${k}_${lang}`] || o?.[`${k}_fr`] || "";
   const allItems = (icons?.items || []).filter((i) => i.image_url && L(i, "label"));

@@ -8,6 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { fmtDate } from "@/lib/adminUtils";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag } from "lucide-react";
+// ⭐ NOUVEAU : forcer le check de version après chaque save promo
+import { forceCheckVersion } from "@/lib/cacheVersion";
 
 // ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
 const XOF_RATE = 655.957;
@@ -40,6 +42,7 @@ export default function AdminPromos() {
   useEffect(() => { load(); if (params.get("new")) { setForm(EMPTY); setEditing(null); setOpen(true); setParams({}); } }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
+  // ⭐ MODIFIÉ : force le check de version après save
   const save = async () => {
     if (!form.code.trim()) return toast.error("Code requis");
 
@@ -70,18 +73,38 @@ export default function AdminPromos() {
     delete payload.min_subtotal_xof;
 
     try {
-      if (editing) await api.put(`/admin/promos/${editing}`, payload); else await api.post("/admin/promos", payload);
-      toast.success("Code enregistré"); setOpen(false); load();
+      if (editing) await api.put(`/admin/promos/${editing}`, payload);
+      else await api.post("/admin/promos", payload);
+      toast.success("Code enregistré");
+      setOpen(false);
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
 
+  // ⭐ MODIFIÉ : force le check de version après toggle
   const toggle = async (p) => {
-    try { await api.put(`/admin/promos/${p.id}`, { ...p, active: !p.active }); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.put(`/admin/promos/${p.id}`, { ...p, active: !p.active });
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
+
+  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (p) => {
     if (!window.confirm(`Supprimer le code ${p.code} ?`)) return;
-    try { await api.delete(`/admin/promos/${p.id}`); toast.success("Supprimé"); load(); } catch (e) { toast.error(apiError(e)); }
+    try {
+      await api.delete(`/admin/promos/${p.id}`);
+      toast.success("Supprimé");
+      load();
+      // ⭐ NOUVEAU : force le check de version immédiatement
+      await forceCheckVersion();
+    } catch (e) { toast.error(apiError(e)); }
   };
+
   const isExpired = (p) => p.expires_at && new Date(p.expires_at) < new Date();
 
   return (
