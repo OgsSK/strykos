@@ -1,0 +1,23 @@
+name: Keep Backend Awake
+
+on:
+  schedule:
+    # Toutes les 10 minutes (cron UTC, pas d'heure locale)
+    - cron: '*/10 * * * *'
+  # Permet de lancer manuellement depuis l'onglet Actions
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend
+        run: |
+          echo "🔄 Ping à $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          response=$(curl -s -o /dev/null -w "%{http_code}" https://api.cakes.actoos.com/api/settings)
+          echo "📡 Statut HTTP : $response"
+          if [ "$response" -ne 200 ]; then
+            echo "⚠️ Le backend ne répond pas correctement"
+            exit 1
+          fi
+          echo "✅ Backend réveillé"
