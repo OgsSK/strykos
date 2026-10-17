@@ -34,6 +34,20 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("strykos")
 
 app = FastAPI(title="CAKESSHOP API")
+
+# ⭐⭐⭐ CORS TEMPORAIRE : accepte TOUTES les origines pour débloquer la prod ⭐⭐⭐
+# ⚠️ ATTENTION : allow_credentials DOIT être False quand allow_origins=["*"]
+#    L'authentification JWT (header Authorization: Bearer) continue de fonctionner.
+#    À REVERT dès que la prod est débloquée : repasser sur CORS_ORIGINS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
+)
+
 api_router = APIRouter(prefix="/api")
 
 
@@ -108,16 +122,6 @@ async def public_cache_headers(request: Request, call_next):
         elif "authorization" not in request.headers:
             response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
     return response
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=[o.strip() for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Range", "Accept-Ranges", "Content-Length"],
-)
 
 
 # ---------------- Seed demo (categories + brands + products) ----------------
