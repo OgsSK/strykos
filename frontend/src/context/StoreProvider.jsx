@@ -29,10 +29,11 @@ export function StoreProvider({ children }) {
   // ---- Brand ----
   const brand = useMemo(() => {
     const s = settings?.site || {};
-    const full = s.name || `${s.brand_part1 || "STRY"}${s.brand_part2 || "KOS"}`;
+    // ⭐ CORRECTION ICI : On met CAKES et SHOP par défaut au lieu de STRY et KOS
+    const full = s.name || `${s.brand_part1 || "CAKES"}${s.brand_part2 || "SHOP"}`;
     return {
-      part1: s.brand_part1 || "STRY",
-      part2: s.brand_part2 || "KOS",
+      part1: s.brand_part1 || "CAKES",
+      part2: s.brand_part2 || "SHOP",
       full,
       tagline: s.brand_tagline || "Pâtisserie artisanale. Fraîcheur garantie. Livrée chez vous.",
       tagline_en: s.brand_tagline_en || "Artisan bakery. Freshly made. Delivered to you.",
@@ -81,20 +82,12 @@ export function StoreProvider({ children }) {
 
   // ⭐ NOUVEAU : polling de version pour invalidation intelligente du cache
   useEffect(() => {
-    // Démarre le polling (toutes les 30s par défaut)
     const stopPolling = startCacheVersionPolling(30000);
 
-    // Écoute les changements de version
     const unsubscribe = onCacheVersionChange(async (newVersion) => {
       console.log("🔄 Rechargement des données suite à un changement admin (v =", newVersion, ")");
-
-      // ⭐ Vide TOUT le cache SWR d'un coup (localStorage + inflight)
       clearAllCache();
-
-      // ⭐ Incrémente le compteur → déclenche le re-render des composants qui écoutent
       setCacheVersion(v => v + 1);
-
-      // ⭐ Recharge les settings immédiatement (pour mettre à jour brand, hero, etc.)
       try {
         const settingsRes = await api.get(`/settings?_v=${newVersion}`);
         setSettings(settingsRes.data);
@@ -107,7 +100,7 @@ export function StoreProvider({ children }) {
       stopPolling();
       unsubscribe();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // ---- auth ----
   const [user, setUserState] = useState(() => {
@@ -116,7 +109,6 @@ export function StoreProvider({ children }) {
   const setUser = (u) => { setUserState(u); if (u) localStorage.setItem("strykos_user", JSON.stringify(u)); else localStorage.removeItem("strykos_user"); };
   const [authChecked, setAuthChecked] = useState(() => !localStorage.getItem("strykos_token"));
 
-  // ⭐ Helper centralisé — redirige vers /login (route réelle) avec ?redirect=
   const requireAuth = useCallback((reason) => {
     toast.error(reason || (lang === "fr" ? "Connectez-vous pour continuer" : "Please sign in to continue"));
     const back = window.location.pathname + window.location.search;
@@ -126,7 +118,6 @@ export function StoreProvider({ children }) {
     return false;
   }, [lang]);
 
-  // Fusionne 2 paniers
   const mergeCarts = (a, b) => {
     const out = [...a];
     for (const it of b) {
@@ -141,7 +132,6 @@ export function StoreProvider({ children }) {
     return out;
   };
 
-  // Charge le panier serveur et fusionne avec le panier local
   const loadServerCartAndMerge = async () => {
     try {
       const { data } = await api.get("/cart");
@@ -211,12 +201,8 @@ export function StoreProvider({ children }) {
     return data.user;
   };
 
-  // ⭐ MODIFIÉ : l'inscription ne connecte plus automatiquement.
-  // Le backend envoie un email de confirmation et renvoie { ok, requires_confirmation, email }.
-  // L'utilisateur sera connecté après avoir cliqué sur le lien de confirmation (voir ConfirmEmail.jsx).
   const register = async (payload) => {
     const { data } = await api.post("/auth/register", payload);
-    // Pas de setAuthToken ni setUser ici : on attend la confirmation email
     return data;
   };
 
@@ -240,7 +226,6 @@ export function StoreProvider({ children }) {
   }, []);
   useEffect(() => { if (user) loadWishlist(); }, [user, loadWishlist]);
 
-  // ⭐ MODIFIÉ : exige la connexion
   const toggleWishlist = async (productId) => {
     if (!user) {
       return requireAuth(lang === "fr"
@@ -263,7 +248,6 @@ export function StoreProvider({ children }) {
   });
   useEffect(() => { localStorage.setItem("strykos_cart", JSON.stringify(cart)); }, [cart]);
 
-  // Sync du panier vers le serveur (si user connecté)
   const cartSyncRef = useRef(null);
   useEffect(() => {
     if (!user) return;
@@ -282,7 +266,6 @@ export function StoreProvider({ children }) {
 
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
 
-  // ⭐ MODIFIÉ : exige la connexion
   const addToCart = (item) => {
     if (!user) {
       return requireAuth(lang === "fr"
@@ -320,10 +303,10 @@ export function StoreProvider({ children }) {
     currency, setCurrency, rates, convertEur, fmt, priceOf,
     settings, brand, applyBrand,
     user, authChecked, login, register, logout, requireAuth,
-    setUser,  // ⭐ AJOUTÉ — utilisé par ConfirmEmail.jsx pour connecter l'utilisateur après confirmation
+    setUser,
     wishlist, toggleWishlist, loadWishlist,
     cart, cartCount, addToCart, updateQty, removeFromCart, clearCart, cartUnitPrice, cartSubtotal,
-    cacheVersion,   // ⭐ NOUVEAU — exposé pour permettre aux composants de re-fetch
+    cacheVersion, 
   };
 
   useEffect(() => {
