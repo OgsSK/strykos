@@ -33,28 +33,67 @@ stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
 
 
 # ---------------- Dashboard ----------------
+# ⭐ OPTIMISÉ : agrégations SQL au lieu de charger toutes les commandes en mémoire
 @router.get("/dashboard")
 async def dashboard(db: AsyncSession = Depends(get_db)):
-    orders_res = await db.execute(select(Order).order_by(Order.created_at.desc()))
-    orders = orders_res.scalars().all()
-    paid = [o for o in orders if o.payment_status == "paid"]
     now = datetime.now(timezone.utc)
-    revenue_by_currency, revenue_30d = {}, {}
-    for o in paid:
-        revenue_by_currency[o.currency] = revenue_by_currency.get(o.currency, 0) + float(o.total or 0)
-        if o.created_at and o.created_at >= now - timedelta(days=30):
-            revenue_30d[o.currency] = revenue_30d.get(o.currency, 0) + float(o.total or 0)
-    by_status = {}
-    for o in orders:
-        by_status[o.status] = by_status.get(o.status, 0) + 1
+    cutoff_30d = now - timedelta(days=30)
 
+    # Compteurs globaux en 1 requête
+    stats = (await db.execute(
+        select(
+            func.count(Order.id).label("total"),
+            func.count(Order.id).filter(Order.payment_status == "paid").label("paid"),
+            func.count(Order.id).filter(Order.status.in_(["paid", "preparing"])).label("to_process"),
+            func.count(Order.id).filter(Order.status.in_(["shipped", "in_transit"])).label("in_transit"),
+            func.count(Order.id).filter(Order.status == "cancellation_requested").label("pending_cancel"),
+            func.count(Order.id).filter(Order.payment_status == "pending").label("pending_payments"),
+        )
+    )).one()
+
+    # Revenus par devise
+    rev_res = await db.execute(
+        select(Order.currency, func.sum(Order.total))
+        .where(Order.payment_status == "paid")
+        .group_by(Order.currency)
+    )
+    revenue_by_currency = {c: round(float(t or 0), 2) for c, t in rev_res.all()}
+
+    # Revenus 30 derniers jours
+    rev30_res = await db.execute(
+        select(Order.currency, func.sum(Order.total))
+        .where(Order.payment_status == "paid", Order.created_at >= cutoff_30d)
+        .group_by(Order.currency)
+    )
+    revenue_30d = {c: round(float(t or 0), 2) for c, t in rev30_res.all()}
+
+    # Par statut
+    status_res = await db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
+    by_status = {s: c for s, c in status_res.all()}
+
+    # Série 14 jours
+    from sqlalchemy import cast, Date as SADate
+    day_col = cast(Order.created_at, SADate)
+    series_res = await db.execute(
+        select(day_col.label("day"), func.count(Order.id), func.sum(Order.charge_total))
+        .where(Order.payment_status == "paid", Order.created_at >= now - timedelta(days=14))
+        .group_by(day_col)
+        .order_by(day_col)
+    )
+    series_map = {
+        row[0].isoformat(): {"orders": row[1], "revenue_eur": round(float(row[2] or 0), 2)}
+        for row in series_res.all()
+    }
     series = []
     for i in range(13, -1, -1):
-        day = (now - timedelta(days=i)).date()
-        day_orders = [o for o in paid if o.created_at and o.created_at.date() == day]
-        series.append({"date": day.isoformat(), "orders": len(day_orders),
-                       "revenue_eur": round(sum(float(o.charge_total or 0) if o.charge_currency == "EUR" else 0 for o in day_orders), 2)})
+        day = (now - timedelta(days=i)).date().isoformat()
+        series.append({"date": day, **series_map.get(day, {"orders": 0, "revenue_eur": 0})})
 
+    # 8 dernières commandes seulement
+    recent_res = await db.execute(select(Order).order_by(Order.created_at.desc()).limit(8))
+    recent_orders = recent_res.scalars().all()
+
+    # Produits & stock
     prod_res = await db.execute(select(Product).options(selectinload(Product.variants)).where(Product.published == True))
     products = prod_res.scalars().unique().all()
     out_of_stock = [{"id": p.id, "name": p.name_fr, "slug": p.slug} for p in products if sum(v.stock for v in p.variants) == 0]
@@ -64,17 +103,16 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     customers = (await db.execute(select(func.count(Profile.id)).where(Profile.role == "customer"))).scalar() or 0
     emails_failed = (await db.execute(select(func.count(EmailLog.id)).where(EmailLog.status == "failed"))).scalar() or 0
     promos_active = (await db.execute(select(func.count(PromoCode.id)).where(PromoCode.active == True))).scalar() or 0
-    pending_cancellations = len([o for o in orders if o.status == "cancellation_requested"])
 
     return {
-        "total_orders": len(orders),
-        "paid_orders": len(paid),
-        "revenue_by_currency": {k: round(v, 2) for k, v in revenue_by_currency.items()},
-        "revenue_30d": {k: round(v, 2) for k, v in revenue_30d.items()},
-        "pending_payments": len([o for o in orders if o.payment_status == "pending"]),
-        "orders_to_process": len([o for o in orders if o.status in ("paid", "preparing")]),
-        "orders_shipped": len([o for o in orders if o.status in ("shipped", "in_transit")]),
-        "pending_cancellations": pending_cancellations,
+        "total_orders": stats.total,
+        "paid_orders": stats.paid,
+        "revenue_by_currency": revenue_by_currency,
+        "revenue_30d": revenue_30d,
+        "pending_payments": stats.pending_payments,
+        "orders_to_process": stats.to_process,
+        "orders_shipped": stats.in_transit,
+        "pending_cancellations": stats.pending_cancel,
         "by_status": by_status,
         "series": series,
         "total_products": len(products),
@@ -83,7 +121,7 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
         "out_of_stock_items": out_of_stock[:10],
         "low_stock": low_stock,
         "best_sellers": [{"id": p.id, "name": p.name_fr, "slug": p.slug, "sales": p.sales_count or 0} for p in best_sellers],
-        "recent_orders": [o.to_dict() for o in orders[:8]],
+        "recent_orders": [o.to_dict() for o in recent_orders],
         "emails_enabled": emails_enabled(),
         "emails_failed": emails_failed,
         "promos_active": promos_active,
@@ -412,18 +450,16 @@ class CategoryIn(BaseModel):
     published: bool = True
 
 
-# ⭐ CORRIGÉ : le product_count inclut désormais les produits des sous-catégories
+# ⭐ product_count inclut les produits des sous-catégories
 @router.get("/categories")
 async def admin_categories(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Category).order_by(Category.position))
     cats = res.scalars().all()
 
-    # 1. Compte les produits directement liés à chaque catégorie
     direct_counts = dict((await db.execute(
         select(Product.category_id, func.count(Product.id)).group_by(Product.category_id)
     )).all())
 
-    # 2. Calcul du total (catégorie + sous-catégories)
     total_counts = {}
     for c in cats:
         count = direct_counts.get(c.id, 0)

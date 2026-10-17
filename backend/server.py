@@ -87,15 +87,26 @@ app.include_router(api_router)
 
 
 PUBLIC_CACHE_PREFIXES = ("/api/settings", "/api/home", "/api/products", "/api/categories", "/api/brands", "/api/search")
+# ⭐ NOUVEAU : settings admin cachés côté navigateur (private, car derrière auth)
+ADMIN_CACHEABLE_PATHS = ("/api/admin/settings",)
 
 
 @app.middleware("http")
 async def public_cache_headers(request: Request, call_next):
     response = await call_next(request)
-    if (request.method == "GET" and request.url.path.startswith(PUBLIC_CACHE_PREFIXES)
-            and "authorization" not in request.headers and response.status_code == 200
-            and "/reviews" not in request.url.path):
-        response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
+    path = request.url.path
+    is_cacheable = (
+        request.method == "GET"
+        and response.status_code == 200
+        and "/reviews" not in path
+        and (path.startswith(PUBLIC_CACHE_PREFIXES) or path in ADMIN_CACHEABLE_PATHS)
+    )
+    if is_cacheable:
+        if path in ADMIN_CACHEABLE_PATHS:
+            # ⭐ Cache privé : uniquement pour cet admin connecté
+            response.headers["Cache-Control"] = "private, max-age=120, stale-while-revalidate=600"
+        elif "authorization" not in request.headers:
+            response.headers["Cache-Control"] = "public, max-age=60, stale-while-revalidate=600"
     return response
 
 
