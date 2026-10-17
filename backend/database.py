@@ -4,46 +4,45 @@ from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import declarative_base
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from sqlalchemy.pool import NullPool  # ⭐ IMPORTANT
 
 load_dotenv(Path(__file__).parent / '.env')
 
 DATABASE_URL = os.environ['DATABASE_URL']
 
-# ⭐ FIX : asyncpg n'accepte PAS 'sslmode' → on le retire de l'URL
 def _clean_url_for_asyncpg(url: str) -> str:
-    """Convertit postgresql:// en postgresql+asyncpg:// et retire sslmode (asyncpg utilise 'ssl')."""
-    # Convertir le schéma
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+asyncpg://", 1)
 
-    # Parser et retirer sslmode des query params
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
-    qs.pop("sslmode", None)          # ⭐ retirer sslmode
-    qs.pop("sslcert", None)          # ⭐ retirer sslcert (non supporté)
+    
+    # ⭐ ON AJOUTE CECI POUR FORCER LA DÉSACTIVATION DU CACHE
+    qs["prepared_statement_cache_size"] = ["0"] 
+    
+    qs.pop("sslmode", None)
+    qs.pop("sslcert", None)
     qs.pop("sslkey", None)
     qs.pop("sslrootcert", None)
     qs.pop("sslcrl", None)
+    
     new_query = urlencode(qs, doseq=True)
     return urlunparse(parsed._replace(query=new_query))
 
 ASYNC_DATABASE_URL = _clean_url_for_asyncpg(DATABASE_URL)
 
-# ⭐ Config Supabase-safe : pool réduit + SSL via connect_args
+# ⭐ CONFIGURATION CRUCIALE POUR SUPABASE (PgBouncer)
 engine = create_async_engine(
     ASYNC_DATABASE_URL,
-    pool_size=3,
-    max_overflow=2,
-    pool_timeout=30,
-    pool_recycle=300,
-    pool_pre_ping=True,
+    poolclass=NullPool,  # ⭐ CRUCIAL : PgBouncer de Supabase gère déjà le pool. 
+                         # Si SQLAlchemy gère son propre pool en même temps, ça fait des conflits et ça plante.
     echo=False,
     connect_args={
-        "statement_cache_size": 0,   # OBLIGATOIRE pour PgBouncer transaction mode
+        "statement_cache_size": 0, # On désactive le cache côté driver
         "command_timeout": 30,
-        "ssl": "require",            # ⭐ asyncpg : 'ssl' au lieu de 'sslmode'
+        "ssl": "require",
         "server_settings": {
             "application_name": "strykos-api",
             "jit": "off",
@@ -60,7 +59,6 @@ AsyncSessionLocal = async_sessionmaker(
 )
 
 Base = declarative_base()
-
 
 async def get_db():
     async with AsyncSessionLocal() as session:
