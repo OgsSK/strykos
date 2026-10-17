@@ -6,13 +6,19 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
-// ⭐ NOUVEAU : forcer le check de version après chaque save catégorie
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
 const EMPTY = { slug: "", name_fr: "", name_en: "", type: "", parent_id: "", position: 0, published: true };
-const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
-const MAX_PARENTS = 4;
+// ⭐ Nettoie un slug : minuscules, accents retirés, pas de / ni espaces
+const cleanSlug = (s) =>
+  (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 
 export default function AdminCategories() {
   const [cats, setCats] = useState([]);
@@ -25,7 +31,6 @@ export default function AdminCategories() {
   useEffect(() => { load(); }, []);
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // Sépare mères et enfants
   const parents = useMemo(() => cats.filter((c) => !c.parent_id).sort((a, b) => a.position - b.position), [cats]);
   const childrenOf = useMemo(() => {
     const map = {};
@@ -57,29 +62,35 @@ export default function AdminCategories() {
     setOpen(true);
   };
 
-  // ⭐ MODIFIÉ : force le check de version après save
   const save = async () => {
     if (!form.name_fr || !form.name_en) return toast.error("Noms FR et EN requis");
+
+    // ⭐ Nettoie le slug avant envoi
+    const finalSlug = cleanSlug(form.slug || form.name_fr);
+
+    if (!finalSlug) {
+      return toast.error("Le slug (lien) est invalide. Utilisez des lettres, chiffres ou tirets.");
+    }
+
     const payload = {
       ...form,
-      slug: form.slug || slugify(form.name_fr),
+      slug: finalSlug,
       parent_id: form.parent_id || null,
       position: parseInt(form.position) || 0,
     };
+
     try {
       if (editing) await api.put(`/admin/categories/${editing}`, payload);
       else await api.post("/admin/categories", payload);
       toast.success("Categorie enregistree");
       setOpen(false);
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) {
       toast.error(apiError(e));
     }
   };
 
-  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (c) => {
     const hasChildren = childrenOf[c.id]?.length > 0;
     const msg = hasChildren
@@ -90,7 +101,6 @@ export default function AdminCategories() {
       await api.delete(`/admin/categories/${c.id}`);
       toast.success("Supprimee");
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) {
       toast.error(apiError(e));
@@ -99,8 +109,6 @@ export default function AdminCategories() {
 
   const toggleExpand = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
 
-  const canAddParent = parents.length < MAX_PARENTS;
-
   return (
     <div data-testid="admin-categories">
       <div className="flex items-center justify-between mb-5">
@@ -108,43 +116,29 @@ export default function AdminCategories() {
           <h1 className="font-heading text-2xl font-bold uppercase">Categories</h1>
           <p className="text-xs text-ink-muted mt-1">
             {parents.length} categorie(s) principale(s) · {cats.length - parents.length} sous-categorie(s)
-            {!canAddParent && <span className="ml-2 text-amber-600 font-semibold">⚠ Limite de {MAX_PARENTS} principales atteinte</span>}
           </p>
         </div>
         <div className="flex gap-2">
-          {canAddParent && (
-            <Button onClick={() => openNew("")} className="bg-brand hover:bg-brand-dark rounded-none" data-testid="new-category-btn">
-              <Plus className="w-4 h-4 mr-1" /> Nouvelle principale
-            </Button>
-          )}
+          <Button onClick={() => openNew("")} className="bg-brand hover:bg-brand-dark rounded-none">
+            <Plus className="w-4 h-4 mr-1" /> Nouvelle principale
+          </Button>
         </div>
       </div>
 
       <div className="bg-white border border-border">
         {parents.length === 0 && (
-          <p className="p-6 text-center text-ink-muted text-sm">Aucune categorie principale. Cliquez sur « Nouvelle principale ».</p>
+          <p className="p-6 text-center text-ink-muted text-sm">Aucune categorie principale.</p>
         )}
 
         {parents.map((parent) => {
           const children = childrenOf[parent.id] || [];
-          const isExp = expanded[parent.id] !== false; // ouvert par défaut
+          const isExp = expanded[parent.id] !== false;
           return (
             <div key={parent.id} className="border-b border-border last:border-b-0">
-              {/* Ligne du parent */}
               <div className="flex items-center justify-between p-3 bg-secondary/40 hover:bg-secondary/60">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <button
-                    onClick={() => toggleExpand(parent.id)}
-                    className="p-1 hover:bg-white rounded shrink-0"
-                    disabled={children.length === 0}
-                  >
-                    {children.length === 0 ? (
-                      <span className="w-4 h-4 inline-block" />
-                    ) : isExp ? (
-                      <ChevronDown className="w-4 h-4" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4" />
-                    )}
+                  <button onClick={() => toggleExpand(parent.id)} className="p-1 hover:bg-white rounded shrink-0" disabled={children.length === 0}>
+                    {children.length === 0 ? <span className="w-4 h-4 inline-block" /> : isExp ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                   </button>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm">
@@ -162,38 +156,16 @@ export default function AdminCategories() {
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <button
-                    onClick={() => openNew(parent.id)}
-                    className="p-1.5 hover:bg-white text-brand rounded"
-                    title="Ajouter une sous-catégorie"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => openEdit(parent)}
-                    className="p-1.5 hover:bg-white rounded"
-                    title="Modifier"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => remove(parent)}
-                    className="p-1.5 hover:bg-red-50 text-red-600 rounded"
-                    title="Supprimer"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <button onClick={() => openNew(parent.id)} className="p-1.5 hover:bg-white text-brand rounded" title="Ajouter une sous-catégorie"><Plus className="w-4 h-4" /></button>
+                  <button onClick={() => openEdit(parent)} className="p-1.5 hover:bg-white rounded" title="Modifier"><Pencil className="w-4 h-4" /></button>
+                  <button onClick={() => remove(parent)} className="p-1.5 hover:bg-red-50 text-red-600 rounded" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
 
-              {/* Enfants */}
               {isExp && children.length > 0 && (
                 <div className="bg-white">
                   {children.map((child) => (
-                    <div
-                      key={child.id}
-                      className="flex items-center justify-between p-3 pl-12 border-t border-border hover:bg-cream/50"
-                    >
+                    <div key={child.id} className="flex items-center justify-between p-3 pl-12 border-t border-border hover:bg-cream/50">
                       <div className="min-w-0 flex-1">
                         <div className="text-sm">
                           <span className="text-ink-muted mr-2">└</span>
@@ -208,30 +180,17 @@ export default function AdminCategories() {
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
-                        <button
-                          onClick={() => openEdit(child)}
-                          className="p-1.5 hover:bg-secondary rounded"
-                          title="Modifier"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => remove(child)}
-                          className="p-1.5 hover:bg-red-50 text-red-600 rounded"
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-secondary rounded"><Pencil className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => remove(child)} className="p-1.5 hover:bg-red-50 text-red-600 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Message si pas d'enfants */}
               {isExp && children.length === 0 && (
                 <div className="p-3 pl-12 text-xs text-ink-muted italic border-t border-border">
-                  Aucune sous-catégorie. Cliquez sur <Plus className="w-3 h-3 inline" /> pour en ajouter.
+                  Aucune sous-catégorie.
                 </div>
               )}
             </div>
@@ -239,84 +198,64 @@ export default function AdminCategories() {
         })}
       </div>
 
-      {/* Dialog */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>
-              {editing ? "Modifier" : "Nouvelle"} {form.parent_id ? "sous-catégorie" : "catégorie"}
-            </DialogTitle>
+            <DialogTitle>{editing ? "Modifier" : "Nouvelle"} {form.parent_id ? "sous-catégorie" : "catégorie"}</DialogTitle>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
-            {form.parent_id && (
-              <div className="col-span-2 bg-cream border border-border p-2 text-xs">
-                <span className="text-ink-muted">Parent : </span>
-                <span className="font-semibold">
-                  {parents.find((p) => p.id === form.parent_id)?.name_fr || "—"}
-                </span>
-              </div>
-            )}
-
             <div>
               <Label>Nom FR *</Label>
-              <Input value={form.name_fr} onChange={(e) => setF("name_fr", e.target.value)} data-testid="cf-name-fr" />
+              <Input value={form.name_fr} onChange={(e) => setF("name_fr", e.target.value)} />
             </div>
             <div>
               <Label>Nom EN *</Label>
-              <Input value={form.name_en} onChange={(e) => setF("name_en", e.target.value)} data-testid="cf-name-en" />
+              <Input value={form.name_en} onChange={(e) => setF("name_en", e.target.value)} />
             </div>
 
-            <div>
-              <Label>Slug (URL)</Label>
+            {/* ⭐ Slug nettoyé automatiquement */}
+            <div className="col-span-2">
+              <Label>Slug (Lien URL) *</Label>
               <Input
                 value={form.slug}
-                onChange={(e) => setF("slug", e.target.value)}
-                placeholder="auto depuis le nom FR"
+                onChange={(e) => setF("slug", cleanSlug(e.target.value))}
+                placeholder="ex: anniversaires"
                 className="font-mono text-xs"
               />
+              <p className="text-[11px] text-ink-muted mt-1">
+                Lien final : <code className="bg-secondary px-1">/catalog?category=<strong>{form.slug || cleanSlug(form.name_fr) || "..."}</strong></code>
+              </p>
+              <p className="text-[10px] text-ink-muted mt-0.5">
+                Uniquement lettres minuscules, chiffres et tirets. Pas de <code>/</code> ni d'espaces.
+              </p>
             </div>
 
             <div>
               <Label>Type (interne, optionnel)</Label>
-              <Input
-                value={form.type}
-                onChange={(e) => setF("type", e.target.value)}
-                placeholder="gateau / cupcake / macaron..."
-              />
+              <Input value={form.type} onChange={(e) => setF("type", e.target.value)} placeholder="gateau / cupcake..." />
             </div>
-
-            {/* Sélecteur de parent — uniquement les mères sans soi-même */}
-            {!form.parent_id && !editing && (
-              <div className="col-span-2">
-                <Label>Catégorie parente (optionnel)</Label>
-                <select
-                  value={form.parent_id}
-                  onChange={(e) => setF("parent_id", e.target.value)}
-                  className="w-full border border-border h-10 px-2 bg-white"
-                >
-                  <option value="">Aucune (créer une catégorie principale)</option>
-                  {parents.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name_fr}</option>
-                  ))}
-                </select>
-                <p className="text-[11px] text-ink-muted mt-1">
-                  Laissez vide pour créer une catégorie principale (max {MAX_PARENTS}).
-                </p>
-              </div>
-            )}
 
             <div>
               <Label>Position (ordre)</Label>
               <Input type="number" value={form.position} onChange={(e) => setF("position", e.target.value)} />
-              <p className="text-[11px] text-ink-muted mt-1">Plus petit = plus haut dans le menu.</p>
             </div>
 
-            <label className="flex items-center gap-2 text-sm mt-6">
+            {!form.parent_id && !editing && (
+              <div className="col-span-2">
+                <Label>Catégorie parente (optionnel)</Label>
+                <select value={form.parent_id} onChange={(e) => setF("parent_id", e.target.value)} className="w-full border border-border h-10 px-2 bg-white">
+                  <option value="">Aucune (créer une catégorie principale)</option>
+                  {parents.map((p) => <option key={p.id} value={p.id}>{p.name_fr}</option>)}
+                </select>
+              </div>
+            )}
+
+            <label className="flex items-center gap-2 text-sm mt-2 col-span-2">
               <input type="checkbox" checked={form.published} onChange={(e) => setF("published", e.target.checked)} />
               Visible sur la boutique
             </label>
 
-            <Button onClick={save} className="col-span-2 bg-ink hover:bg-ink/90 rounded-none" data-testid="save-category-btn">
+            <Button onClick={save} className="col-span-2 bg-ink hover:bg-ink/90 rounded-none mt-2">
               Enregistrer
             </Button>
           </div>
