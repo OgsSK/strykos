@@ -10,10 +10,11 @@ import { toast } from "sonner";
 import { LayoutDashboard, Package, MapPin, User, LogOut, ShieldCheck, Truck, RefreshCw, XCircle, AlertTriangle, Eye, EyeOff, Clock, RotateCcw, CheckCircle2, AlertCircle, MessageSquare, KeyRound, Copy } from "lucide-react";
 import { OrderTimeline } from "@/components/OrderTimeline";
 import { COUNTRIES_MAP, countryName } from "@/lib/countries";
-import { RETURN_REASONS, isStrykosExpense } from "@/lib/returnReasons";
+import { RETURN_REASONS } from "@/lib/returnReasons";
 import PasswordStrength from "@/components/PasswordStrength";
 import ClaimMediaUploader from "@/components/ClaimMediaUploader";
-import { mediaSrc } from "@/lib/adminUtils";
+// ⭐ MODIFIÉ : import de `money` depuis adminUtils (supporte GBP + Intl)
+import { mediaSrc, money as fmtMoney } from "@/lib/adminUtils";
 
 export default function Account() {
   const { t, lang, user, logout, settings, clearCart, addToCart, setUser, applyBrand } = useStore();
@@ -97,7 +98,8 @@ export default function Account() {
     }
   }, [user?.id, user?.first_name, user?.last_name, user?.phone]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [newAddr, setNewAddr] = useState({ label: "", address_line: "", city: "", country: "ML", postal_code: "", first_name: user.first_name, last_name: user.last_name, phone: user.phone });
+  // ⭐ MODIFIÉ : pays par défaut = FR
+  const [newAddr, setNewAddr] = useState({ label: "", address_line: "", city: "", country: "FR", postal_code: "", first_name: user.first_name, last_name: user.last_name, phone: user.phone });
 
   const reloadOrders = () => api.get("/orders").then((r) => setOrders(r.data)).catch(() => {});
 
@@ -133,7 +135,8 @@ export default function Account() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const money = (v, cur) => cur === "XOF" ? `${Math.round(v).toLocaleString("fr-FR")} FCFA` : cur === "USD" ? `$${v.toFixed(2)}` : `${v.toFixed(2)} €`;
+  // ⭐ MODIFIÉ : utilise adminUtils.money (Intl.NumberFormat, GBP supporté, locale-aware)
+  const money = (v, cur) => fmtMoney(v, cur, lang === "fr" ? "fr-FR" : "en-GB");
 
   // ⭐ NOUVEAU : copie du code OTP
   const copyOtp = (code) => {
@@ -325,12 +328,14 @@ export default function Account() {
     }
   };
 
+  // ⭐ MODIFIÉ : utilise claim_window_hours depuis settings (fallback 48h)
   const canRequestReturn = (o) => {
     if (o.status !== "delivered" || o.payment_status !== "paid") return false;
     if (["return_requested", "return_approved", "return_shipped", "return_received", "returned", "refunded", "exchange_sent"].includes(o.status)) return false;
     if (!o.delivered_at) return false;
     const ageHours = (Date.now() - new Date(o.delivered_at).getTime()) / (1000 * 60 * 60);
-    return ageHours <= 24;
+    const windowHours = settings?.orders?.claim_window_hours ?? 48;
+    return ageHours <= windowHours;
   };
 
   const openReturnModal = async (order) => {
@@ -411,14 +416,12 @@ export default function Account() {
     setReturnBusy(false);
   };
 
-  // ⭐ Validation des types demandés + ferme LES DEUX modales après envoi
   const submitClaimReply = async () => {
     if (!requestReturn) return;
     if (!claimReplyText.trim() && claimReplyMedia.length === 0) {
       toast.error(lang === "fr" ? "Ajoutez un message ou des fichiers" : "Add a message or files");
       return;
     }
-    // ⭐ Validation des types demandés par l'admin
     const requested = requestReturn.claim_info_request_types || [];
     if (requested.length > 0) {
       const hasVideo = claimReplyMedia.some((m) => m.type === "video");
@@ -442,11 +445,9 @@ export default function Account() {
         text: claimReplyText.trim(),
         media_urls: claimReplyMedia,
       });
-      // Rafraîchit la conversation
       setClaimMessages((prev) => [...prev, data.message]);
       setClaimReplyText("");
       setClaimReplyMedia([]);
-      // ⭐ Ferme LES DEUX modales (réponse + signalement)
       setClaimReplyMode(false);
       setRequestReturn(null);
       toast.success(lang === "fr" ? "Réponse envoyée" : "Reply sent");
@@ -607,7 +608,6 @@ export default function Account() {
                           {isHidden && <span className="text-[10px] uppercase tracking-wider bg-secondary px-1.5 py-0.5 text-ink-muted">{lang === "fr" ? "Masquee" : "Hidden"}</span>}
                           {cancelInProgress && <span className="text-[10px] uppercase tracking-wider bg-red-100 text-red-700 px-1.5 py-0.5">{lang === "fr" ? "Annulation demandee" : "Cancellation requested"}</span>}
                           {rBadge && <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 border ${rBadge.color}`}>{rBadge.label}</span>}
-                          {/* ⭐ NOUVEAU : livré par livreur (via OTP) */}
                           {o.status === "delivered" && o.delivered_via === "otp" && (
                             <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 bg-purple-100 text-purple-800 inline-flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" />
@@ -638,7 +638,6 @@ export default function Account() {
                       </div>
                     )}
 
-                    {/* ⭐ NOUVEAU : Code OTP de livraison */}
                     {o.delivery_otp && ["shipped", "in_transit"].includes(o.status) && (
                       <div className="mt-3 bg-purple-50 border-l-4 border-purple-500 p-4 rounded" data-testid={`delivery-otp-${o.order_number}`}>
                         <div className="flex items-start gap-3">
@@ -1205,7 +1204,6 @@ export default function Account() {
               <p className="text-xs text-ink-muted mt-1">
                 {lang === "fr" ? `Commande ${requestReturn.order_number}` : `Order ${requestReturn.order_number}`}
               </p>
-              {/* ⭐ Rappel de la demande admin */}
               {requestReturn?.claim_info_request_message && (
                 <div className="mt-3 bg-amber-50 border-l-4 border-amber-500 p-3 text-xs">
                   <div className="font-semibold text-amber-900 mb-1">

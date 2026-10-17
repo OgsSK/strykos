@@ -1,49 +1,56 @@
-// Dictionnaire pays : code ISO2 → { fr, en }
+// ⭐ Version european-focused
+// - Inclut : tous les pays de l'UE + EEA + Suisse + Royaume-Uni + Irlande
+// - Inclut : "ML" (legacy) — Mali est encore dans shipping.methods backend
+// - Retire : Afrique subsaharienne, Maghreb/Moyen-Orient, Amériques, Asie, Océanie
+
 export const COUNTRIES_MAP = {
+  // ⭐ LEGACY : Mali reste actif dans shipping.methods backend
+  // Retirer cette ligne UNIQUEMENT si tu retires ML du backend aussi (voir section "Pour aller plus loin")
   ML: { fr: "Mali", en: "Mali" },
-  BE: { fr: "Belgique", en: "Belgium" },
+
+  // ─── Cœur UE (membres fondateurs + majeurs) ───
   FR: { fr: "France", en: "France" },
-  SN: { fr: "Sénégal", en: "Senegal" },
-  CI: { fr: "Côte d'Ivoire", en: "Ivory Coast" },
-  BF: { fr: "Burkina Faso", en: "Burkina Faso" },
-  GN: { fr: "Guinée", en: "Guinea" },
-  NE: { fr: "Niger", en: "Niger" },
-  TG: { fr: "Togo", en: "Togo" },
-  BJ: { fr: "Bénin", en: "Benin" },
-  MR: { fr: "Mauritanie", en: "Mauritania" },
-  CM: { fr: "Cameroun", en: "Cameroon" },
-  GA: { fr: "Gabon", en: "Gabon" },
-  CG: { fr: "Congo", en: "Congo" },
-  CD: { fr: "Congo (RDC)", en: "Congo (DRC)" },
+  BE: { fr: "Belgique", en: "Belgium" },
   DE: { fr: "Allemagne", en: "Germany" },
-  NL: { fr: "Pays-Bas", en: "Netherlands" },
-  ES: { fr: "Espagne", en: "Spain" },
   IT: { fr: "Italie", en: "Italy" },
-  GB: { fr: "Royaume-Uni", en: "United Kingdom" },
-  IE: { fr: "Irlande", en: "Ireland" },
-  PT: { fr: "Portugal", en: "Portugal" },
+  ES: { fr: "Espagne", en: "Spain" },
+  NL: { fr: "Pays-Bas", en: "Netherlands" },
   LU: { fr: "Luxembourg", en: "Luxembourg" },
-  CH: { fr: "Suisse", en: "Switzerland" },
   AT: { fr: "Autriche", en: "Austria" },
-  US: { fr: "États-Unis", en: "United States" },
-  CA: { fr: "Canada", en: "Canada" },
-  MA: { fr: "Maroc", en: "Morocco" },
-  DZ: { fr: "Algérie", en: "Algeria" },
-  TN: { fr: "Tunisie", en: "Tunisia" },
-  EG: { fr: "Égypte", en: "Egypt" },
-  NG: { fr: "Nigéria", en: "Nigeria" },
-  GH: { fr: "Ghana", en: "Ghana" },
-  KE: { fr: "Kenya", en: "Kenya" },
-  ZA: { fr: "Afrique du Sud", en: "South Africa" },
-  SA: { fr: "Arabie saoudite", en: "Saudi Arabia" },
-  AE: { fr: "Émirats arabes unis", en: "United Arab Emirates" },
-  BR: { fr: "Brésil", en: "Brazil" },
-  AR: { fr: "Argentine", en: "Argentina" },
-  MX: { fr: "Mexique", en: "Mexico" },
-  JP: { fr: "Japon", en: "Japan" },
-  CN: { fr: "Chine", en: "China" },
-  IN: { fr: "Inde", en: "India" },
-  AU: { fr: "Australie", en: "Australia" },
+  PT: { fr: "Portugal", en: "Portugal" },
+  IE: { fr: "Irlande", en: "Ireland" },
+  DK: { fr: "Danemark", en: "Denmark" },
+  SE: { fr: "Suède", en: "Sweden" },
+  FI: { fr: "Finlande", en: "Finland" },
+  PL: { fr: "Pologne", en: "Poland" },
+  CZ: { fr: "Tchéquie", en: "Czechia" },
+  SK: { fr: "Slovaquie", en: "Slovakia" },
+  HU: { fr: "Hongrie", en: "Hungary" },
+  RO: { fr: "Roumanie", en: "Romania" },
+  BG: { fr: "Bulgarie", en: "Bulgaria" },
+  GR: { fr: "Grèce", en: "Greece" },
+  HR: { fr: "Croatie", en: "Croatia" },
+  SI: { fr: "Slovénie", en: "Slovenia" },
+  EE: { fr: "Estonie", en: "Estonia" },
+  LV: { fr: "Lettonie", en: "Latvia" },
+  LT: { fr: "Lituanie", en: "Lithuania" },
+  MT: { fr: "Malte", en: "Malta" },
+  CY: { fr: "Chypre", en: "Cyprus" },
+
+  // ─── EEA + Suisse (marché unique élargi) ───
+  NO: { fr: "Norvège", en: "Norway" },
+  IS: { fr: "Islande", en: "Iceland" },
+  LI: { fr: "Liechtenstein", en: "Liechtenstein" },
+  CH: { fr: "Suisse", en: "Switzerland" },
+
+  // ─── Royaume-Uni (post-Brexit, toujours partenaire commercial majeur) ───
+  GB: { fr: "Royaume-Uni", en: "United Kingdom" },
+
+  // ─── Micro-États / territoires européens ───
+  MC: { fr: "Monaco", en: "Monaco" },
+  AD: { fr: "Andorre", en: "Andorra" },
+  SM: { fr: "Saint-Marin", en: "San Marino" },
+  VA: { fr: "Vatican", en: "Vatican" },
 };
 
 export const countryName = (code, lang = "fr") => {

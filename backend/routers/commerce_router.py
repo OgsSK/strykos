@@ -488,20 +488,22 @@ async def cod_availability(data: dict, db: AsyncSession = Depends(get_db)):
         subtotal_display += unit * (line.get("quantity") or 1)
 
     min_xof = int(cod.get("min_amount_xof", 0))
-    max_xof = int(cod.get("max_amount_xof", 500000))
+    # ✅ FIX : fallback = 327979 XOF = 500,00 EUR exact (au lieu de 500000 ≈ 762,25 EUR)
+    max_xof = int(cod.get("max_amount_xof", 327979))
     extra_fee_xof = int(cod.get("extra_fee_xof", 0))
 
+    # ✅ Messages neutres (aucune devise affichée au client)
     if subtotal_display < min_xof:
         return {
             "available": False,
-            "reason_fr": f"Montant minimum pour le paiement à la livraison : {min_xof:,} FCFA".replace(",", " "),
-            "reason_en": f"Minimum amount for COD: {min_xof} XOF",
+            "reason_fr": "Montant minimum non atteint pour le paiement à la livraison.",
+            "reason_en": "Minimum amount not reached for cash on delivery.",
         }
     if subtotal_display > max_xof:
         return {
             "available": False,
-            "reason_fr": f"Montant maximum dépassé ({max_xof:,} FCFA). Utilisez le paiement en ligne.".replace(",", " "),
-            "reason_en": f"Maximum amount exceeded ({max_xof} XOF). Use online payment.",
+            "reason_fr": "Montant maximum dépassé. Utilisez le paiement en ligne.",
+            "reason_en": "Maximum amount exceeded. Please use online payment.",
         }
 
     return {
@@ -572,11 +574,15 @@ async def checkout_create(data: CheckoutInput, request: Request,
         # Vérifie min/max sur le total
         total_xof = calc["total"] if calc["currency"] == "XOF" else calc["total"] * 655.957
         min_xof = int(cod.get("min_amount_xof", 0))
-        max_xof = int(cod.get("max_amount_xof", 500000))
+        # ✅ FIX : fallback = 327979 XOF = 500,00 EUR exact (au lieu de 500000 ≈ 762,25 EUR)
+        max_xof = int(cod.get("max_amount_xof", 327979))
+        # ✅ Messages neutres (aucune devise affichée au client)
         if total_xof < min_xof:
-            raise HTTPException(status_code=400, detail=f"Montant minimum COD : {min_xof} FCFA")
+            raise HTTPException(status_code=400,
+                detail="Montant minimum non atteint pour le paiement à la livraison.")
         if total_xof > max_xof:
-            raise HTTPException(status_code=400, detail=f"Montant maximum COD : {max_xof} FCFA")
+            raise HTTPException(status_code=400,
+                detail="Montant maximum dépassé pour le paiement à la livraison.")
 
         # ⭐ Frais COD
         extra_fee_xof = int(cod.get("extra_fee_xof", 0))

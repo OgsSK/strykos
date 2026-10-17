@@ -156,7 +156,8 @@ export default function AdminCustomers() {
               <th className="p-3">Client</th>
               <th className="p-3">Telephone</th>
               <th className="p-3">Commandes</th>
-              <th className="p-3">Total payé (FCFA)</th>
+              {/* ⭐ MODIFIÉ : colonne sans mention FCFA */}
+              <th className="p-3">Total payé</th>
               <th className="p-3">Role</th>
               <th className="p-3">Inscrit</th>
               <th className="p-3"></th>
@@ -173,11 +174,9 @@ export default function AdminCustomers() {
                 </td>
                 <td className="p-3">{u.phone || "-"}</td>
                 <td className="p-3">{u.orders_count}</td>
+                {/* ⭐ MODIFIÉ : affichage direct en EUR */}
                 <td className="p-3 font-semibold">
-                  {(() => {
-                    const xof = Math.round((u.spent_eur || 0) * 655.957);
-                    return `${xof.toLocaleString("fr-FR")} FCFA`;
-                  })()}
+                  {money(u.spent_eur || 0, "EUR")}
                 </td>
                 <td className="p-3">
                   <select
@@ -211,7 +210,6 @@ export default function AdminCustomers() {
         </table>
       </div>
 
-      {/* ⭐ NOUVEAU : bouton "Charger plus" */}
       {hasMore && (
         <div className="text-center mt-4 p-4">
           <button

@@ -4,6 +4,8 @@ import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
 import { CheckCircle2, Clock, Loader2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
+// ⭐ MODIFIÉ : utilise adminUtils.money (Intl.NumberFormat, GBP-safe)
+import { money as fmtMoney } from "@/lib/adminUtils";
 
 export default function OrderConfirmation() {
   const { t, lang, clearCart } = useStore();
@@ -81,13 +83,9 @@ export default function OrderConfirmation() {
     return () => clearTimeout(timer);
   }, [sessionId, isCod]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const money = (v, cur) => {
-    if (v == null) return "";
-    if (cur === "XOF") return `${Math.round(v).toLocaleString("fr-FR")} FCFA`;
-    if (cur === "USD") return `$${v.toFixed(2)}`;
-    // ⭐ Fallback : FCFA par défaut (devise principale CAKES)
-    return `${Math.round(v).toLocaleString("fr-FR")} FCFA`;
-  };
+  // ⭐ MODIFIÉ : délègue à adminUtils.money (Intl.NumberFormat)
+  // Supporte EUR, GBP, USD, XOF — locale-aware
+  const money = (v, cur) => fmtMoney(v, cur || "EUR", lang === "fr" ? "fr-FR" : "en-GB");
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-16 text-center" data-testid="order-confirmation">

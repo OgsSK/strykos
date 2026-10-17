@@ -18,10 +18,10 @@ import {
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
 import { Plus, Trash2, Calendar, Truck, RefreshCw, AlertCircle } from "lucide-react";
-// ⭐ NOUVEAU : forcer le check de version après chaque save admin
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
-// ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
+// ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999) — utilisé UNIQUEMENT pour convertir
+// les saisies EUR de l'admin en XOF attendu par le backend (stockage silencieux).
 const XOF_RATE = 655.957;
 const xofToEur = (xof) => {
   if (xof === "" || xof === null || xof === undefined) return "";
@@ -53,7 +53,45 @@ const Card = ({ title, children, onSave, testid, description }) => (
   </div>
 );
 
-const COUNTRIES = [["ML", "Mali"], ["BE", "Belgique"], ["FR", "France"], ["SN", "Senegal"], ["CI", "Cote d'Ivoire"], ["BF", "Burkina Faso"], ["GN", "Guinee"], ["NE", "Niger"], ["DE", "Allemagne"], ["NL", "Pays-Bas"], ["ES", "Espagne"], ["IT", "Italie"], ["GB", "Royaume-Uni"], ["US", "Etats-Unis"], ["CA", "Canada"], ["MA", "Maroc"]];
+// ⭐ Liste de pays européenne (UE en priorité, BE/FR en tête)
+// ✅ FIX : Mali (ML) retiré de la liste
+const COUNTRIES = [
+  // Marchés prioritaires
+  ["BE", "Belgique"],
+  ["FR", "France"],
+  ["LU", "Luxembourg"],
+  ["NL", "Pays-Bas"],
+  ["DE", "Allemagne"],
+  ["IT", "Italie"],
+  ["ES", "Espagne"],
+  ["PT", "Portugal"],
+  ["IE", "Irlande"],
+  ["AT", "Autriche"],
+  ["CH", "Suisse"],
+  ["GB", "Royaume-Uni"],
+  // Reste de l'UE
+  ["DK", "Danemark"],
+  ["SE", "Suède"],
+  ["FI", "Finlande"],
+  ["PL", "Pologne"],
+  ["CZ", "Tchéquie"],
+  ["SK", "Slovaquie"],
+  ["HU", "Hongrie"],
+  ["RO", "Roumanie"],
+  ["BG", "Bulgarie"],
+  ["GR", "Grèce"],
+  ["HR", "Croatie"],
+  ["SI", "Slovénie"],
+  ["EE", "Estonie"],
+  ["LV", "Lettonie"],
+  ["LT", "Lituanie"],
+  ["MT", "Malte"],
+  ["CY", "Chypre"],
+  // Autres marchés
+  ["US", "Etats-Unis"],
+  ["CA", "Canada"],
+  ["MA", "Maroc"],
+];
 
 // ⭐ NOUVEAU : skeleton de chargement
 const SkeletonCard = ({ rows = 3 }) => (
@@ -69,17 +107,14 @@ export default function AdminSettings() {
   const [s, setS] = useState(null);
   const [tab, setTab] = useState("site");
 
-  // ⭐ NOUVEAU : états de chargement / erreur / refresh
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  // ⭐ Paiement à la livraison
   const [paymentMethods, setPaymentMethods] = useState(null);
   const [pmBusy, setPmBusy] = useState(false);
 
-  // ⭐ NOUVEAU : load avec AbortController + gestion d'erreur
   const load = useCallback(async (isRefresh = false) => {
     const controller = new AbortController();
     if (isRefresh) setRefreshing(true);
@@ -96,12 +131,13 @@ export default function AdminSettings() {
           label_en: "Pay on delivery",
           instructions_fr: "",
           instructions_en: "",
-          countries: ["ML"],
+          countries: ["BE", "FR"],
           min_amount_xof: 0,
-          max_amount_xof: 500000,
+          // ✅ FIX : défaut = 327979 XOF = 500,00 EUR exact
+          max_amount_xof: 327979,
           extra_fee_xof: 0,
           mode: "all",
-          refund_methods: ["cash", "mobile_money", "promo"],
+          refund_methods: ["cash", "promo", "stripe"],
           promo_validity_days: 180,
         },
       });
@@ -123,14 +159,12 @@ export default function AdminSettings() {
     return () => cleanup?.();
   }, [load]);
 
-  // ⭐ NOUVEAU : bouton refresh
   const refresh = async () => {
     await forceCheckVersion();
     await load(true);
     toast.success("Paramètres actualisés");
   };
 
-  // ⭐ Loading skeleton
   if (loading && !s) {
     return (
       <div className="max-w-4xl">
@@ -147,7 +181,6 @@ export default function AdminSettings() {
     );
   }
 
-  // ⭐ Erreur avec retry
   if (error && !s) {
     return (
       <div className="max-w-4xl">
@@ -172,7 +205,6 @@ export default function AdminSettings() {
 
   const upd = (key, patch) => setS({ ...s, [key]: { ...s[key], ...patch } });
 
-  // ⭐ MODIFIÉ : force le check de version après chaque save
   const save = async (key, value) => {
     try {
       await api.put("/admin/settings", { key, value: value ?? s[key] });
@@ -181,7 +213,6 @@ export default function AdminSettings() {
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ helpers COD
   const updatePaymentMethods = (k, field, value) => {
     setPaymentMethods((prev) => ({
       ...prev,
@@ -189,7 +220,6 @@ export default function AdminSettings() {
     }));
   };
 
-  // ⭐ MODIFIÉ : force le check de version après save COD
   const savePaymentMethods = async () => {
     setPmBusy(true);
     try {
@@ -217,7 +247,6 @@ export default function AdminSettings() {
 
   return (
     <div data-testid="admin-settings" className="max-w-4xl">
-      {/* ⭐ NOUVEAU : header avec bouton refresh + timestamp */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h1 className="font-heading text-2xl font-bold uppercase">Parametres</h1>
@@ -306,7 +335,7 @@ export default function AdminSettings() {
         <div className="space-y-5">
           <Card
             title="Banniere d'accueil - carrousel"
-            description="Faites défiler les slides qui s'affichent en haut de la page d'accueil. Cliquez sur un slide pour le déplier et le modifier. Ajoutez une accroche au-dessus du titre et un badge sur l'image pour un rendu premium."
+            description="Faites défiler les slides qui s'affichent en haut de la page d'accueil."
             onSave={() => save("hero")}
             testid="settings-hero"
           >
@@ -315,7 +344,7 @@ export default function AdminSettings() {
 
           <Card
             title="Section « Nos catégories » (tuiles)"
-            description="Grille de tuiles carrées affichée sur la home, avec images + liens vers les catégories. Recommandé : 6 items pour un bel alignement 3×2 ou 6×1."
+            description="Grille de tuiles carrées affichée sur la home, avec images + liens vers les catégories."
             onSave={() => save("icons")}
             testid="settings-icons"
           >
@@ -324,7 +353,7 @@ export default function AdminSettings() {
 
           <Card
             title="Cartes éditoriales des sections"
-            description="Cartes éditoriales affichées sur la page d'accueil (jusqu'à 4 cartes alternées : image à gauche/texte à droite, puis inverse). Idéal pour la personnalisation, les anniversaires, etc."
+            description="Cartes éditoriales affichées sur la page d'accueil."
             onSave={() => save("sections")}
             testid="settings-sections"
           >
@@ -337,7 +366,7 @@ export default function AdminSettings() {
 
           <Card
             title="Bannière CTA pleine largeur"
-            description="Grande bannière image + texte + bouton, pleine largeur. Idéal pour une promo ou « Commandez votre gâteau personnalisé »."
+            description="Grande bannière image + texte + bouton, pleine largeur."
             onSave={() => save("cta_banner")}
             testid="settings-cta-banner"
           >
@@ -346,7 +375,7 @@ export default function AdminSettings() {
 
           <Card
             title="Bloc « Notre histoire »"
-            description="Image + texte côte à côte. Racontez votre savoir-faire, votre parcours ou votre atelier."
+            description="Image + texte côte à côte. Racontez votre savoir-faire."
             onSave={() => save("story")}
             testid="settings-story"
           >
@@ -355,7 +384,7 @@ export default function AdminSettings() {
 
           <Card
             title="Section « Comment ça marche »"
-            description="3 étapes numérotées pour expliquer le parcours de commande (choix, personnalisation, livraison)."
+            description="3 étapes numérotées pour expliquer le parcours de commande."
             onSave={() => save("steps")}
             testid="settings-steps"
           >
@@ -364,7 +393,7 @@ export default function AdminSettings() {
 
           <Card
             title="Galerie / Instagram"
-            description="Grille d'images (max 8) pour montrer vos créations. Lien Instagram optionnel."
+            description="Grille d'images (max 8) pour montrer vos créations."
             onSave={() => save("gallery")}
             testid="settings-gallery"
           >
@@ -373,7 +402,7 @@ export default function AdminSettings() {
 
           <Card
             title="Les 4 avantages"
-            description="Les 4 petits blocs affichés en bas de la home (icône + titre + sous-titre). Ex. Livraison rapide, Paiement sécurisé, etc."
+            description="Les 4 petits blocs affichés en bas de la home."
             onSave={() => save("features")}
             testid="settings-features"
           >
@@ -382,7 +411,7 @@ export default function AdminSettings() {
 
           <Card
             title="Témoignages clients"
-            description="Les avis affichés dans la section « Ils nous font confiance » en bas de la home."
+            description="Les avis affichés dans la section « Ils nous font confiance »."
             onSave={() => save("testimonials")}
             testid="settings-testimonials"
           >
@@ -391,7 +420,7 @@ export default function AdminSettings() {
 
           <Card
             title="Commandes programmées"
-            description="Contrôlez le délai minimum, les créneaux, les jours de fermeture et les jours spéciaux (fêtes, événements)."
+            description="Contrôlez le délai minimum, les créneaux, les jours de fermeture et les jours spéciaux."
             onSave={() => save("orders", s.orders || {})}
             testid="settings-orders"
           >
@@ -476,7 +505,7 @@ export default function AdminSettings() {
               <div className="border-t border-border pt-4">
                 <Label>Jours de fermeture hebdomadaire</Label>
                 <p className="text-[11px] text-ink-muted mb-3">
-                  Cochez les jours de la semaine où vous êtes fermé (impossible de commander).
+                  Cochez les jours de la semaine où vous êtes fermé.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {[
@@ -627,7 +656,7 @@ export default function AdminSettings() {
                   </button>
                 </div>
                 <p className="text-[11px] text-ink-muted mb-3">
-                  Ex : 24 décembre ouvert jusqu'à minuit, Saint-Valentin avec créneaux dédiés, etc.
+                  Ex : 24 décembre ouvert jusqu'à minuit, Saint-Valentin avec créneaux dédiés.
                 </p>
                 <div className="space-y-3">
                   {((s.orders?.special_days) || []).map((sp, i) => (
@@ -831,36 +860,27 @@ export default function AdminSettings() {
                   <div><Label className="text-xs">Nom EN</Label><Input value={m.name_en} onChange={(e) => setMethod(i, { name_en: e.target.value })} className="h-9" /></div>
 
                   <div>
-                    <Label className="text-xs">Coût FCFA</Label>
+                    <Label className="text-xs">Coût EUR</Label>
                     <Input
                       type="number"
-                      step="100"
-                      value={m.cost_xof || eurToXof(m.cost_eur) || ""}
+                      step="0.01"
+                      value={m.cost_eur ?? ""}
                       onChange={(e) => {
-                        const xof = e.target.value;
-                        setMethod(i, {
-                          cost_xof: xof,
-                          cost_eur: xofToEur(xof),
-                        });
+                        setMethod(i, { cost_eur: parseFloat(e.target.value) || 0 });
                       }}
                       className="h-9"
                     />
-                    {m.cost_eur !== undefined && m.cost_eur !== "" && (
-                      <p className="text-[10px] text-ink-muted mt-0.5">
-                        ≈ {m.cost_eur} €
-                      </p>
-                    )}
                   </div>
 
                   <div><Label className="text-xs">Delai FR / EN</Label><div className="flex gap-1"><Input value={m.delay_fr} onChange={(e) => setMethod(i, { delay_fr: e.target.value })} className="h-9" /><Input value={m.delay_en} onChange={(e) => setMethod(i, { delay_en: e.target.value })} className="h-9" /></div></div>
                   <button onClick={() => upd("shipping", { methods: methods.filter((_, idx) => idx !== i) })} className="h-9 text-red-600 hover:bg-red-50 flex items-center justify-center"><Trash2 className="w-4 h-4" /></button>
                 </div>
               ))}
-              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { methods: [...methods, { country: "ML", country_name: "Mali", name_fr: "Nouveau mode", name_en: "New method", cost_xof: 5000, cost_eur: xofToEur(5000), delay_fr: "3-6 jours", delay_en: "3-6 days" }] })} data-testid="add-shipping-method">
+              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { methods: [...methods, { country: "BE", country_name: "Belgique", name_fr: "Nouveau mode", name_en: "New method", cost_eur: 5.0, delay_fr: "3-6 jours", delay_en: "3-6 days" }] })} data-testid="add-shipping-method">
                 <Plus className="w-4 h-4 mr-1" /> Ajouter un mode
               </Button>
               <p className="text-xs text-ink-muted">
-                Les pays sans mode défini reçoivent la livraison internationale (env. 10 000 FCFA, 7-14 jours).
+                Les pays sans mode défini reçoivent la livraison internationale (env. 15 €, 7-14 jours).
               </p>
             </div>
           </Card>
@@ -914,7 +934,7 @@ export default function AdminSettings() {
                     <Input
                       value={(o.carriers || []).join(", ")}
                       onChange={(e) => setOrigin(i, { carriers: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })}
-                      placeholder="bpost, DHL, UPS, Coursier local"
+                      placeholder="bpost, DHL, GLS, DPD, Colissimo"
                       className="h-9"
                     />
                   </div>
@@ -925,7 +945,7 @@ export default function AdminSettings() {
                   </div>
                 </div>
               ))}
-              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { origins: [...origins, { country: "ML", country_name: "Mali", name: "Nouveau depot", address_line: "", city: "", postal_code: "", phone: "", email: "", is_default: false, carriers: [] }] })} data-testid="add-shipping-origin">
+              <Button variant="outline" className="rounded-none" onClick={() => upd("shipping", { origins: [...origins, { country: "BE", country_name: "Belgique", name: "Nouveau depot", address_line: "", city: "", postal_code: "", phone: "", email: "", is_default: false, carriers: [] }] })} data-testid="add-shipping-origin">
                 <Plus className="w-4 h-4 mr-1" /> Ajouter une origine
               </Button>
             </div>
@@ -936,7 +956,7 @@ export default function AdminSettings() {
       {tab === "taxonomies" && (
         <Card
           title="Taxonomies (occasions, saveurs)"
-          description="Les valeurs de ces listes alimentent les filtres du catalogue. Chaque valeur a un identifiant interne (non modifiable) et un libellé FR/EN."
+          description="Les valeurs de ces listes alimentent les filtres du catalogue."
           onSave={() => save("taxonomies", {
             genders: taxonomies.genders || [],
             sports: taxonomies.sports || [],
@@ -1079,29 +1099,36 @@ export default function AdminSettings() {
       )}
 
       {tab === "currency" && (
-        <Card title="Taux de conversion (base EUR)" onSave={() => save("currency", { base: "EUR", rates: { EUR: 1, USD: parseFloat(rates.USD) || 1.08, XOF: parseFloat(rates.XOF) || 655.957 }, updated_at: new Date().toISOString() })} testid="settings-currency">
+        <Card title="Taux de conversion (base EUR)" onSave={() => save("currency", { base: "EUR", rates: { EUR: 1, USD: parseFloat(rates.USD) || 1.08, GBP: parseFloat(rates.GBP) || 0.85 }, updated_at: new Date().toISOString() })} testid="settings-currency">
           <div className="grid grid-cols-3 gap-4">
             <div><Label>EUR</Label><Input value={1} disabled className="mt-1 bg-secondary" /></div>
             <div><Label>USD</Label><Input type="number" step="0.01" value={rates.USD} onChange={(e) => upd("currency", { rates: { ...rates, USD: e.target.value } })} className="mt-1" data-testid="rate-usd" /></div>
-            <div><Label>XOF</Label><Input type="number" step="0.001" value={rates.XOF} onChange={(e) => upd("currency", { rates: { ...rates, XOF: e.target.value } })} className="mt-1" data-testid="rate-xof" /></div>
+            <div><Label>GBP</Label><Input type="number" step="0.001" value={rates.GBP || 0.85} onChange={(e) => upd("currency", { rates: { ...rates, GBP: e.target.value } })} className="mt-1" data-testid="rate-gbp" /></div>
           </div>
-          <p className="text-xs text-ink-muted mt-2">Derniere mise a jour: {s.currency?.updated_at ? new Date(s.currency.updated_at).toLocaleString("fr-FR") : "-"}. Les prix manuels par produit (USD/XOF) restent prioritaires.</p>
+          <p className="text-xs text-ink-muted mt-2">Dernière mise à jour : {s.currency?.updated_at ? new Date(s.currency.updated_at).toLocaleString("fr-FR") : "-"}. Les prix manuels par produit (USD/GBP) restent prioritaires.</p>
         </Card>
       )}
 
       {tab === "payments" && (
         <Card title="Moyens de paiement" testid="settings-payments">
-          {Object.entries(providers).map(([k, v]) => (
-            <div key={k} className="flex justify-between items-center py-3 border-b border-border text-sm">
-              <div><span className="capitalize font-semibold">{k}</span><div className="text-xs text-ink-muted">{(v.currencies || []).join(", ")} · {(v.countries || []).join(", ")} · mode {v.mode}</div></div>
-              <span className={v.enabled ? "text-green-600 font-semibold" : "text-ink-muted"}>{v.enabled ? "Actif" : "Desactive (integration a venir)"}</span>
-            </div>
-          ))}
-          <p className="text-xs text-ink-muted mt-3">Stripe est le seul fournisseur integre en v1. CinetPay et PawaPay (mobile money) sont prepares dans l'architecture mais necessitent des cles API et une integration dediee avant activation.</p>
+          {Object.entries(providers)
+            .filter(([_, v]) => v?.enabled)
+            .map(([k, v]) => (
+              <div key={k} className="flex justify-between items-center py-3 border-b border-border text-sm">
+                <div>
+                  <span className="capitalize font-semibold">{k}</span>
+                  <div className="text-xs text-ink-muted">{(v.currencies || []).join(", ")} · {(v.countries || []).join(", ")} · mode {v.mode}</div>
+                </div>
+                <span className="text-green-600 font-semibold">Actif</span>
+              </div>
+            ))}
+          {Object.values(providers).filter((v) => v?.enabled).length === 0 && (
+            <p className="text-sm text-ink-muted italic py-3">Aucun fournisseur de paiement actif.</p>
+          )}
+          <p className="text-xs text-ink-muted mt-3">Stripe est le seul fournisseur intégré en v1.</p>
         </Card>
       )}
 
-      {/* ⭐ Onglet Paiement à la livraison */}
       {tab === "payment_methods" && (
         <Card title="Paiement à la livraison (COD)" testid="settings-payment-methods">
           <p className="text-xs text-ink-muted mb-4">
@@ -1175,39 +1202,51 @@ export default function AdminSettings() {
                     updatePaymentMethods("cod", "countries",
                       e.target.value.split(",").map(s => s.trim().toUpperCase()).filter(Boolean))
                   }
-                  placeholder="ML, SN, CI"
+                  placeholder="BE, FR"
                   className="mt-1 rounded-none"
                 />
                 <p className="text-[11px] text-ink-muted mt-1">
-                  Codes ISO 2 lettres. Ex: ML, BE, FR, SN, CI
+                  Codes ISO 2 lettres. Ex: BE, FR
                 </p>
               </div>
 
               <div className="grid sm:grid-cols-3 gap-3">
                 <div>
-                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant min (XOF)</Label>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant min (EUR)</Label>
                   <Input
                     type="number"
-                    value={paymentMethods?.cod?.min_amount_xof ?? 0}
-                    onChange={(e) => updatePaymentMethods("cod", "min_amount_xof", parseInt(e.target.value) || 0)}
+                    step="0.01"
+                    value={xofToEur(paymentMethods?.cod?.min_amount_xof) || 0}
+                    onChange={(e) => {
+                      const eur = parseFloat(e.target.value) || 0;
+                      updatePaymentMethods("cod", "min_amount_xof", eurToXof(eur));
+                    }}
                     className="mt-1 rounded-none"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant max (XOF)</Label>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant max (EUR)</Label>
                   <Input
                     type="number"
-                    value={paymentMethods?.cod?.max_amount_xof ?? 500000}
-                    onChange={(e) => updatePaymentMethods("cod", "max_amount_xof", parseInt(e.target.value) || 500000)}
+                    step="0.01"
+                    value={xofToEur(paymentMethods?.cod?.max_amount_xof) || 0}
+                    onChange={(e) => {
+                      const eur = parseFloat(e.target.value) || 0;
+                      updatePaymentMethods("cod", "max_amount_xof", eurToXof(eur));
+                    }}
                     className="mt-1 rounded-none"
                   />
                 </div>
                 <div>
-                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Frais COD (XOF)</Label>
+                  <Label className="text-xs uppercase tracking-wider text-ink-muted">Frais COD (EUR)</Label>
                   <Input
                     type="number"
-                    value={paymentMethods?.cod?.extra_fee_xof ?? 0}
-                    onChange={(e) => updatePaymentMethods("cod", "extra_fee_xof", parseInt(e.target.value) || 0)}
+                    step="0.01"
+                    value={xofToEur(paymentMethods?.cod?.extra_fee_xof) || 0}
+                    onChange={(e) => {
+                      const eur = parseFloat(e.target.value) || 0;
+                      updatePaymentMethods("cod", "extra_fee_xof", eurToXof(eur));
+                    }}
                     className="mt-1 rounded-none"
                   />
                 </div>
@@ -1241,10 +1280,10 @@ export default function AdminSettings() {
                 <Label className="text-xs uppercase tracking-wider text-ink-muted block mb-2">
                   Méthodes de remboursement autorisées
                 </Label>
+                {/* ✅ FIX : Mobile Money retiré */}
                 <div className="flex flex-wrap gap-3">
                   {[
                     { value: "cash", label: "💵 Espèces" },
-                    { value: "mobile_money", label: "📱 Mobile Money" },
                     { value: "promo", label: "🎁 Code promo" },
                     { value: "stripe", label: "💳 Stripe" },
                   ].map((m) => (

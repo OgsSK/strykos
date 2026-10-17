@@ -14,7 +14,7 @@ export default {
         subsections: [
           { title: "2.1 Cookie de panier", content: "Permet de conserver les articles ajoutés à votre panier entre deux visites. Durée : 30 jours maximum. Cookie strictement nécessaire." },
           { title: "2.2 Cookie de session", content: "Permet de vous maintenir connecté à votre compte pendant votre navigation et de sécuriser vos actions. Durée : jusqu'à la déconnexion ou 7 jours. Cookie strictement nécessaire." },
-          { title: "2.3 Cookie de préférences", content: "Mémorise votre choix de langue (FR/EN) et de devise (XOF) pour vous éviter de les resélectionner à chaque visite. Durée : 12 mois. Cookie fonctionnel." },
+          { title: "2.3 Cookie de préférences", content: "Mémorise votre choix de langue (FR/EN) et de devise pour vous éviter de les resélectionner à chaque visite. Durée : 12 mois. Cookie fonctionnel." },
           { title: "2.4 Cookie de consentement", content: "Enregistre votre acceptation ou votre refus de la bannière cookies afin de ne pas vous la représenter à chaque visite. Durée : 12 mois. Cookie strictement nécessaire." },
         ],
       },
@@ -78,7 +78,7 @@ export default {
         subsections: [
           { title: "2.1 Cart cookie", content: "Keeps the items added to your cart between two visits. Duration: 30 days maximum. Strictly necessary cookie." },
           { title: "2.2 Session cookie", content: "Keeps you logged into your account during browsing and secures your actions. Duration: until logout or 7 days. Strictly necessary cookie." },
-          { title: "2.3 Preferences cookie", content: "Remembers your language choice (FR/EN) and currency (XOF) so you don't have to reselect them on each visit. Duration: 12 months. Functional cookie." },
+          { title: "2.3 Preferences cookie", content: "Remembers your language choice (FR/EN) and currency so you don't have to reselect them on each visit. Duration: 12 months. Functional cookie." },
           { title: "2.4 Consent cookie", content: "Records your acceptance or refusal of the cookie banner so it is not shown on each visit. Duration: 12 months. Strictly necessary cookie." },
         ],
       },

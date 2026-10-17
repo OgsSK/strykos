@@ -180,7 +180,6 @@ async def _seed_demo_data(db):
             {"name": "Maison Sucré", "slug": "maison-sucre", "is_local": False, "description_fr": "Recettes traditionnelles françaises revisitées."},
             {"name": "Les Délices", "slug": "les-delices", "is_local": False, "description_fr": "Macarons et mignardises d'exception."},
             {"name": "Atelier Gâteau", "slug": "atelier-gateau", "is_local": True, "description_fr": "Atelier local spécialisé dans le cake design sur mesure."},
-            {"name": "Saveurs d'Afrique", "slug": "saveurs-afrique", "is_local": True, "description_fr": "Saveurs authentiques d'Afrique de l'Ouest (mangue, bissap, coco)."},
         ]
         for b in BRANDS:
             db.add(Brand(**b))
@@ -194,7 +193,7 @@ async def _seed_demo_data(db):
         brands = {b.slug: b.id for b in (await db.execute(select(Brand))).scalars().all()}
 
         DEMO = [
-            # --- Anniversaires ---
+            # --- Anniversaires (gâteaux adultes) ---
             {
                 "slug": "gateau-anniversaire-chocolat",
                 "name_fr": "Gâteau d'anniversaire chocolat noir",
@@ -223,6 +222,53 @@ async def _seed_demo_data(db):
                     "https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=800&q=80",
                 ],
             },
+            # ⭐ NOUVEAU : Fraisier classique
+            {
+                "slug": "fraisier-classique",
+                "name_fr": "Le Fraisier Classique",
+                "name_en": "Classic Strawberry Cake",
+                "description_fr": "Génoise vanille, crème mousseline et fraises fraîches de saison.",
+                "description_en": "Vanilla sponge, mousseline cream and fresh seasonal strawberries.",
+                "price_eur": 34.00, "category": "gateaux-adultes", "brand": "patisserie-du-chef",
+                "gender": "anniversaire", "sport": "fruits", "product_type": "gâteau",
+                "is_best_seller": True,
+                "images": ["https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=800&q=80"],
+            },
+            # ⭐ NOUVEAU : Paris-Brest
+            {
+                "slug": "paris-brest",
+                "name_fr": "Le Paris-Brest",
+                "name_en": "Paris-Brest",
+                "description_fr": "Pâte à choux, praliné noisette fait maison et amandes effilées.",
+                "description_en": "Choux pastry, homemade hazelnut praline and sliced almonds.",
+                "price_eur": 28.50, "category": "gateaux-adultes", "brand": "maison-sucre",
+                "gender": "anniversaire", "sport": "chocolat", "product_type": "gâteau",
+                "is_new": True,
+                "images": ["https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&q=80"],
+            },
+            {
+                "slug": "gateau-sans-gluten-chocolat",
+                "name_fr": "Gâteau sans gluten chocolat",
+                "name_en": "Gluten-free chocolate cake",
+                "description_fr": "Gâteau au chocolat sans gluten, adapté aux intolérants et aux régimes spécifiques.",
+                "description_en": "Gluten-free chocolate cake, suitable for intolerances and specific diets.",
+                "price_eur": 36.00, "category": "gateaux-adultes", "brand": "patisserie-du-chef",
+                "gender": "anniversaire", "sport": "sans-gluten", "product_type": "gâteau",
+                "images": ["https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&q=80"],
+            },
+            {
+                "slug": "gateau-vegan-fruits-rouges",
+                "name_fr": "Gâteau vegan fruits rouges",
+                "name_en": "Vegan red berries cake",
+                "description_fr": "Gâteau 100% végétal aux fruits rouges, sans produits d'origine animale.",
+                "description_en": "100% plant-based red berries cake, free from animal products.",
+                "price_eur": 38.00, "category": "gateaux-adultes", "brand": "maison-sucre",
+                "gender": "anniversaire", "sport": "vegan", "product_type": "gâteau",
+                "is_new": True,
+                "images": ["https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=800&q=80"],
+            },
+
+            # --- Number cakes ---
             {
                 "slug": "number-cake-personnalise",
                 "name_fr": "Number cake personnalisé",
@@ -237,6 +283,8 @@ async def _seed_demo_data(db):
                     "https://images.unsplash.com/photo-1621303837174-89787a7d4729?w=800&q=80",
                 ],
             },
+
+            # --- Enfants (gâteaux thématiques) ---
             {
                 "slug": "gateau-anniversaire-enfant-theme",
                 "name_fr": "Gâteau anniversaire enfant (thème)",
@@ -252,7 +300,7 @@ async def _seed_demo_data(db):
                 ],
             },
 
-            # --- Mariages ---
+            # --- Mariages (wedding cakes) ---
             {
                 "slug": "wedding-cake-3-etages-classique",
                 "name_fr": "Wedding cake 3 étages classique",
@@ -266,6 +314,18 @@ async def _seed_demo_data(db):
                     "https://images.unsplash.com/photo-1535254973040-607b474cb50d?w=800&q=80",
                     "https://images.unsplash.com/photo-1587241321921-91a834d6d191?w=800&q=80",
                 ],
+            },
+            # ⭐ NOUVEAU : Wedding Cake Floral
+            {
+                "slug": "wedding-cake-floral",
+                "name_fr": "Wedding Cake Floral",
+                "name_en": "Floral Wedding Cake",
+                "description_fr": "Pièce montée 3 étages à la vanille, décorée de fleurs fraîches.",
+                "description_en": "3-tier vanilla wedding cake decorated with fresh flowers.",
+                "price_eur": 220.00, "category": "wedding-cakes-3-etages", "brand": "atelier-gateau",
+                "gender": "mariage", "sport": "classique", "product_type": "wedding-cake",
+                "is_featured": True,
+                "images": ["https://images.unsplash.com/photo-1535254973040-607b474cb50d?w=800&q=80"],
             },
             {
                 "slug": "wedding-cake-2-etages",
@@ -288,7 +348,7 @@ async def _seed_demo_data(db):
                 "images": ["https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&q=80"],
             },
 
-            # --- Enfants ---
+            # --- Enfants (cupcakes) ---
             {
                 "slug": "cupcakes-enfants-x12",
                 "name_fr": "Cupcakes enfants (x12)",
@@ -360,40 +420,6 @@ async def _seed_demo_data(db):
                 "gender": "entreprise", "sport": "classique", "product_type": "buffet",
                 "is_new": True, "customizable": True,
                 "images": ["https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?w=800&q=80"],
-            },
-
-            # --- Régimes spécifiques ---
-            {
-                "slug": "gateau-sans-gluten-chocolat",
-                "name_fr": "Gâteau sans gluten chocolat",
-                "name_en": "Gluten-free chocolate cake",
-                "description_fr": "Gâteau au chocolat sans gluten, adapté aux intolérants et aux régimes spécifiques.",
-                "description_en": "Gluten-free chocolate cake, suitable for intolerances and specific diets.",
-                "price_eur": 36.00, "category": "gateaux-adultes", "brand": "patisserie-du-chef",
-                "gender": "anniversaire", "sport": "sans-gluten", "product_type": "gâteau",
-                "images": ["https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&q=80"],
-            },
-            {
-                "slug": "gateau-vegan-fruits-rouges",
-                "name_fr": "Gâteau vegan fruits rouges",
-                "name_en": "Vegan red berries cake",
-                "description_fr": "Gâteau 100% végétal aux fruits rouges, sans produits d'origine animale.",
-                "description_en": "100% plant-based red berries cake, free from animal products.",
-                "price_eur": 38.00, "category": "gateaux-adultes", "brand": "maison-sucre",
-                "gender": "anniversaire", "sport": "vegan", "product_type": "gâteau",
-                "is_new": True,
-                "images": ["https://images.unsplash.com/photo-1571115177098-24ec42ed204d?w=800&q=80"],
-            },
-            {
-                "slug": "cake-design-africain",
-                "name_fr": "Cake design saveurs d'Afrique",
-                "name_en": "African flavors cake design",
-                "description_fr": "Gâteau original aux saveurs de mangue, bissap et coco. Une création signature de l'atelier.",
-                "description_en": "Original cake with mango, hibiscus and coconut flavors. A signature workshop creation.",
-                "price_eur": 39.90, "category": "gateaux-thematiques", "brand": "saveurs-afrique",
-                "gender": "mariage", "sport": "fruits", "product_type": "gâteau",
-                "is_new": True, "is_featured": True,
-                "images": ["https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=800&q=80"],
             },
         ]
 

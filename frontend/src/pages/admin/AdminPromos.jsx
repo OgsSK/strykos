@@ -5,22 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { fmtDate } from "@/lib/adminUtils";
+import { fmtDate, money as fmtMoney } from "@/lib/adminUtils";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Tag, RefreshCw, AlertCircle } from "lucide-react";
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
-// ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
-const XOF_RATE = 655.957;
-const xofToEur = (xof) => {
-  if (xof === "" || xof === null || xof === undefined) return "";
-  const n = parseFloat(xof);
-  if (isNaN(n)) return "";
-  return Math.round((n / XOF_RATE) * 100) / 100;
-};
-const eurToXof = (eur) => {
-  if (eur === "" || eur === null || eur === undefined) return "";
-  return Math.round(parseFloat(eur) * XOF_RATE);
+// ⭐ Helpers de formatage (GBP-safe via adminUtils.money)
+const fmtEur = (v) => {
+  if (v === "" || v === null || v === undefined) return "";
+  return fmtMoney(v, "EUR", "fr-FR");
 };
 
 // ⭐ Taille de page
@@ -28,7 +21,7 @@ const PAGE_SIZE = 20;
 
 const EMPTY = {
   code: "", description: "", discount_type: "percent", value: 10,
-  min_subtotal_eur: 0, min_subtotal_xof: "",
+  min_subtotal_eur: 0,
   free_shipping: false, first_order_only: false,
   usage_limit: "", starts_at: "", expires_at: "", active: true,
 };
@@ -52,18 +45,15 @@ export default function AdminPromos() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
 
-  // ⭐ États UI
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // ⭐ Pagination
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // ⭐ load avec pagination
   const load = useCallback(async (lim = PAGE_SIZE, opts = {}) => {
     const { isRefresh = false, silent = false } = opts;
     if (isRefresh) setRefreshing(true);
@@ -86,7 +76,6 @@ export default function AdminPromos() {
     }
   }, []);
 
-  // ⭐ Chargement initial
   useEffect(() => {
     load(PAGE_SIZE);
     if (params.get("new")) {
@@ -98,7 +87,6 @@ export default function AdminPromos() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ⭐ Charger plus
   const loadMore = () => {
     setLoadingMore(true);
     const newLimit = limit + PAGE_SIZE;
@@ -106,7 +94,6 @@ export default function AdminPromos() {
     load(newLimit, { silent: true });
   };
 
-  // ⭐ Refresh manuel
   const refresh = async () => {
     await forceCheckVersion();
     await load(limit, { isRefresh: true });
@@ -115,21 +102,12 @@ export default function AdminPromos() {
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  // ⭐ Save
+  // ⭐ MODIFIÉ : EUR est la devise principale, plus de conversion FCFA → EUR
   const save = async () => {
     if (!form.code.trim()) return toast.error("Code requis");
 
-    let payloadValue = parseFloat(form.value) || 0;
-    if (form.discount_type === "fixed" && form.value) {
-      payloadValue = xofToEur(form.value) || 0;
-    }
-
-    let minSubtotalEur = 0;
-    if (form.min_subtotal_xof !== "" && form.min_subtotal_xof !== null && form.min_subtotal_xof !== undefined) {
-      minSubtotalEur = xofToEur(form.min_subtotal_xof) || 0;
-    } else {
-      minSubtotalEur = parseFloat(form.min_subtotal_eur) || 0;
-    }
+    const payloadValue = parseFloat(form.value) || 0;
+    const minSubtotalEur = parseFloat(form.min_subtotal_eur) || 0;
 
     const payload = {
       ...form,
@@ -140,7 +118,6 @@ export default function AdminPromos() {
       starts_at: form.starts_at ? new Date(form.starts_at).toISOString() : null,
       expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
     };
-    delete payload.min_subtotal_xof;
 
     try {
       if (editing) await api.put(`/admin/promos/${editing}`, payload);
@@ -152,7 +129,6 @@ export default function AdminPromos() {
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ Toggle
   const toggle = async (p) => {
     try {
       await api.put(`/admin/promos/${p.id}`, { ...p, active: !p.active });
@@ -161,7 +137,6 @@ export default function AdminPromos() {
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ Remove
   const remove = async (p) => {
     if (!window.confirm(`Supprimer le code ${p.code} ?`)) return;
     try {
@@ -174,7 +149,6 @@ export default function AdminPromos() {
 
   const isExpired = (p) => p.expires_at && new Date(p.expires_at) < new Date();
 
-  // ⭐ Skeleton initial
   if (loading && promos.length === 0) {
     return (
       <div data-testid="admin-promos-loading">
@@ -203,7 +177,6 @@ export default function AdminPromos() {
     );
   }
 
-  // ⭐ Erreur avec retry
   if (error && promos.length === 0) {
     return (
       <div data-testid="admin-promos-error" className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
@@ -273,15 +246,17 @@ export default function AdminPromos() {
                   </div>
                   <div className="text-xs text-ink-muted">{p.description}</div>
                 </td>
+                {/* ⭐ EUR uniquement */}
                 <td className="p-3 font-semibold">
                   {p.discount_type === "percent"
                     ? `${p.value}%`
-                    : `${Math.round(p.value * XOF_RATE).toLocaleString("fr-FR")} FCFA`}
+                    : fmtEur(p.value)}
                   {p.free_shipping && <div className="text-xs text-green-700">+ livraison offerte</div>}
                 </td>
+                {/* ⭐ Min subtotal EUR uniquement */}
                 <td className="p-3 text-xs">
                   {p.min_subtotal_eur > 0 && (
-                    <div>Min. {Math.round(p.min_subtotal_eur * XOF_RATE).toLocaleString("fr-FR")} FCFA</div>
+                    <div>Min. {fmtEur(p.min_subtotal_eur)}</div>
                   )}
                   {p.first_order_only && <div>1ère commande</div>}
                 </td>
@@ -311,8 +286,9 @@ export default function AdminPromos() {
                           usage_limit: p.usage_limit ?? "",
                           starts_at: toLocalInput(p.starts_at),
                           expires_at: toLocalInput(p.expires_at),
-                          min_subtotal_xof: p.min_subtotal_eur ? eurToXof(p.min_subtotal_eur) : "",
-                          value: p.discount_type === "fixed" ? eurToXof(p.value) : p.value,
+                          // ⭐ MODIFIÉ : value EUR directement (plus de eurToXof)
+                          value: p.value,
+                          min_subtotal_eur: p.min_subtotal_eur || 0,
                         });
                         setOpen(true);
                       }}
@@ -334,7 +310,6 @@ export default function AdminPromos() {
         </table>
       </div>
 
-      {/* ⭐ Bouton "Charger plus" */}
       {hasMore && (
         <div className="text-center mt-4 p-4">
           <button
@@ -353,7 +328,6 @@ export default function AdminPromos() {
         </div>
       )}
 
-      {/* Dialog nouveau / modifier */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{editing ? "Modifier" : "Nouveau"} code promo</DialogTitle></DialogHeader>
@@ -365,42 +339,33 @@ export default function AdminPromos() {
               <Label>Type</Label>
               <select value={form.discount_type} onChange={(e) => setF("discount_type", e.target.value)} className="w-full border border-border h-10 px-2 bg-white" data-testid="promo-type">
                 <option value="percent">Pourcentage (%)</option>
-                <option value="fixed">Montant fixe (FCFA)</option>
+                {/* ⭐ MODIFIÉ : label EUR */}
+                <option value="fixed">Montant fixe (EUR)</option>
               </select>
             </div>
 
             <div>
-              <Label>Valeur {form.discount_type === "percent" ? "(%)" : "(FCFA)"}</Label>
+              {/* ⭐ MODIFIÉ : EUR au lieu de FCFA */}
+              <Label>Valeur {form.discount_type === "percent" ? "(%)" : "(EUR)"}</Label>
               <Input
                 type="number"
-                step={form.discount_type === "percent" ? "1" : "100"}
+                step={form.discount_type === "percent" ? "1" : "0.01"}
                 value={form.value}
                 onChange={(e) => setF("value", e.target.value)}
                 data-testid="promo-value"
               />
-              {form.discount_type === "fixed" && form.value !== "" && (
-                <p className="text-[11px] text-ink-muted mt-1">
-                  ≈ {xofToEur(form.value)} € <span className="italic">(technique Stripe)</span>
-                </p>
-              )}
             </div>
 
+            {/* ⭐ MODIFIÉ : min subtotal EUR directement */}
             <div>
-              <Label>Montant minimum (FCFA)</Label>
+              <Label>Montant minimum (EUR)</Label>
               <Input
                 type="number"
-                step="100"
-                value={form.min_subtotal_xof || ""}
-                onChange={(e) => {
-                  const xof = e.target.value;
-                  setF("min_subtotal_xof", xof);
-                  setF("min_subtotal_eur", xofToEur(xof));
-                }}
-                placeholder="Ex: 10000"
+                step="0.01"
+                value={form.min_subtotal_eur || ""}
+                onChange={(e) => setF("min_subtotal_eur", e.target.value)}
+                placeholder="Ex: 30"
               />
-              {form.min_subtotal_eur > 0 && (
-                <p className="text-[11px] text-ink-muted mt-1">≈ {form.min_subtotal_eur} €</p>
-              )}
             </div>
 
             <div><Label>Limite d'utilisation</Label><Input type="number" value={form.usage_limit} onChange={(e) => setF("usage_limit", e.target.value)} placeholder="illimité" /></div>

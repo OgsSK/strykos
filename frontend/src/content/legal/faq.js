@@ -7,7 +7,7 @@ export default {
       {
         title: "1. Commander sur CAKESSHOP",
         subsections: [
-          { title: "Comment passer une commande ?", content: "Sélectionnez vos gâteaux, ajoutez-les à votre panier, puis validez votre panier. Renseignez ensuite vos coordonnées de livraison et procédez au paiement par carte bancaire sécurisée. Vous recevrez un e-mail de confirmation dès la validation de votre commande." },
+          { title: "Comment passer une commande ?", content: "Sélectionnez vos gâteaux, ajoutez-les à votre panier, puis validez votre panier. Renseignez ensuite vos coordonnées de livraison et procédez au paiement par carte bancaire sécurisée (ou paiement à la livraison si disponible dans votre pays). Vous recevrez un e-mail de confirmation dès la validation de votre commande." },
           { title: "Faut-il commander à l'avance ?", content: "Pour les gâteaux sur mesure, les wedding cakes et les grosses commandes (buffets, événements), nous vous recommandons de commander au moins 48 à 72 heures à l'avance. Pour les cupcakes, macarons et créations standards, une commande la veille suffit généralement." },
           { title: "Puis-je commander sans créer de compte ?", content: "La création d'un compte vous permet de suivre vos commandes, de gérer vos adresses et de retrouver votre historique d'achats. Nous vous recommandons vivement de créer un compte pour profiter de tous les avantages." },
           { title: "Puis-je modifier ou annuler ma commande ?", content: "Une fois la commande validée et payée, elle entre en préparation. Si vous souhaitez la modifier ou l'annuler, contactez-nous immédiatement à contact@actoos.com. Si la préparation n'a pas encore commencé, nous ferons le nécessaire dans la mesure du possible." },
@@ -21,7 +21,7 @@ export default {
           { title: "Vos gâteaux sont-ils faits maison ?", content: "Oui. Tous nos gâteaux sont préparés dans notre atelier le jour même de la livraison, à partir d'ingrédients frais et soigneusement sélectionnés. Aucun produit industriel, aucune préparation surgelée." },
           { title: "Proposez-vous des options sans gluten, vegan ou sans lactose ?", content: "Oui. Nous proposons plusieurs recettes adaptées : sans gluten, vegan et sans lactose. Ces options sont indiquées sur chaque fiche produit et peuvent être filtrées dans le catalogue. Pour les allergies sévères, merci de nous contacter avant commande." },
           { title: "Puis-je personnaliser mon gâteau ?", content: "Absolument. La plupart de nos gâteaux sont personnalisables : message sur le gâteau, couleurs, décor, nombre de parts, chiffre ou thème. La personnalisation est indiquée sur la fiche produit et un supplément peut s'appliquer." },
-          { title: "Quelles saveurs proposez-vous ?", content: "Nous proposons une large gamme : vanille, chocolat noir et au lait, fruits rouges, citron meringué, pistache, caramel beurre salé, ainsi que des saveurs originales aux inspirations d'Afrique (mangue, bissap, coco)." },
+          { title: "Quelles saveurs proposez-vous ?", content: "Nous proposons une large gamme de grands classiques de la pâtisserie française : vanille de Madagascar, chocolat noir et au lait, fruits rouges, citron meringué, pistache, caramel beurre salé, praliné noisette et fruits frais de saison. Chaque création est préparée avec soin dans notre atelier." },
           { title: "Les photos sont-elles contractuelles ?", content: "Les photographies illustrant nos créations sont fournies à titre indicatif. Elles ne sont pas contractuelles : chaque gâteau étant fait main, de légères variations de couleur, décor ou forme sont possibles." },
           { title: "Comment conserver mon gâteau ?", content: "Nos gâteaux se conservent 48 heures au réfrigérateur dans leur boîte d'origine. Pour une consommation optimale, sortez-les 20 à 30 minutes avant dégustation. Les cupcakes et macarons se conservent 3 à 5 jours." },
         ],
@@ -29,19 +29,19 @@ export default {
       {
         title: "3. Paiement",
         subsections: [
-          { title: "Quels moyens de paiement acceptez-vous ?", content: "Le paiement est actuellement traité par carte bancaire via Stripe, prestataire de paiement sécurisé. D'autres moyens de paiement (mobile money) seront proposés prochainement." },
+          { title: "Quels moyens de paiement acceptez-vous ?", content: "Le paiement par carte bancaire est traité de façon sécurisée par Stripe. Selon votre pays de livraison, le paiement à la livraison en espèces (Cash on Delivery) est également proposé. Le choix des moyens disponibles s'affiche automatiquement à l'étape du paiement." },
           { title: "Le paiement est-il sécurisé ?", content: "Oui. Toutes les transactions sont traitées par Stripe, certifié PCI-DSS. CAKESSHOP ne conserve aucune donnée bancaire sur ses serveurs." },
-          { title: "Dans quelles devises puis-je payer ?", content: "Les prix sont affichés et payés en XOF (franc CFA). D'autres devises pourront être proposées ultérieurement." },
+          { title: "Dans quelles devises puis-je payer ?", content: "Les prix sont affichés en euros (EUR) par défaut. Vous pouvez basculer à tout moment entre les devises disponibles via le sélecteur de devise du site (EUR, USD, GBP). Le paiement est effectué dans la devise affichée au moment de la commande." },
           { title: "Puis-je payer en plusieurs fois ?", content: "Le paiement fractionné n'est pas proposé pour le moment. Cette option pourra être envisagée ultérieurement en fonction des solutions proposées par notre prestataire de paiement." },
         ],
       },
       {
         title: "4. Livraison",
         subsections: [
-          { title: "Où livrez-vous ?", content: "Nous livrons principalement au Mali et en Afrique de l'Ouest. Certaines destinations internationales sont également desservies. Les zones couvertes et les délais sont détaillés dans notre Politique de livraison." },
-          { title: "Quels sont les délais de livraison ?", content: "Les délais varient selon la destination : livraison le jour même ou J+1 à Bamako, 2 à 5 jours ouvrés en Afrique de l'Ouest, 5 à 10 jours ouvrés à l'international. Ces délais courent à compter de la confirmation du paiement et de la préparation." },
-          { title: "Comment mes gâteaux sont-ils livrés ?", content: "Nos gâteaux sont soigneusement emballés dans des boîtes isothermes pour préserver leur fraîcheur et leur présentation. Pour les pièces montées et les wedding cakes, une livraison avec installation est proposée sur Bamako." },
-          { title: "Combien coûtent les frais de livraison ?", content: "Les frais sont calculés automatiquement lors du paiement en fonction de la destination et du créneau choisi. Le montant exact est affiché avant la validation définitive de la commande." },
+          { title: "Où livrez-vous ?", content: "Nous livrons en France, en Belgique et au Mali. D'autres destinations peuvent être desservies sur demande. Les zones couvertes et les délais sont détaillés dans notre Politique de livraison." },
+          { title: "Quels sont les délais de livraison ?", content: "Les délais varient selon la destination et le mode de livraison choisi. À titre indicatif : 2 à 4 jours ouvrés en Belgique, 3 à 5 jours ouvrés en France, 3 à 6 jours ouvrés au Mali (options express disponibles). Ces délais courent à compter de la confirmation du paiement et du début de la préparation." },
+          { title: "Comment mes gâteaux sont-ils livrés ?", content: "Nos gâteaux sont soigneusement emballés dans des boîtes isothermes pour préserver leur fraîcheur et leur présentation. Pour les pièces montées et les wedding cakes, une livraison avec installation peut être proposée sur certaines zones — contactez-nous pour vérifier la disponibilité." },
+          { title: "Combien coûtent les frais de livraison ?", content: "Les frais sont calculés automatiquement lors du paiement en fonction de la destination et du mode choisi. Le montant exact est affiché avant la validation définitive de la commande." },
           { title: "Puis-je suivre mon colis ?", content: "Oui, chaque expédition est accompagnée d'un numéro de suivi envoyé par e-mail. Vous pouvez également consulter le statut de votre commande depuis la page de suivi du site." },
         ],
       },
@@ -89,7 +89,7 @@ export default {
       {
         title: "1. Ordering on CAKESSHOP",
         subsections: [
-          { title: "How do I place an order?", content: "Select your cakes, add them to your cart, then validate your cart. Fill in your delivery details and proceed to payment by secure card payment. You will receive a confirmation email as soon as your order is validated." },
+          { title: "How do I place an order?", content: "Select your cakes, add them to your cart, then validate your cart. Fill in your delivery details and proceed to payment by secure card payment (or cash on delivery where available in your country). You will receive a confirmation email as soon as your order is validated." },
           { title: "Do I need to order in advance?", content: "For custom cakes, wedding cakes and large orders (buffets, events), we recommend ordering at least 48 to 72 hours in advance. For cupcakes, macarons and standard creations, ordering the day before is usually enough." },
           { title: "Can I order without creating an account?", content: "Creating an account allows you to track your orders, manage your addresses and find your purchase history. We strongly recommend creating an account to enjoy all the benefits." },
           { title: "Can I modify or cancel my order?", content: "Once the order is validated and paid, preparation begins. If you wish to modify or cancel it, contact us immediately at contact@actoos.com. If preparation has not yet started, we will do what is necessary where possible." },
@@ -103,7 +103,7 @@ export default {
           { title: "Are your cakes homemade?", content: "Yes. All our cakes are prepared in our workshop the same day as delivery, using fresh, carefully selected ingredients. No industrial products, no frozen preparations." },
           { title: "Do you offer gluten-free, vegan or lactose-free options?", content: "Yes. We offer several adapted recipes: gluten-free, vegan and lactose-free. These options are indicated on each product page and can be filtered in the catalog. For severe allergies, please contact us before ordering." },
           { title: "Can I customize my cake?", content: "Absolutely. Most of our cakes are customizable: message on the cake, colors, decoration, number of slices, number or theme. Customization is indicated on the product page and a supplement may apply." },
-          { title: "Which flavors do you offer?", content: "We offer a wide range: vanilla, dark and milk chocolate, red berries, lemon meringue, pistachio, salted butter caramel, as well as original flavors with African inspirations (mango, hibiscus, coconut)." },
+          { title: "Which flavors do you offer?", content: "We offer a wide range of French pastry classics: Madagascar vanilla, dark and milk chocolate, red berries, lemon meringue, pistachio, salted butter caramel, hazelnut praline and fresh seasonal fruits. Each creation is carefully prepared in our workshop." },
           { title: "Are the photos contractually binding?", content: "Photographs illustrating our creations are provided for illustrative purposes. They are not contractually binding: each cake is handmade, so slight variations in color, decoration or shape are possible." },
           { title: "How should I store my cake?", content: "Our cakes keep for 48 hours in the refrigerator in their original box. For optimal enjoyment, take them out 20 to 30 minutes before serving. Cupcakes and macarons keep for 3 to 5 days." },
         ],
@@ -111,19 +111,19 @@ export default {
       {
         title: "3. Payment",
         subsections: [
-          { title: "Which payment methods do you accept?", content: "Payment is currently processed by card via Stripe, a secure payment provider. Other payment methods (mobile money) will be offered soon." },
+          { title: "Which payment methods do you accept?", content: "Card payment is processed securely via Stripe. Depending on your delivery country, cash on delivery may also be available. The available options are automatically shown at the checkout step." },
           { title: "Is payment secure?", content: "Yes. All transactions are processed by Stripe, PCI-DSS certified. CAKESSHOP does not store any banking data on its servers." },
-          { title: "In which currencies can I pay?", content: "Prices are displayed and paid in XOF (CFA franc). Other currencies may be offered later." },
+          { title: "In which currencies can I pay?", content: "Prices are displayed in euros (EUR) by default. You can switch between available currencies at any time via the site's currency selector (EUR, USD, GBP). Payment is made in the currency displayed at the time of the order." },
           { title: "Can I pay in installments?", content: "Installment payment is not offered at the moment. This option may be considered later depending on the solutions offered by our payment provider." },
         ],
       },
       {
         title: "4. Delivery",
         subsections: [
-          { title: "Where do you ship?", content: "We mainly deliver to Mali and West Africa. Some international destinations are also covered. The zones covered and delivery times are detailed in our Shipping Policy." },
-          { title: "What are the delivery times?", content: "Times vary by destination: same-day or J+1 delivery in Bamako, 2 to 5 business days in West Africa, 5 to 10 business days internationally. These times run from the confirmation of payment and preparation." },
-          { title: "How are my cakes delivered?", content: "Our cakes are carefully packed in insulated boxes to preserve their freshness and presentation. For tiered cakes and wedding cakes, a delivery with installation service is available in Bamako." },
-          { title: "How much are the shipping costs?", content: "Costs are calculated automatically at checkout based on destination and chosen slot. The exact amount is displayed before final confirmation of the order." },
+          { title: "Where do you ship?", content: "We deliver to France, Belgium and Mali. Other destinations may be served on request. The zones covered and delivery times are detailed in our Shipping Policy." },
+          { title: "What are the delivery times?", content: "Times vary by destination and chosen shipping method. Indicatively: 2 to 4 business days in Belgium, 3 to 5 business days in France, 3 to 6 business days in Mali (express options available). These times run from confirmation of payment and the start of preparation." },
+          { title: "How are my cakes delivered?", content: "Our cakes are carefully packed in insulated boxes to preserve their freshness and presentation. For tiered cakes and wedding cakes, a delivery with installation service may be available in certain zones — contact us to check availability." },
+          { title: "How much are the shipping costs?", content: "Costs are calculated automatically at checkout based on destination and chosen method. The exact amount is displayed before final confirmation of the order." },
           { title: "Can I track my package?", content: "Yes, each shipment comes with a tracking number sent by email. You can also check the status of your order from the site's tracking page." },
         ],
       },

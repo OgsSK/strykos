@@ -3,24 +3,42 @@ import { api, setAuthToken } from "@/lib/api";
 import { swrGetShared, invalidateCache, clearAllCache } from "@/lib/cache";
 import { translations, formatMoney } from "@/i18n/translations";
 import { toast } from "sonner";
-// ⭐ NOUVEAU : polling de version pour invalidation intelligente du cache
 import { startCacheVersionPolling, onCacheVersionChange } from "@/lib/cacheVersion";
 
 const StoreContext = createContext(null);
 export const useStore = () => useContext(StoreContext);
 
-const DEFAULT_RATES = { EUR: 1, USD: 1.08, XOF: 655.957 };
+// ⭐ MODIFIÉ : XOF conservé comme filet de sécurité (anciennes commandes, caches legacy)
+const DEFAULT_RATES = { EUR: 1, USD: 1.08, GBP: 0.85, XOF: 655.957 };
 
-// ⭐ Devise par défaut = XOF (FCFA)
-const DEFAULT_CURRENCY = "XOF";
-const CURRENCY_KEY = "strykos_currency_v2";
+// ⭐ MODIFIÉ : Devise par défaut = EUR
+const DEFAULT_CURRENCY = "EUR";
+
+// ⭐ MODIFIÉ : v2 → v3 → force la migration (les users avec XOF stocké repassent en EUR)
+const CURRENCY_KEY = "strykos_currency_v3";
+
+// ⭐ NOUVEAU : devises autorisées à la sélection (aligné sur le backend `currency.active`)
+const ALLOWED_CURRENCIES = new Set(["EUR", "GBP", "USD"]);
 
 export function StoreProvider({ children }) {
   // ---- currency & settings ----
   const [currency, setCurrencyState] = useState(() => {
-    return localStorage.getItem(CURRENCY_KEY) || DEFAULT_CURRENCY;
+    // ⭐ Migration : rejette toute devise legacy (XOF) ou inconnue → EUR
+    const stored = localStorage.getItem(CURRENCY_KEY);
+    if (!stored) return DEFAULT_CURRENCY;
+    if (!ALLOWED_CURRENCIES.has(stored)) {
+      localStorage.removeItem(CURRENCY_KEY);
+      return DEFAULT_CURRENCY;
+    }
+    return stored;
   });
-  const [settings, setSettings] = useState(() => { try { return JSON.parse(localStorage.getItem("strykos_cache:/settings") || "null")?.data || null; } catch { return null; } });
+
+  const [settings, setSettings] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("strykos_cache:/settings") || "null")?.data || null;
+    } catch { return null; }
+  });
+
   const rates = settings?.currency?.rates || DEFAULT_RATES;
 
   // ⭐ NOUVEAU : compteur de version cache — incrémenté à chaque changement admin
@@ -29,7 +47,6 @@ export function StoreProvider({ children }) {
   // ---- Brand ----
   const brand = useMemo(() => {
     const s = settings?.site || {};
-    // ⭐ CORRECTION ICI : On met CAKES et SHOP par défaut au lieu de STRY et KOS
     const full = s.name || `${s.brand_part1 || "CAKES"}${s.brand_part2 || "SHOP"}`;
     return {
       part1: s.brand_part1 || "CAKES",
@@ -61,26 +78,41 @@ export function StoreProvider({ children }) {
     return obj[`${field}_${lang}`] || obj[`${field}_fr`] || obj[`${field}_en`] || "";
   }, [lang]);
 
+  // ⭐ MODIFIÉ : whitelist des devises acceptées
   const setCurrency = (c) => {
-    setCurrencyState(c);
-    localStorage.setItem(CURRENCY_KEY, c);
+    const next = ALLOWED_CURRENCIES.has(c) ? c : DEFAULT_CURRENCY;
+    setCurrencyState(next);
+    localStorage.setItem(CURRENCY_KEY, next);
   };
+
   const convertEur = useCallback((amtEur) => {
     if (amtEur == null) return 0;
-    const v = amtEur * (rates[currency] || 1);
+    const rate = rates[currency] ?? DEFAULT_RATES[currency] ?? 1;
+    const v = amtEur * rate;
+    // Arrondi : XOF → entier, autres → 2 décimales
     return currency === "XOF" ? Math.round(v) : Math.round(v * 100) / 100;
   }, [rates, currency]);
+
   const fmt = useCallback((amount) => formatMoney(amount, currency), [currency]);
+
   const priceOf = useCallback((pricesObj) => {
     if (!pricesObj || !pricesObj[currency]) return { price: 0, compare_at: null };
     return pricesObj[currency];
   }, [currency]);
 
+  // ⭐ MODIFIÉ : applique la devise par défaut du backend si l'utilisateur n'en a pas choisi
   useEffect(() => {
-    swrGetShared("/settings", (d) => setSettings(d), { ttl: 2 * 60 * 1000 }).catch(() => {});
-  }, []);
+    swrGetShared("/settings", (d) => {
+      setSettings(d);
+      const stored = localStorage.getItem(CURRENCY_KEY);
+      const backendDefault = d?.currency?.default;
+      if (!stored && backendDefault && ALLOWED_CURRENCIES.has(backendDefault)) {
+        setCurrencyState(backendDefault);
+      }
+    }, { ttl: 2 * 60 * 1000 }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ⭐ NOUVEAU : polling de version pour invalidation intelligente du cache
+  // ⭐ Polling de version pour invalidation intelligente du cache
   useEffect(() => {
     const stopPolling = startCacheVersionPolling(30000);
 
@@ -91,6 +123,15 @@ export function StoreProvider({ children }) {
       try {
         const settingsRes = await api.get(`/settings?_v=${newVersion}`);
         setSettings(settingsRes.data);
+        // ⭐ Revalide la devise après refresh : si le backend a changé la liste des devises actives
+        const active = settingsRes.data?.currency?.active;
+        if (Array.isArray(active) && active.length > 0 && !active.includes(currency)) {
+          const fallback = settingsRes.data?.currency?.default || active[0] || DEFAULT_CURRENCY;
+          if (ALLOWED_CURRENCIES.has(fallback)) {
+            setCurrencyState(fallback);
+            localStorage.setItem(CURRENCY_KEY, fallback);
+          }
+        }
       } catch (e) {
         console.error("Erreur rechargement après bump version", e);
       }
@@ -100,7 +141,7 @@ export function StoreProvider({ children }) {
       stopPolling();
       unsubscribe();
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- auth ----
   const [user, setUserState] = useState(() => {
@@ -306,7 +347,7 @@ export function StoreProvider({ children }) {
     setUser,
     wishlist, toggleWishlist, loadWishlist,
     cart, cartCount, addToCart, updateQty, removeFromCart, clearCart, cartUnitPrice, cartSubtotal,
-    cacheVersion, 
+    cacheVersion,
   };
 
   useEffect(() => {

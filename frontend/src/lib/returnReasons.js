@@ -10,7 +10,9 @@ export const RETURN_REASONS = [
 
 // Aucun frais de retour applicable (le gâteau est perdu, pas de renvoi)
 export const REASONS_AT_CAKESSHOP_EXPENSE = [];
-export const isStrykosExpense = () => false;
+export const isCakesshopExpense = () => false;
 
-// Délai de réclamation : 24h après livraison
-export const CLAIM_WINDOW_HOURS = 24;
+// ⭐ Délai de réclamation : 48h après livraison
+// Doit rester aligné sur `settings.orders.claim_window_hours` (backend, configurable via /admin/settings)
+// Valeur de référence utilisée par défaut si settings pas encore chargés (fallback)
+export const CLAIM_WINDOW_HOURS = 48;

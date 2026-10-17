@@ -34,7 +34,7 @@ export default {
         subsections: [
           {
             title: "3.1 Délai de signalement",
-            content: "Tout problème doit nous être signalé dans les 24 heures suivant la réception, accompagné de photographies du produit et de son emballage. Passé ce délai, compte tenu de la nature périssable du produit, aucune réclamation ne pourra être acceptée.",
+            content: "Tout problème doit nous être signalé dans les 48 heures suivant la réception de la commande, depuis votre espace client rubrique « Mes commandes ». Compte tenu de la nature périssable du produit, aucune réclamation ne pourra être acceptée passé ce délai. Le délai exact applicable à votre commande est indiqué dans votre espace client.",
           },
         ],
       },
@@ -62,15 +62,15 @@ export default {
       },
       {
         title: "5. Procédure de réclamation",
-        content: "Le traitement d'une réclamation se fait en quatre étapes simples :",
+        content: "Le traitement d'une réclamation se fait directement depuis votre espace client, en quatre étapes simples :",
         subsections: [
           {
-            title: "5.1 Nous contacter",
-            content: "Écrivez-nous à contact@actoos.com dans les 24 heures suivant la réception, avec : votre numéro de commande, une description du problème et des photographies du produit et de son emballage.",
+            title: "5.1 Ouvrir une réclamation",
+            content: "Connectez-vous à votre compte, rendez-vous dans « Mes commandes », sélectionnez la commande concernée puis cliquez sur « Signaler un problème ». Décrivez le motif et joignez si possible des photographies ou une vidéo documentant le problème (limites : 3 photos maximum de 5 Mo chacune, 1 vidéo maximum de 50 Mo). Une référence de suivi (code RMA) vous est attribuée automatiquement.",
           },
           {
             title: "5.2 Analyse de la demande",
-            content: "Notre équipe examine votre demande sous 24 à 48 heures ouvrées et vous propose une solution adaptée : remplacement, avoir ou remboursement.",
+            content: "Notre équipe examine votre demande sous 24 à 48 heures ouvrées. Si nécessaire, nous pouvons vous demander des informations complémentaires ou des pièces supplémentaires via la messagerie intégrée de votre réclamation — vous recevrez une notification par e-mail.",
           },
           {
             title: "5.3 Validation de la solution",
@@ -78,13 +78,13 @@ export default {
           },
           {
             title: "5.4 Remboursement (si applicable)",
-            content: "Le remboursement est émis sous 5 à 10 jours ouvrés sur le moyen de paiement initial, selon votre banque. Il vous sera confirmé par e-mail.",
+            content: "Le remboursement est émis selon le mode de paiement utilisé lors de la commande : remboursement Stripe sur la carte bancaire d'origine (5 à 10 jours ouvrés selon votre banque), virement mobile money, espèces (pour les commandes payées à la livraison) ou code promo valable 12 mois sur une prochaine commande. Une confirmation vous est envoyée par e-mail dans tous les cas.",
           },
         ],
       },
       {
         title: "6. Avoirs et codes promo",
-        content: "Dans certains cas, plutôt qu'un remboursement, nous pouvons vous proposer un avoir utilisable sur une prochaine commande, valable 12 mois. Cette solution est toujours proposée à titre d'option, jamais imposée.",
+        content: "Dans certains cas, plutôt qu'un remboursement, nous pouvons vous proposer un avoir sous forme de code promo utilisable sur une prochaine commande, valable 12 mois. Cette solution est toujours proposée à titre d'option, jamais imposée. Si vous préférez un remboursement sur votre moyen de paiement d'origine, nous respectons ce choix.",
       },
       {
         title: "7. Annulation de commande",
@@ -148,7 +148,7 @@ export default {
         subsections: [
           {
             title: "3.1 Reporting deadline",
-            content: "Any problem must be reported to us within 24 hours of receipt, along with photographs of the product and its packaging. After this period, given the perishable nature of the product, no claim can be accepted.",
+            content: "Any problem must be reported within 48 hours of receipt of the order, from your customer account under \"My orders\". Given the perishable nature of the product, no claim can be accepted after this period. The exact deadline applicable to your order is indicated in your customer account.",
           },
         ],
       },
@@ -176,15 +176,15 @@ export default {
       },
       {
         title: "5. Complaint procedure",
-        content: "Processing a complaint takes place in four simple steps:",
+        content: "Processing a complaint takes place directly from your customer account, in four simple steps:",
         subsections: [
           {
-            title: "5.1 Contact us",
-            content: "Write to us at contact@actoos.com within 24 hours of receipt, with: your order number, a description of the problem and photographs of the product and its packaging.",
+            title: "5.1 Open a claim",
+            content: "Log in to your account, go to \"My orders\", select the relevant order and click \"Report a problem\". Describe the reason and, if possible, attach photographs or a video documenting the issue (limits: 3 photos maximum of 5 MB each, 1 video maximum of 50 MB). A tracking reference (RMA code) is automatically assigned to you.",
           },
           {
             title: "5.2 Review of the request",
-            content: "Our team reviews your request within 24 to 48 business hours and offers you a suitable solution: replacement, store credit or refund.",
+            content: "Our team reviews your request within 24 to 48 business hours. If necessary, we may ask you for additional information or documents via the messaging integrated into your claim — you will be notified by email.",
           },
           {
             title: "5.3 Validation of the solution",
@@ -192,13 +192,13 @@ export default {
           },
           {
             title: "5.4 Refund (if applicable)",
-            content: "The refund is issued within 5 to 10 business days to the original payment method, depending on your bank. It will be confirmed by email.",
+            content: "The refund is issued according to the payment method used for the order: Stripe refund to the original card (5 to 10 business days depending on your bank), mobile money transfer, cash (for orders paid on delivery) or a promo code valid for 12 months on a future order. A confirmation is sent by email in all cases.",
           },
         ],
       },
       {
         title: "6. Store credits and promo codes",
-        content: "In some cases, rather than a refund, we may offer you a store credit usable on a future order, valid for 12 months. This solution is always offered as an option, never imposed.",
+        content: "In some cases, rather than a refund, we may offer you a store credit in the form of a promo code usable on a future order, valid for 12 months. This solution is always offered as an option, never imposed. If you prefer a refund to your original payment method, we respect that choice.",
       },
       {
         title: "7. Order cancellation",

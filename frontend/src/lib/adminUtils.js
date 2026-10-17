@@ -16,24 +16,41 @@ export const mediaSrc = (url) => {
   return url;
 };
 
-// ⭐ Formatage monétaire — FCFA-friendly (arrondi à la centaine pour FCFA)
-export const money = (v, cur) => {
+// ⭐ MODIFIÉ : locale-aware + GBP supporté + XOF conservé (legacy)
+// Usage :
+//   money(34.9, "EUR")             → "34,90 €" (fr-FR par défaut)
+//   money(34.9, "EUR", "en-GB")    → "€34.90"
+//   money(34.9, "GBP")             → "34,90 £GB"
+//   money(34.9, "GBP", "en-GB")    → "£34.90"
+//   money(34.9, "USD", "en-US")    → "$34.90"
+//   money(22855, "XOF")            → "22 900 F CFA" (arrondi centaine, legacy)
+export const money = (v, cur = "EUR", locale = "fr-FR") => {
   if (v == null) return "";
-  const num = Number(v);
+  let num = Number(v);
   if (isNaN(num)) return "";
+
+  // ⭐ Arrondi spécial pour XOF (arrondi à la centaine) — legacy uniquement
   if (cur === "XOF") {
-    // Arrondi à la centaine la plus proche : 26238 → 26 200
-    const rounded = Math.round(num / 100) * 100;
-    return `${rounded.toLocaleString("fr-FR")} FCFA`;
+    num = Math.round(num / 100) * 100;
   }
-  if (cur === "USD") return `$${num.toFixed(2)}`;
-  return `${num.toFixed(2)} €`;
+
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: cur,
+      minimumFractionDigits: cur === "XOF" ? 0 : 2,
+      maximumFractionDigits: cur === "XOF" ? 0 : 2,
+    }).format(num);
+  } catch {
+    // Fallback safe si la devise n'est pas supportée par Intl (very old browsers)
+    return `${num.toFixed(2)} ${cur}`;
+  }
 };
 
-export const fmtDate = (d, withTime = false) => {
+export const fmtDate = (d, withTime = false, locale = "fr-FR") => {
   if (!d) return "-";
   const dt = new Date(d);
-  return withTime ? dt.toLocaleString("fr-FR") : dt.toLocaleDateString("fr-FR");
+  return withTime ? dt.toLocaleString(locale) : dt.toLocaleDateString(locale);
 };
 
 // ⭐ Statuts disponibles dans les flux CAKESSHOP
@@ -98,7 +115,30 @@ export const STATUS_COLORS = {
   refunded: "bg-red-100 text-red-800",
 };
 
-export const CARRIERS = ["DHL Express", "UPS", "FedEx", "Chronopost", "Colissimo", "bpost", "Coursier local", "Autre"];
+// ⭐ MODIFIÉ : transporteurs alignés sur le marché européen
+// Ordre : internationaux EU → nationaux FR/BE/NL/DE/ES/IT → local
+export const CARRIERS = [
+  // Transporteurs internationaux majeurs (tous basés/opérant en Europe)
+  "DHL Express",
+  "UPS",
+  "FedEx",
+  "GLS",
+  "DPD",
+  "TNT",
+  // Transporteurs nationaux — France
+  "Chronopost",
+  "Colissimo",
+  "Mondial Relay",
+  // Transporteurs nationaux — Benelux / Allemagne / Europe du Sud
+  "bpost",
+  "PostNL",
+  "Deutsche Post",
+  "Correos",
+  "Poste Italiane",
+  // Local
+  "Coursier local",
+  "Autre",
+];
 
 const CHUNK = 4 * 1024 * 1024;
 

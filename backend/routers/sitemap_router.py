@@ -6,7 +6,7 @@ from models import Product, Brand, Category
 
 router = APIRouter(tags=["seo"])
 
-BASE_URL = "https://cakes.actoos.com"
+BASE_URL = "https://cakeseu.actoos.com"
 
 
 def _url(loc: str, changefreq: str = "weekly", priority: str = "0.5", lastmod: str | None = None) -> str:

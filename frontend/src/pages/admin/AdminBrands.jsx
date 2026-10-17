@@ -225,7 +225,8 @@ export default function AdminBrands() {
             <div><Label>Description FR</Label><Textarea rows={2} value={form.description_fr} onChange={(e) => setF("description_fr", e.target.value)} /></div>
             <div><Label>Description EN</Label><Textarea rows={2} value={form.description_en} onChange={(e) => setF("description_en", e.target.value)} /></div>
             <div className="flex gap-4 text-sm">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_local} onChange={(e) => setF("is_local", e.target.checked)} /> Marque locale / africaine</label>
+              {/* ⭐ MODIFIÉ : "africaine" → "artisanale" */}
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_local} onChange={(e) => setF("is_local", e.target.checked)} /> Marque locale / artisanale</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.published} onChange={(e) => setF("published", e.target.checked)} /> Visible</label>
             </div>
             <Button onClick={save} className="w-full bg-ink hover:bg-ink/90 rounded-none" data-testid="save-brand-btn">Enregistrer</Button>

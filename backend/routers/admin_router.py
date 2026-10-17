@@ -1363,7 +1363,8 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         cod = value.get("cod") or {}
         try:
             cod["min_amount_xof"] = max(0, int(cod.get("min_amount_xof", 0)))
-            cod["max_amount_xof"] = max(0, int(cod.get("max_amount_xof", 500000)))
+            # ✅ FIX : fallback default = 327979 XOF = 500,00 EUR exact (au lieu de 500000 ≈ 762,25 EUR)
+            cod["max_amount_xof"] = max(0, int(cod.get("max_amount_xof", 327979)))
             cod["extra_fee_xof"] = max(0, int(cod.get("extra_fee_xof", 0)))
             cod["promo_validity_days"] = max(1, int(cod.get("promo_validity_days", 180)))
         except (ValueError, TypeError):
@@ -1371,7 +1372,7 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
         cod["mode"] = cod.get("mode") if cod.get("mode") in ("all", "selected") else "all"
         cod["refund_methods"] = [
             m for m in (cod.get("refund_methods") or [])
-            if m in ("cash", "mobile_money", "promo")
+            if m in ("cash", "mobile_money", "promo", "stripe")
         ] or ["cash"]
         value = {**value, "cod": cod}
     res = await db.execute(select(Setting).where(Setting.key == data.key))
@@ -1692,10 +1693,8 @@ async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depend
     o.payment_status = "partially_refunded" if is_partial else "refunded"
     o.return_decided_at = datetime.now(timezone.utc)
 
-    xof_equivalent = round(refund_amount_eur * 655.957) if o.currency == "XOF" else None
+    # ✅ FIX Résidu #4 : plus de conversion FCFA / XOF dans la note d'historique admin
     amount_label = f"{refund_amount_eur:.2f} {o.charge_currency}"
-    if xof_equivalent:
-        amount_label += f" (≈ {xof_equivalent:,} FCFA)".replace(",", " ")
 
     if is_partial:
         note = f"Réclamation {o.return_rma_code} · remboursé partiellement {amount_label}"
