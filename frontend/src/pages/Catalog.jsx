@@ -39,7 +39,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       </div>
 
-      {/* ---- Équipes (masqué si vide — legacy sport) ---- */}
+      {/* ---- Équipes ---- */}
       {teams && teams.length > 0 && (
         <div>
           <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
@@ -60,7 +60,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
         </div>
       )}
 
-      {/* ---- Clubs (masqué si vide — legacy sport) ---- */}
+      {/* ---- Clubs ---- */}
       {clubs && clubs.length > 0 && (
         <div>
           <h4 className="font-semibold uppercase text-xs tracking-wider mb-3">
@@ -156,6 +156,7 @@ function FilterPanel({ brands, teams, clubs, availableSizes, currencyLabel, filt
 }
 
 export default function Catalog() {
+  // ⭐ cacheVersion ajouté
   const { t, lang, currency, cacheVersion } = useStore();
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -167,16 +168,7 @@ export default function Catalog() {
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
-  // ⭐ CORRIGÉ : GBP ajouté + fallback propre
-  const currencyLabel = useMemo(() => {
-    switch (currency) {
-      case "EUR": return "EUR";
-      case "GBP": return "GBP";
-      case "USD": return "USD";
-      case "XOF": return "FCFA";
-      default: return currency || "EUR";
-    }
-  }, [currency]);
+  const currencyLabel = currency === "XOF" ? "FCFA" : currency === "USD" ? "USD" : "EUR";
 
   const filters = useMemo(() => ({
     category: params.get("category") || "",
@@ -210,31 +202,32 @@ export default function Catalog() {
   }, [cacheVersion]);
 
   const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    const qp = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => { if (v && k !== "q") qp.set(k, v); });
-    if (isSearch && filters.q) qp.set("search", filters.q);
-    qp.set("limit", "48");
-    qp.set("_v", cacheVersion);
-    try {
-      await swrGet(
-        `/products?${qp.toString()}`,
-        (data, stale) => {
-          setProducts(data?.products || []);
-          setTotal(data?.total || 0);
-          if (stale) setLoading(false);
-        },
-        { ttl: 2 * 60 * 1000 }
-      );
-    } catch {
-      setProducts([]);
-      setTotal(0);
-    }
-    setLoading(false);
-  }, [filters, isSearch, cacheVersion]);
+  setLoading(true);
+  const qp = new URLSearchParams();
+  Object.entries(filters).forEach(([k, v]) => { if (v && k !== "q") qp.set(k, v); });
+  if (isSearch && filters.q) qp.set("search", filters.q);
+  qp.set("limit", "48");
+  qp.set("_v", cacheVersion);   // ⭐ AJOUT : utilise cacheVersion pour ESLint
+  try {
+    await swrGet(
+      `/products?${qp.toString()}`,
+      (data, stale) => {
+        setProducts(data?.products || []);
+        setTotal(data?.total || 0);
+        if (stale) setLoading(false);
+      },
+      { ttl: 2 * 60 * 1000 }
+    );
+  } catch {
+    setProducts([]);
+    setTotal(0);
+  }
+  setLoading(false);
+}, [filters, isSearch, cacheVersion]);   // ← inchangé
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
+  // ⭐ Tailles disponibles extraites dynamiquement
   const availableSizes = useMemo(() => {
     const set = new Set();
     products.forEach((p) => {
@@ -248,23 +241,10 @@ export default function Catalog() {
     return sortSizes(Array.from(set));
   }, [products]);
 
-  // ⭐ CORRIGÉ : fallback catégorie aligné sur les catégories cakes
   const title = isSearch
     ? `${t("search")}: "${filters.q}"`
     : filters.category
-    ? t({
-        anniversaires: "birthdays",
-        mariages: "weddings",
-        enfants: "kids",
-        personnalises: "custom",
-        evenements: "events",
-        // Legacy sport (au cas où une ancienne URL traîne)
-        maillots: "jerseys",
-        chaussures: "boots",
-        vetements: "clothing",
-        equipements: "equipment",
-        accessoires: "accessories",
-      }[filters.category] || "catalog")
+    ? t({ maillots: "jerseys", chaussures: "boots", vetements: "clothing", equipements: "equipment", accessoires: "accessories" }[filters.category] || "catalog")
     : filters.on_sale
     ? t("promotions")
     : filters.is_new

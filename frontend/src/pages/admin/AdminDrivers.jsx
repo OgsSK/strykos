@@ -237,7 +237,7 @@ export default function AdminDrivers() {
                       <Clock className="w-3 h-3" /> En attente
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-xs py-0.5 px-2 bg-green-100 text-green-800">
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-green-100 text-green-800">
                       <CheckCircle2 className="w-3 h-3" /> Actif
                     </span>
                   )}
@@ -293,26 +293,22 @@ export default function AdminDrivers() {
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <Label>Prénom *</Label>
-                {/* ⭐ MODIFIÉ : placeholder européen */}
-                <Input value={form.first_name} onChange={(e) => setF("first_name", e.target.value)} placeholder="Pierre" />
+                <Input value={form.first_name} onChange={(e) => setF("first_name", e.target.value)} placeholder="Moussa" />
               </div>
               <div>
                 <Label>Nom</Label>
-                {/* ⭐ MODIFIÉ : placeholder européen */}
-                <Input value={form.last_name} onChange={(e) => setF("last_name", e.target.value)} placeholder="Dupont" />
+                <Input value={form.last_name} onChange={(e) => setF("last_name", e.target.value)} placeholder="Diallo" />
               </div>
             </div>
 
             <div>
               <Label>Email *</Label>
-              {/* ⭐ MODIFIÉ : placeholder européen */}
-              <Input type="email" value={form.email} onChange={(e) => setF("email", e.target.value)} placeholder="pierre.dupont@exemple.com" />
+              <Input type="email" value={form.email} onChange={(e) => setF("email", e.target.value)} placeholder="moussa@exemple.com" />
             </div>
 
             <div>
               <Label>Téléphone</Label>
-              {/* ⭐ MODIFIÉ : format téléphone européen (Belgique) */}
-              <Input value={form.phone} onChange={(e) => setF("phone", e.target.value)} placeholder="+32 4XX XX XX XX" />
+              <Input value={form.phone} onChange={(e) => setF("phone", e.target.value)} placeholder="+223 XX XX XX XX" />
             </div>
 
             <div>
@@ -321,8 +317,7 @@ export default function AdminDrivers() {
                 rows={2}
                 value={form.notes}
                 onChange={(e) => setF("notes", e.target.value)}
-                // ⭐ MODIFIÉ : zone Bruxelles au lieu de Bamako
-                placeholder="Zone Bruxelles centre, disponible 8h-18h…"
+                placeholder="Zone Bamako centre, disponible 8h-18h…"
               />
               <p className="text-[11px] text-ink-muted mt-1">Ces notes ne sont visibles que par vous.</p>
             </div>

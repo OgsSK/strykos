@@ -130,7 +130,9 @@ function CardEditor({ card, onChange, onRemove, testid, index }) {
 }
 
 export function SectionsEditor({ sections, onChange, only = null }) {
+  // Liste maîtresse de toutes les sections supportées (ordre d'affichage par défaut)
   const ALL_KEYS = ["categories", "new_arrivals", "promotions", "best_sellers", "featured"];
+  // Filtre selon la prop "only" si fournie (permet de masquer certaines sections dans l'admin)
   const keys = only ? ALL_KEYS.filter((k) => only.includes(k)) : ALL_KEYS;
 
   const upd = (k, patch) => onChange({ ...sections, [k]: { ...(sections?.[k] || {}), ...patch } });
@@ -206,6 +208,7 @@ export function IconsEditor({ icons, onChange }) {
         <div><Label>Titre EN</Label><Input value={v.title_en || ""} onChange={(e) => set({ title_en: e.target.value })} /></div>
       </div>
 
+      {/* ---------- VIGNETTES ---------- */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <Label>Vignettes ({items.length}/16)</Label>
@@ -220,6 +223,7 @@ export function IconsEditor({ icons, onChange }) {
           {items.map((it, i) => (
             <div key={i} className="border border-border bg-white p-3" data-testid={`icon-item-${i}`}>
               <div className="flex items-start gap-3">
+                {/* Preview compact */}
                 <div className="shrink-0">
                   <SingleMediaUploader
                     compact
@@ -229,6 +233,8 @@ export function IconsEditor({ icons, onChange }) {
                     testid={`icon-image-${i}`}
                   />
                 </div>
+
+                {/* Champs */}
                 <div className="flex-1 min-w-0 grid grid-cols-1 gap-2">
                   <div className="grid grid-cols-2 gap-2">
                     <Input value={it.label_fr || ""} onChange={(e) => updItem(i, { label_fr: e.target.value })} placeholder="Libelle FR" className="h-8 text-xs" />
@@ -236,6 +242,8 @@ export function IconsEditor({ icons, onChange }) {
                   </div>
                   <Input value={it.link || ""} onChange={(e) => updItem(i, { link: e.target.value })} placeholder="/catalog?category=..." className="h-8 text-xs" />
                 </div>
+
+                {/* Actions */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button type="button" onClick={() => moveItem(i, -1)} className="p-1 hover:bg-secondary rounded" title="Monter"><ArrowUp className="w-3.5 h-3.5" /></button>
                   <button type="button" onClick={() => moveItem(i, 1)} className="p-1 hover:bg-secondary rounded" title="Descendre"><ArrowDown className="w-3.5 h-3.5" /></button>
@@ -247,6 +255,7 @@ export function IconsEditor({ icons, onChange }) {
         </div>
       </div>
 
+      {/* ---------- COLONNES ---------- */}
       <div>
         <div className="flex items-center justify-between mb-3">
           <Label>Colonnes de liens ({columns.length}/4)</Label>
@@ -362,13 +371,11 @@ export function FeaturesEditor({ features, onChange }) {
               <div className="sm:col-span-3 grid sm:grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs">Sous-titre FR</Label>
-                  {/* ⭐ MODIFIÉ : placeholder "À Bamako et environs" → "France, Belgique et Mali" */}
-                  <Input value={it.subtitle_fr || ""} onChange={(e) => upd(i, { subtitle_fr: e.target.value })} placeholder="France, Belgique et Mali" className="h-9" />
+                  <Input value={it.subtitle_fr || ""} onChange={(e) => upd(i, { subtitle_fr: e.target.value })} placeholder="À Bamako et environs" className="h-9" />
                 </div>
                 <div>
                   <Label className="text-xs">Sous-titre EN</Label>
-                  {/* ⭐ MODIFIÉ : placeholder "In Bamako and nearby" → "France, Belgium and Mali" */}
-                  <Input value={it.subtitle_en || ""} onChange={(e) => upd(i, { subtitle_en: e.target.value })} placeholder="France, Belgium and Mali" className="h-9" />
+                  <Input value={it.subtitle_en || ""} onChange={(e) => upd(i, { subtitle_en: e.target.value })} placeholder="In Bamako and nearby" className="h-9" />
                 </div>
               </div>
             </div>
@@ -426,7 +433,7 @@ export function TestimonialsEditor({ testimonials, onChange }) {
             <div className="grid sm:grid-cols-[1fr_100px_180px] gap-3">
               <div>
                 <Label className="text-xs">Nom du client</Label>
-                <Input value={t.name || ""} onChange={(e) => upd(i, { name: e.target.value })} placeholder="Sophie Martin" className="h-9" />
+                <Input value={t.name || ""} onChange={(e) => upd(i, { name: e.target.value })} placeholder="Aminata Traoré" className="h-9" />
               </div>
               <div>
                 <Label className="text-xs">Note (1-5)</Label>

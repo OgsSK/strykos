@@ -18,8 +18,14 @@ import { forceCheckVersion } from "@/lib/cacheVersion";
 // ⭐ Taille de page (batch size)
 const PAGE_SIZE = 20;
 
-// ⭐ Taux fixe interne (calcul silencieux, jamais affiché)
 const XOF_RATE = 655.957;
+
+const xofToEur = (xof) => {
+  if (xof === "" || xof === null || xof === undefined) return "";
+  const n = parseFloat(xof);
+  if (isNaN(n)) return "";
+  return Math.round((n / XOF_RATE) * 100) / 100;
+};
 
 const eurToXof = (eur) => {
   if (eur === "" || eur === null || eur === undefined) return "";
@@ -120,6 +126,11 @@ const FIELD_TYPES = [
   { value: "select",   label: "Choix unique" },
 ];
 
+const fmtXof = (amount) => {
+  if (amount == null) return "";
+  const rounded = Math.round(Number(amount) / 100) * 100;
+  return `${rounded.toLocaleString("fr-FR")} FCFA`;
+};
 const fmtEur = (amount) => (amount == null ? "" : `${Number(amount).toFixed(2)} €`);
 
 const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -134,17 +145,19 @@ export default function AdminProducts() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [q, setQ] = useState("");
-  const [appliedQ, setAppliedQ] = useState("");
+  const [q, setQ] = useState("");                     // input
+  const [appliedQ, setAppliedQ] = useState("");       // ⭐ valeur réellement envoyée au serveur
   const [stockFilter, setStockFilter] = useState(params.get("stock") || "all");
   const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [] });
   const [showPresets, setShowPresets] = useState(false);
 
+  // ⭐ NOUVEAU : pagination "Charger plus"
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [total, setTotal] = useState(0);
 
+  // ⭐ load() accepte une limite explicite + utilise les filtres serveur
   const load = (lim = limit) => {
     const sp = new URLSearchParams();
     if (appliedQ) sp.set("q", appliedQ);
@@ -162,11 +175,13 @@ export default function AdminProducts() {
       .catch(() => setLoadingMore(false));
   };
 
+  // ⭐ Rechargement quand un filtre serveur change (recherche validée / stock)
   useEffect(() => {
     setLimit(PAGE_SIZE);
     load(PAGE_SIZE);
   }, [appliedQ, stockFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Chargements annexes (marques, catégories, taxonomies) — une seule fois
   useEffect(() => {
     api.get("/admin/brands").then((r) => setBrands(r.data)).catch(() => {});
     api.get("/admin/categories").then((r) => setCats(r.data)).catch(() => {});
@@ -175,6 +190,7 @@ export default function AdminProducts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ⭐ NOUVEAU : charger 20 de plus
   const loadMore = () => {
     setLoadingMore(true);
     const newLimit = limit + PAGE_SIZE;
@@ -218,6 +234,7 @@ export default function AdminProducts() {
   const updVariant = (i, k, v) => setF("variants", form.variants.map((x, idx) => (idx === i ? { ...x, [k]: v } : x)));
   const delVariant = (i) => setF("variants", form.variants.filter((_, idx) => idx !== i));
 
+  // ⭐ Gestion des champs de personnalisation
   const addCustomField = () => setF("customization_fields", [
     ...(form.customization_fields || []),
     {
@@ -274,12 +291,10 @@ export default function AdminProducts() {
       slug: form.slug || slugify(form.name_fr),
       gender: form.gender || "", sport: form.sport || "",
       price_eur: parseFloat(form.price_eur) || 0,
-      // ⭐ Calcul silencieux de price_xof (compat backend) — jamais affiché
-      price_xof: form.price_eur ? eurToXof(form.price_eur) : null,
       price_usd: numOrNull(form.price_usd),
+      price_xof: numOrNull(form.price_xof),
       sale_price_eur: numOrNull(form.sale_price_eur),
-      // ⭐ Calcul silencieux de sale_price_xof
-      sale_price_xof: form.sale_price_eur ? eurToXof(form.sale_price_eur) : null,
+      sale_price_xof: numOrNull(form.sale_price_xof),
       customization_price_eur: parseFloat(form.customization_price_eur) || 0,
       customization_fields: (form.customization_fields || []).map((f) => ({
         ...f,
@@ -330,6 +345,7 @@ export default function AdminProducts() {
     } catch (e) { toast.error(apiError(e)); }
   };
 
+  // ⭐ Filtrage désormais serveur → on affiche directement `products`
   const filtered = products;
 
   return (
@@ -375,7 +391,7 @@ export default function AdminProducts() {
             <tr>
               <th className="p-3">Produit</th>
               <th className="p-3 hidden md:table-cell">Catégorie</th>
-              <th className="p-3">Prix EUR</th>
+              <th className="p-3">Prix FCFA</th>
               <th className="p-3">Stock</th>
               <th className="p-3 hidden sm:table-cell">Ventes</th>
               <th className="p-3">Statut</th>
@@ -385,8 +401,8 @@ export default function AdminProducts() {
           <tbody>
             {filtered.map((p) => {
               const stock = (p.variants || []).reduce((s, v) => s + v.stock, 0);
-              const priceEur = p.prices?.EUR?.price ?? 0;
-              const compareEur = p.prices?.EUR?.compare_at ?? null;
+              const priceXof = p.prices?.XOF?.price ?? 0;
+              const compareXof = p.prices?.XOF?.compare_at ?? null;
               return (
                 <tr key={p.id} className="border-t border-border hover:bg-secondary/50" data-testid={`admin-product-${p.slug}`}>
                   <td className="p-3">
@@ -411,12 +427,15 @@ export default function AdminProducts() {
                   <td className="p-3 whitespace-nowrap">
                     {p.on_sale ? (
                       <>
-                        <span className="text-brand font-semibold">{fmtEur(priceEur)}</span>{" "}
-                        <s className="text-xs text-ink-muted">{fmtEur(compareEur)}</s>
+                        <span className="text-brand font-semibold">{fmtXof(priceXof)}</span>{" "}
+                        <s className="text-xs text-ink-muted">{fmtXof(compareXof)}</s>
                       </>
                     ) : (
-                      <span className="font-medium">{fmtEur(priceEur)}</span>
+                      <span className="font-medium">{fmtXof(priceXof)}</span>
                     )}
+                    <div className="text-[10px] text-ink-muted mt-0.5">
+                      {p.price_eur ? fmtEur(p.price_eur) : ""}
+                    </div>
                   </td>
                   <td className={`p-3 font-semibold ${stock === 0 ? "text-red-600" : stock <= 5 ? "text-amber-600" : ""}`}>
                     {stock}
@@ -455,6 +474,7 @@ export default function AdminProducts() {
         </table>
       </div>
 
+      {/* ⭐ NOUVEAU : bouton "Charger plus" */}
       {hasMore && (
         <div className="text-center mt-4 p-4">
           <button
@@ -468,6 +488,7 @@ export default function AdminProducts() {
         </div>
       )}
 
+      {/* === DIALOG (inchangé) === */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-auto">
           <DialogHeader>
@@ -530,31 +551,49 @@ export default function AdminProducts() {
               </div>
             </section>
 
-            {/* === PRIX — ⭐ AUCUNE TRACE DE FCFA === */}
+            {/* === PRIX === */}
             <section>
               <h4 className="text-xs uppercase tracking-wider text-ink-muted mb-2">Prix</h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <Label>Prix EUR * <span className="text-ink-muted font-normal">(affiché au client)</span></Label>
+                  <Label>Prix FCFA * <span className="text-ink-muted font-normal">(affiché au client)</span></Label>
                   <Input
                     type="number"
-                    step="0.01"
-                    value={form.price_eur}
-                    onChange={(e) => setF("price_eur", e.target.value)}
-                    placeholder="Ex: 34.90"
-                    data-testid="pf-price-eur"
+                    step="100"
+                    value={form.price_xof || ""}
+                    onChange={(e) => {
+                      const xof = e.target.value;
+                      setF("price_xof", xof);
+                      setF("price_eur", xofToEur(xof));
+                    }}
+                    placeholder="Ex: 25000"
+                    data-testid="pf-price-xof"
                   />
+                  {form.price_eur !== "" && (
+                    <p className="text-[11px] text-ink-muted mt-1">
+                      ≈ {form.price_eur} € <span className="italic">(technique Stripe)</span>
+                    </p>
+                  )}
                 </div>
                 <div>
-                  <Label>Prix promo EUR <span className="text-ink-muted font-normal">(optionnel)</span></Label>
+                  <Label>Prix promo FCFA <span className="text-ink-muted font-normal">(optionnel)</span></Label>
                   <Input
                     type="number"
-                    step="0.01"
-                    value={form.sale_price_eur || ""}
-                    onChange={(e) => setF("sale_price_eur", e.target.value)}
-                    placeholder="Ex: 29.90"
-                    data-testid="pf-sale-price-eur"
+                    step="100"
+                    value={form.sale_price_xof || ""}
+                    onChange={(e) => {
+                      const xof = e.target.value;
+                      setF("sale_price_xof", xof);
+                      setF("sale_price_eur", xofToEur(xof));
+                    }}
+                    placeholder="Ex: 20000"
+                    data-testid="pf-sale-price-xof"
                   />
+                  {form.sale_price_eur !== "" && (
+                    <p className="text-[11px] text-ink-muted mt-1">
+                      ≈ {form.sale_price_eur} €
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Prix USD manuel <span className="text-ink-muted font-normal">(optionnel)</span></Label>
@@ -568,7 +607,7 @@ export default function AdminProducts() {
                 </div>
               </div>
               <p className="text-[11px] text-ink-muted mt-2">
-                💡 Le prix EUR est utilisé pour Stripe. Le prix en devise locale est calculé automatiquement depuis les taux de change configurés dans Paramètres → Devises.
+                💡 Le prix FCFA est saisi manuellement. Il est converti automatiquement en EUR (pour Stripe) avec le taux actuel.
               </p>
             </section>
 
@@ -717,7 +756,7 @@ export default function AdminProducts() {
                 </div>
 
                 <p className="text-[11px] text-ink-muted mb-3">
-                  Chaque champ est proposé au client sur la fiche produit. Prix = surcoût cumulé par champ (en EUR).
+                  Chaque champ est proposé au client sur la fiche produit. Prix = surcoût cumulé par champ.
                 </p>
 
                 {(form.customization_fields || []).length === 0 && (
@@ -752,12 +791,18 @@ export default function AdminProducts() {
                           </select>
                         </div>
                         <div>
-                          <Label className="text-xs">Prix supplément (EUR)</Label>
+                          <Label className="text-xs">Prix supplément (FCFA)</Label>
                           <Input
                             type="number"
-                            step="0.01"
-                            value={f.price_eur ?? 0}
-                            onChange={(e) => updCustomField(i, { price_eur: parseFloat(e.target.value) || 0 })}
+                            step="100"
+                            value={f.price_xof || (f.price_eur ? eurToXof(f.price_eur) : "")}
+                            onChange={(e) => {
+                              const xof = e.target.value;
+                              updCustomField(i, {
+                                price_xof: xof,
+                                price_eur: xofToEur(xof),
+                              });
+                            }}
                             className="h-9"
                           />
                         </div>
@@ -841,12 +886,16 @@ export default function AdminProducts() {
                   <Input placeholder="Référence" value={v.sku} onChange={(e) => updVariant(i, "sku", e.target.value)} />
                   <Input placeholder="Stock" type="number" value={v.stock} onChange={(e) => updVariant(i, "stock", e.target.value)} data-testid={`variant-stock-${i}`} />
                   <Input
-                    placeholder="+EUR"
+                    placeholder="+FCFA"
                     type="number"
-                    step="0.01"
-                    value={v.extra_price_eur ?? 0}
-                    onChange={(e) => updVariant(i, "extra_price_eur", parseFloat(e.target.value) || 0)}
-                    title="Supplément en EUR"
+                    step="100"
+                    value={v.extra_price_xof || ""}
+                    onChange={(e) => {
+                      const xof = e.target.value;
+                      updVariant(i, "extra_price_xof", xof);
+                      updVariant(i, "extra_price_eur", xofToEur(xof));
+                    }}
+                    title="Supplément FCFA"
                   />
                   <button type="button" onClick={() => delVariant(i)} className="text-brand">
                     <Trash2 className="w-4 h-4" />

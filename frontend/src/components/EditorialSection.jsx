@@ -4,13 +4,12 @@ import { useStore } from "@/context/StoreProvider";
 import { ArrowRight } from "lucide-react";
 import { mediaSrc } from "@/lib/adminUtils";
 
-// ⭐ MODIFIÉ : default pâtisserie (avant : legacy STRIKOS sport)
 const DEFAULT = {
   image_url: "",
-  title_fr: "L'ART DU GÂTEAU SUR MESURE",
-  title_en: "THE ART OF CUSTOM CAKES",
-  subtitle_fr: "Gâteaux d'anniversaire, wedding cakes et créations personnalisées. Pâtisserie artisanale livrée avec soin en France, Belgique et Mali.",
-  subtitle_en: "Birthday cakes, wedding cakes and custom creations. Artisan pastry carefully delivered in France, Belgium and Mali.",
+  title_fr: "L'ÉQUIPEMENT DES VRAIS JOUEURS",
+  title_en: "GEAR FOR REAL PLAYERS",
+  subtitle_fr: "Maillots authentiques, chaussures et équipements des plus grandes marques. Livraison internationale suivie.",
+  subtitle_en: "Authentic jerseys, boots and gear from the biggest brands. Tracked worldwide delivery.",
   cta_fr: "Découvrir le catalogue",
   cta_en: "Shop now",
   cta_link: "/catalog",

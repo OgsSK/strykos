@@ -28,13 +28,12 @@ export default function Checkout() {
   const [selectedAddressId, setSelectedAddressId] = useState(null);
   const [showNewForm, setShowNewForm] = useState(false);
 
-  // ⭐ MODIFIÉ : pays par défaut = FR (France)
   const [form, setForm] = useState({
     first_name: user?.first_name || "",
     last_name: user?.last_name || "",
     email: user?.email || "",
     phone: user?.phone || "",
-    country: "FR",
+    country: "ML",
     city: "",
     address_line: "",
     postal_code: "",
@@ -780,12 +779,11 @@ export default function Checkout() {
                             ? "Réglez en espèces au moment de la réception."
                             : "Pay in cash when you receive your order."}
                         </div>
-                        {/* ✅ FIX Bug #3 : plus de FCFA/XOF — utilise la devise courante via fmt() */}
-                        {codExtraFeeDisplay > 0 && (
+                        {codStatus.extra_fee_xof > 0 && (
                           <div className="text-xs text-amber-700 font-semibold mt-1">
                             {lang === "fr"
-                              ? `+ ${fmt(codExtraFeeDisplay)} de frais`
-                              : `+ ${fmt(codExtraFeeDisplay)} fee`}
+                              ? `+ ${codStatus.extra_fee_xof.toLocaleString("fr-FR")} FCFA de frais`
+                              : `+ ${codStatus.extra_fee_xof.toLocaleString("en-GB")} XOF fee`}
                           </div>
                         )}
                       </div>
@@ -878,6 +876,7 @@ export default function Checkout() {
               {paymentMethod === "cod" ? fmt(totalWithCod) : fmt(total)}
             </span>
           </div>
+          {/* ⭐ RETIRÉ : plus de texte "Facture en EUR" */}
           {/* ⭐ Info COD dans le récap */}
           {paymentMethod === "cod" && (
             <div className="mt-3 pt-3 border-t border-border text-xs text-amber-800">

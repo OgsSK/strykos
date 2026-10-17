@@ -9,6 +9,19 @@ import { money, fmtDate, mediaSrc, STATUSES, STATUS_LABELS, STATUS_COLORS } from
 import { toast } from "sonner";
 import { ArrowLeft, Truck, Mail, RotateCcw, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Send, Image as ImageIcon, Film, Loader2, Copy, RefreshCw, KeyRound, Banknote, AlertCircle } from "lucide-react";
 
+// ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
+const XOF_RATE = 655.957;
+const xofToEur = (xof) => {
+  if (xof === "" || xof === null || xof === undefined) return null;
+  const n = parseFloat(xof);
+  if (isNaN(n)) return null;
+  return Math.round((n / XOF_RATE) * 100) / 100;
+};
+const eurToXof = (eur) => {
+  if (eur === "" || eur === null || eur === undefined) return 0;
+  return Math.round(parseFloat(eur) * XOF_RATE);
+};
+
 // ⭐ NOUVEAU : skeleton de chargement
 const SkeletonBlock = ({ rows = 3 }) => (
   <div className="bg-white border border-border p-5 animate-pulse">
@@ -30,6 +43,7 @@ export default function AdminOrderDetail() {
   const [refuseReason, setRefuseReason] = useState("");
   const [showRefuse, setShowRefuse] = useState(false);
 
+  // ⭐ États UI (nouveaux)
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,10 +56,15 @@ export default function AdminOrderDetail() {
   const [segments, setSegments] = useState([]);
   const [originCountry, setOriginCountry] = useState("");
 
-  // ⭐ Modale unifiée : accepter + rembourser (Stripe)
+  // ⭐ Modale unifiée : accepter + rembourser
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [claimAmount, setClaimAmount] = useState("");
   const [claimMessage, setClaimMessage] = useState("");
+
+  // ⭐ Modale remboursement direct (hors réclamation)
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundAmount, setRefundAmount] = useState("");
+  const [refundMessage, setRefundMessage] = useState("");
 
   // ⭐ Réclamation — conversation + demande d'infos
   const [claimMessages, setClaimMessages] = useState([]);
@@ -130,6 +149,7 @@ export default function AdminOrderDetail() {
     setOriginCountry(o.shipping_origin_country || "");
   }, [o?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ⭐ NOUVEAU : refresh manuel
   const refresh = async () => {
     await load(true);
     toast.success("Commande actualisée");
@@ -328,14 +348,14 @@ export default function AdminOrderDetail() {
     setShowClaimModal(true);
   };
 
-  // ⭐ Confirmer : accepter + rembourser en 1 action (Stripe)
-  // ⭐ MODIFIÉ : saisie directe dans la devise de charge (pas de conversion FCFA)
+  // ⭐ Confirmer : accepter + rembourser en 1 action (Stripe uniquement)
   const confirmClaim = async () => {
-    const amount = claimAmount.trim() === "" ? null : parseFloat(claimAmount);
-    if (amount !== null && (isNaN(amount) || amount <= 0)) {
+    const inputXof = claimAmount.trim() === "" ? null : parseFloat(claimAmount);
+    if (inputXof !== null && (isNaN(inputXof) || inputXof <= 0)) {
       toast.error("Montant invalide");
       return;
     }
+    const amountEur = inputXof !== null ? Math.round((inputXof / XOF_RATE) * 100) / 100 : null;
 
     setBusy(true);
     try {
@@ -343,13 +363,14 @@ export default function AdminOrderDetail() {
         await api.post(`/admin/orders/${o.id}/approve-return`);
       }
       await api.post(`/admin/orders/${o.id}/refund-return`, {
-        amount,
+        amount: amountEur,
         message: claimMessage,
       });
 
+      const amtXof = amountEur ? Math.round(parseFloat(amountEur) * XOF_RATE) : null;
       toast.success(
-        amount
-          ? `Remboursement partiel de ${money(amount, o.charge_currency)} émis`
+        amtXof
+          ? `Remboursement partiel de ${amtXof.toLocaleString("fr-FR")} FCFA émis`
           : "Remboursement total émis"
       );
       setShowClaimModal(false);
@@ -358,6 +379,32 @@ export default function AdminOrderDetail() {
       toast.error(apiError(e));
     }
     setBusy(false);
+  };
+
+  // ⭐ Remboursement direct (sans réclamation)
+  const openRefundModal = () => {
+    setRefundAmount("");
+    setRefundMessage("");
+    setShowRefundModal(true);
+  };
+
+  const confirmRefund = () => {
+    const inputXof = refundAmount.trim() === "" ? null : parseFloat(refundAmount);
+    if (inputXof !== null && (isNaN(inputXof) || inputXof <= 0)) {
+      toast.error("Montant invalide");
+      return;
+    }
+    const amountEur = inputXof !== null ? Math.round((inputXof / XOF_RATE) * 100) / 100 : null;
+
+    run(
+      () => api.post(`/admin/orders/${o.id}/refund`, {
+        amount: amountEur,
+        notify: true,
+        message: refundMessage,
+      }),
+      "Remboursement effectué"
+    );
+    setShowRefundModal(false);
   };
 
   const remove = async () => {
@@ -385,6 +432,7 @@ export default function AdminOrderDetail() {
     setShowReturnRefuse(false); setReturnRefuseReason("");
   };
 
+  // ⭐ Admin demande des infos complémentaires
   const submitClaimInfo = async () => {
     if (!claimInfoMessage.trim()) {
       toast.error("Écrivez un message au client");
@@ -490,6 +538,7 @@ export default function AdminOrderDetail() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
+          {/* ⭐ NOUVEAU : bouton refresh */}
           <button
             onClick={refresh}
             disabled={refreshing}
@@ -750,6 +799,7 @@ export default function AdminOrderDetail() {
 
       <div className="grid lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
+          {/* Livraison programmée */}
           {o.scheduled_date && (
             <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-sm">
               <div className="flex items-start gap-3">
@@ -767,6 +817,7 @@ export default function AdminOrderDetail() {
             </div>
           )}
 
+          {/* Code OTP de livraison */}
           {(o.status === "shipped" || o.status === "in_transit") && o.delivery_otp && (
             <div className="bg-purple-50 border-l-4 border-purple-500 p-4 rounded-sm" data-testid="delivery-otp-panel">
               <div className="flex items-start gap-3">
@@ -834,6 +885,7 @@ export default function AdminOrderDetail() {
             </div>
           )}
 
+          {/* Note du client */}
           {o.customer_note && (
             <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-sm">
               <div className="flex items-start gap-3">
@@ -967,12 +1019,14 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
+          {/* Notes */}
           <div className="bg-white border border-border p-5">
             <h3 className="font-semibold uppercase text-sm mb-3">Notes internes</h3>
             <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
             <Button onClick={saveNotes} disabled={busy} variant="outline" className="mt-2 rounded-none">Enregistrer</Button>
           </div>
 
+          {/* History */}
           <div className="bg-white border border-border p-5">
             <h3 className="font-semibold uppercase text-sm mb-3">Historique</h3>
             <ol className="text-sm space-y-2">
@@ -991,6 +1045,7 @@ export default function AdminOrderDetail() {
         </div>
 
         <div className="space-y-4">
+          {/* Status */}
           <div className="bg-white border border-border p-5">
             <h3 className="font-semibold uppercase text-sm mb-3">Changer le statut</h3>
             <Input value={statusNote} onChange={(e) => setStatusNote(e.target.value)} placeholder="Note (optionnel)" className="mb-2" />
@@ -1004,6 +1059,7 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
+          {/* Customer */}
           <div className="bg-white border border-border p-5 text-sm">
             <h3 className="font-semibold uppercase text-sm mb-3">Client</h3>
             <div className="font-medium">{o.first_name} {o.last_name}</div>
@@ -1016,6 +1072,7 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
+          {/* Emails */}
           <div className="bg-white border border-border p-5 text-sm">
             <h3 className="font-semibold uppercase text-sm mb-3 inline-flex items-center gap-2"><Mail className="w-4 h-4" /> E-mails</h3>
             {(o.emails || []).map((e) => (
@@ -1030,6 +1087,7 @@ export default function AdminOrderDetail() {
             </div>
           </div>
 
+          {/* Payments */}
           <div className="bg-white border border-border p-5 text-sm">
             <h3 className="font-semibold uppercase text-sm mb-3">Paiement</h3>
             {(o.payments || []).map((p) => {
@@ -1056,7 +1114,7 @@ export default function AdminOrderDetail() {
                   </div>
                   {refundedEur !== null && (
                     <div className="text-ink-muted">
-                      Remboursé : <strong className="text-brand">{money(refundedEur, p.currency)}</strong>
+                      Remboursé : <strong className="text-brand">{refundedEur.toFixed(2)} {p.currency}</strong>
                     </div>
                   )}
                   {p.payment_intent && (
@@ -1105,7 +1163,7 @@ export default function AdminOrderDetail() {
         </div>
       </div>
 
-      {/* ⭐ Modale réclamation Stripe : montant en devise de charge (EUR/GBP) + message */}
+      {/* Modale réclamation (Stripe) : montant FCFA + message */}
       {showClaimModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowClaimModal(false)}>
           <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
@@ -1114,25 +1172,25 @@ export default function AdminOrderDetail() {
               <div className="flex-1">
                 <h3 className="font-bold text-lg mb-1">Accepter et rembourser</h3>
                 <p className="text-xs text-ink-soft">
-                  Réclamation <strong>{o.return_rma_code}</strong> · Total payé : {money(o.charge_total, o.charge_currency)}
+                  Réclamation <strong>{o.return_rma_code}</strong> · Total payé : {eurToXof(o.charge_total).toLocaleString("fr-FR")} FCFA
                 </p>
               </div>
             </div>
 
             <Label className="text-xs uppercase tracking-wider text-ink-muted">
-              Montant à rembourser ({o.charge_currency})
+              Montant à rembourser (FCFA)
             </Label>
             <Input
               type="number"
-              step="0.01"
+              step="100"
               value={claimAmount}
               onChange={(e) => setClaimAmount(e.target.value)}
-              placeholder={`Vide = remboursement total (${money(o.charge_total, o.charge_currency)})`}
+              placeholder={`Vide = remboursement total (${eurToXof(o.charge_total).toLocaleString("fr-FR")} FCFA)`}
               className="mt-1 rounded-none"
               data-testid="claim-amount-input"
             />
             <p className="text-[11px] text-ink-muted mt-1">
-              💡 Saisissez le montant en {o.charge_currency}. Laissez vide pour un remboursement total, ou saisissez un montant pour un remboursement partiel (ex : frais de livraison non remboursés).
+              💡 Saisissez le montant en FCFA. Laissez vide pour un remboursement total, ou saisissez un montant pour un remboursement partiel (ex : frais de livraison non remboursés). Converti automatiquement en EUR pour Stripe.
             </p>
 
             <Label className="text-xs uppercase tracking-wider text-ink-muted mt-4 block">
@@ -1160,6 +1218,47 @@ export default function AdminOrderDetail() {
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold uppercase disabled:opacity-50"
                 data-testid="confirm-claim-btn">
                 {busy ? "..." : "Accepter et rembourser"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale remboursement direct (legacy Stripe) */}
+      {showRefundModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowRefundModal(false)}>
+          <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <RotateCcw className="w-6 h-6 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-bold text-lg mb-1">Rembourser la commande</h3>
+                <p className="text-xs text-ink-soft">
+                  Commande <strong>{o.order_number}</strong> · Total : {eurToXof(o.charge_total).toLocaleString("fr-FR")} FCFA
+                </p>
+              </div>
+            </div>
+
+            <Label className="text-xs uppercase tracking-wider text-ink-muted">Montant (FCFA)</Label>
+            <Input
+              type="number"
+              step="100"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
+              placeholder={`Vide = total (${eurToXof(o.charge_total).toLocaleString("fr-FR")} FCFA)`}
+              className="mt-1 rounded-none"
+            />
+            <p className="text-[11px] text-ink-muted mt-1">
+              💡 Saisissez en FCFA. Converti automatiquement en EUR pour Stripe.
+            </p>
+
+            <Label className="text-xs uppercase tracking-wider text-ink-muted mt-4 block">💬 Message (optionnel)</Label>
+            <Textarea rows={4} value={refundMessage} onChange={(e) => setRefundMessage(e.target.value)}
+              placeholder="Message au client..." className="mt-1 rounded-none" maxLength={1000} />
+
+            <div className="flex gap-2 justify-end mt-5">
+              <button onClick={() => setShowRefundModal(false)} className="px-4 py-2 border border-border text-xs font-bold uppercase hover:bg-secondary">Annuler</button>
+              <button onClick={confirmRefund} disabled={busy} className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold uppercase disabled:opacity-50">
+                {busy ? "..." : "Confirmer"}
               </button>
             </div>
           </div>
@@ -1228,10 +1327,9 @@ export default function AdminOrderDetail() {
             </Label>
             <Input
               type="number"
-              step="0.01"
               value={refundMulti.amount}
               onChange={(e) => setRefundMulti({ ...refundMulti, amount: e.target.value })}
-              placeholder={`Vide = total (${money(o.total, o.currency)})`}
+              placeholder={`Vide = total (${o.total} ${o.currency})`}
               className="mt-1 rounded-none"
             />
 

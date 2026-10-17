@@ -41,7 +41,7 @@ export default {
       },
       {
         title: "6. Nos saveurs signature",
-        content: "Nous travaillons avec des ingrédients de qualité et proposons une large palette de saveurs : vanille de Madagascar, chocolat noir et au lait, fruits rouges, citron meringué, pistache, caramel beurre salé, praliné noisette et fruits frais de saison. Des grands classiques de la pâtisserie française, revisités avec soin dans notre atelier.",
+        content: "Nous travaillons avec des ingrédients de qualité et proposons une large palette de saveurs : vanille, chocolat noir et au lait, fruits rouges, citron meringué, pistache, caramel beurre salé, et des inspirations aux saveurs d'Afrique (mangue, bissap, coco).",
       },
       {
         title: "7. Notre engagement client",
@@ -106,7 +106,7 @@ export default {
       },
       {
         title: "6. Our signature flavors",
-        content: "We work with quality ingredients and offer a wide range of flavors: Madagascar vanilla, dark and milk chocolate, red berries, lemon meringue, pistachio, salted butter caramel, hazelnut praline and fresh seasonal fruits. The great classics of French pastry, carefully revisited in our workshop.",
+        content: "We work with quality ingredients and offer a wide range of flavors: vanilla, dark and milk chocolate, red berries, lemon meringue, pistachio, salted butter caramel, and inspirations from African flavors (mango, hibiscus, coconut).",
       },
       {
         title: "7. Our customer commitment",

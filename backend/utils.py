@@ -8,10 +8,10 @@ from models import Setting
 
 logger = logging.getLogger("cakes.utils")
 
-SUPPORTED_CURRENCIES = ["EUR", "USD", "XOF", "GBP"]
-STRIPE_SUPPORTED = {"EUR", "USD", "GBP"}
+SUPPORTED_CURRENCIES = ["EUR", "USD", "XOF"]
+STRIPE_SUPPORTED = {"EUR", "USD"}  # XOF settled in EUR for Stripe in v1
 
-DEFAULT_RATES = {"EUR": 1.0, "USD": 1.08, "XOF": 655.957, "GBP": 0.85}
+DEFAULT_RATES = {"EUR": 1.0, "USD": 1.08, "XOF": 655.957}
 PUBLIC_BASE_URL = (os.environ.get("PUBLIC_BASE_URL") or os.environ.get("FRONTEND_URL", "")).rstrip("/")
 
 
@@ -49,12 +49,10 @@ def normalize_media(url):
             return f"/api/media/{path}"
     return url
 
-
 DEFAULT_SETTINGS = {
     "currency": {
-        "active": ["EUR", "GBP", "USD"],
-        "default": "EUR",
-        "rates": {"EUR": 1.0, "GBP": 0.85, "USD": 1.08},
+        "base": "EUR",
+        "rates": DEFAULT_RATES,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     },
     "info_bar": {
@@ -82,9 +80,9 @@ DEFAULT_SETTINGS = {
              "subtitle_en": "Elegant tiered cakes for the most beautiful day of your life.",
              "cta_fr": "Voir les mariages", "cta_en": "See weddings", "cta_link": "/catalog?category=mariages"},
             {"video_url": "", "image_url": "https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=1800&q=80",
-             "title_fr": "FRAISIER, PARIS-BREST & CLASSIQUES", "title_en": "FRAISIER, PARIS-BREST & CLASSICS",
-             "subtitle_fr": "Vanille de Madagascar, chocolat noir, fruits rouges : les grands classiques de la pâtisserie française revisités par notre chef.",
-             "subtitle_en": "Madagascar vanilla, dark chocolate, red berries: the great classics of French pastry revisited by our chef.",
+             "title_fr": "SAVEURS D'AFRIQUE", "title_en": "FLAVORS OF AFRICA",
+             "subtitle_fr": "Mangue, bissap, coco : des créations originales aux saveurs authentiques.",
+             "subtitle_en": "Mango, hibiscus, coconut: original creations with authentic flavors.",
              "cta_fr": "Découvrir", "cta_en": "Discover", "cta_link": "/catalog?category=evenements"},
         ],
     },
@@ -189,18 +187,19 @@ DEFAULT_SETTINGS = {
         "closed_dates": [],
         "closed_ranges": [],
         "special_days": [],
-        "claim_window_hours": 48,
-        "claim_media_max_photos": 3,
-        "claim_media_max_videos": 1,
-        "claim_media_max_photo_mb": 5,
-        "claim_media_max_video_mb": 50,
+        # ⭐ NOUVEAU : réclamations
+        "claim_window_hours": 48,           # Délai pour signaler un problème (heures)
+        "claim_media_max_photos": 3,        # Nombre max de photos
+        "claim_media_max_videos": 1,        # Nombre max de vidéos
+        "claim_media_max_photo_mb": 5,      # Taille max photo (Mo)
+        "claim_media_max_video_mb": 50,     # Taille max vidéo (Mo)
     },
     "features": {
         "items": [
             {"icon": "truck", "title_fr": "Livraison rapide", "title_en": "Fast delivery",
-             "subtitle_fr": "Belgique et France", "subtitle_en": "Belgium and France"},
+             "subtitle_fr": "À Bamako et environs", "subtitle_en": "In Bamako and nearby"},
             {"icon": "shield", "title_fr": "Paiement sécurisé", "title_en": "Secure payment",
-             "subtitle_fr": "Carte bancaire via Stripe", "subtitle_en": "Card payment via Stripe"},
+             "subtitle_fr": "Orange Money, Wave, CinetPay", "subtitle_en": "Orange Money, Wave, CinetPay"},
             {"icon": "store", "title_fr": "Retrait en boutique", "title_en": "In-store pickup",
              "subtitle_fr": "Sur rendez-vous", "subtitle_en": "By appointment"},
             {"icon": "headphones", "title_fr": "Service client", "title_en": "Customer service",
@@ -231,9 +230,10 @@ DEFAULT_SETTINGS = {
         "promo_code": "REVIENS5",
         "promo_discount_percent": 5,
     },
-    # ✅ FIX : entrées Mali retirées
     "shipping": {
         "methods": [
+            {"country": "ML", "country_name": "Mali", "name_fr": "Livraison standard Mali", "name_en": "Standard delivery Mali", "cost_eur": 5.0, "delay_fr": "3-6 jours ouvres", "delay_en": "3-6 business days"},
+            {"country": "ML", "country_name": "Mali", "name_fr": "Livraison express Bamako", "name_en": "Express Bamako", "cost_eur": 9.0, "delay_fr": "1-2 jours ouvres", "delay_en": "1-2 business days"},
             {"country": "BE", "country_name": "Belgique", "name_fr": "Livraison standard Belgique", "name_en": "Standard delivery Belgium", "cost_eur": 4.5, "delay_fr": "2-4 jours ouvres", "delay_en": "2-4 business days"},
             {"country": "FR", "country_name": "France", "name_fr": "Livraison standard France", "name_en": "Standard delivery France", "cost_eur": 6.0, "delay_fr": "3-5 jours ouvres", "delay_en": "3-5 business days"},
         ],
@@ -244,6 +244,13 @@ DEFAULT_SETTINGS = {
                 "phone": "+32 465743661", "email": "contact@actoos.com",
                 "is_default": True,
                 "carriers": ["bpost", "DHL", "UPS", "FedEx", "Colissimo", "Chronopost"],
+            },
+            {
+                "country": "ML", "country_name": "Mali", "name": "Depot Bamako",
+                "address_line": "", "city": "Bamako", "postal_code": "",
+                "phone": "+223 00000000", "email": "contact@actoos.com",
+                "is_default": True,
+                "carriers": ["Coursier local", "Sendbox", "DHL Mali", "Autre"],
             },
         ],
     },
@@ -256,31 +263,32 @@ DEFAULT_SETTINGS = {
         "email": "contact@actoos.com",
         "phone": "+32 465743661",
         "whatsapp": "+32465743661",
-        "address_fr": "Bruxelles, Belgique",
-        "address_en": "Brussels, Belgium",
+        "address_fr": "Bamako, Mali",
+        "address_en": "Bamako, Mali",
         "hours_fr": "Lun-Sam 9h-19h",
         "hours_en": "Mon-Sat 9am-7pm",
         "socials": {"instagram": "", "facebook": "", "tiktok": ""},
     },
-    # ✅ FIX : Stripe uniquement, sans ML
     "payment_providers": {
-        "stripe": {"enabled": True, "mode": "test", "currencies": ["EUR", "USD", "GBP"], "countries": ["BE", "FR"]},
+        "stripe": {"enabled": True, "mode": "test", "currencies": ["EUR", "USD"], "countries": ["ML", "BE", "FR"]},
+        "cinetpay": {"enabled": False, "mode": "test", "currencies": ["XOF"], "countries": ["ML"]},
+        "pawapay": {"enabled": False, "mode": "test", "currencies": ["XOF"], "countries": ["ML"]},
     },
-    # ✅ FIX : pays = BE, FR | refund_methods sans mobile_money
+    # ⭐ NOUVEAU : paiement à la livraison (COD)
     "payment_methods": {
         "cod": {
-            "enabled": False,
+            "enabled": False,                       # Désactivé par défaut (admin l'active)
             "label_fr": "Payer à la livraison",
             "label_en": "Pay on delivery",
             "instructions_fr": "Préparez le montant exact en espèces. Le livreur encaisse à la remise du colis.",
             "instructions_en": "Prepare the exact amount in cash. The driver collects on delivery.",
-            "countries": ["BE", "FR"],
-            "min_amount_xof": 0,
-            "max_amount_xof": 327979,  # = 500,00 EUR exact
-            "extra_fee_xof": 0,
-            "mode": "all",
-            "refund_methods": ["cash", "promo", "stripe"],
-            "promo_validity_days": 180,
+            "countries": ["ML"],                    # ⭐ Pays éligibles
+            "min_amount_xof": 0,                    # ⭐ Montant minimum
+            "max_amount_xof": 500000,               # ⭐ Montant maximum
+            "extra_fee_xof": 0,                     # ⭐ Frais supplémentaires COD
+            "mode": "all",                          # ⭐ "all" | "selected"
+            "refund_methods": ["cash", "mobile_money", "promo"],  # ⭐ Méthodes de remboursement autorisées
+            "promo_validity_days": 180,             # ⭐ Validité code promo (6 mois)
         },
     },
 }
@@ -302,7 +310,7 @@ def convert_from_eur(amount_eur, currency, rates):
 
 
 def product_prices(product, rates):
-    """Return {EUR:{price,compare_at}, USD:{...}, XOF:{...}, GBP:{...}} applying manual overrides + sales."""
+    """Return {EUR:{price,compare_at}, USD:{...}, XOF:{...}} applying manual overrides + sales."""
     out = {}
     price_eur = float(product.price_eur or 0)
     sale_eur = float(product.sale_price_eur) if product.sale_price_eur is not None else None
@@ -311,7 +319,7 @@ def product_prices(product, rates):
         if cur == "EUR":
             base = price_eur
         else:
-            m = manual.get(cur)
+            m = manual[cur]
             base = float(m) if m is not None else convert_from_eur(price_eur, cur, rates)
         if sale_eur is not None:
             sale = sale_eur if cur == "EUR" else convert_from_eur(sale_eur, cur, rates)
@@ -329,6 +337,10 @@ def effective_unit_price_eur(product, variant):
 
 
 def _sizes_from_variants(product):
+    """
+    Retourne la liste unique des tailles/portions pour un produit.
+    Trie : numérique croissant ("4 parts" < "8 parts" < "12 parts" < "x6" < "x12").
+    """
     seen = set()
     for v in (product.variants or []):
         s = (getattr(v, "size", "") or "").strip()
@@ -336,6 +348,7 @@ def _sizes_from_variants(product):
             seen.add(s)
 
     def _key(s):
+        # Extrait le premier nombre trouvé
         num = ""
         for ch in s:
             if ch.isdigit():
@@ -349,9 +362,16 @@ def _sizes_from_variants(product):
     return sorted(seen, key=_key)
 
 
+# ---------------- Personnalisation produit ----------------
 def customization_price_eur(product, customization: dict) -> float:
+    """
+    Calcule le surcoût en EUR d'une personnalisation.
+    - Si le produit a des `customization_fields`, somme le prix des champs non vides.
+    - Sinon, retombe sur l'ancien `customization_price_eur` global (si non nul).
+    """
     fields = product.customization_fields or []
     if not fields:
+        # Fallback ancien système
         if customization and float(product.customization_price_eur or 0) > 0:
             return float(product.customization_price_eur or 0)
         return 0.0
@@ -369,9 +389,13 @@ def customization_price_eur(product, customization: dict) -> float:
 
 
 def validate_customization(product, customization: dict) -> None:
+    """
+    Valide la personnalisation selon les `customization_fields` du produit.
+    Raise ValueError avec un message clair si invalide.
+    """
     fields = product.customization_fields or []
     if not fields:
-        return
+        return  # rien à valider (ancien système)
     if not customization:
         customization = {}
 
@@ -383,6 +407,7 @@ def validate_customization(product, customization: dict) -> None:
         val = customization.get(key, "")
         is_empty = val is None or str(val).strip() == ""
 
+        # 1) Obligatoire
         if f.get("required") and is_empty:
             raise ValueError(f"Le champ « {label} » est obligatoire")
 
@@ -391,23 +416,27 @@ def validate_customization(product, customization: dict) -> None:
 
         typ = f.get("type") or "text"
 
+        # 2) Texte court / long
         if typ in ("text", "textarea"):
             max_len = int(f.get("max_length") or 200)
             if len(str(val)) > max_len:
                 raise ValueError(f"« {label} » ne doit pas dépasser {max_len} caractères")
 
+        # 3) Nombre
         elif typ == "number":
             try:
                 float(val)
             except (TypeError, ValueError):
                 raise ValueError(f"« {label} » doit être un nombre")
 
+        # 4) Date
         elif typ == "date":
             try:
                 datetime.strptime(str(val), "%Y-%m-%d")
             except ValueError:
                 raise ValueError(f"« {label} » doit être une date valide (AAAA-MM-JJ)")
 
+        # 5) Choix unique
         elif typ == "select":
             allowed = {o.get("value") for o in (f.get("options") or []) if o}
             if str(val) not in allowed:
@@ -415,6 +444,7 @@ def validate_customization(product, customization: dict) -> None:
 
 
 def customization_summary(product, customization: dict, lang: str = "fr") -> str:
+    """Retourne un résumé lisible de la personnalisation (pour emails / admin)."""
     fields = product.customization_fields or []
     if not fields:
         return ""
@@ -425,6 +455,7 @@ def customization_summary(product, customization: dict, lang: str = "fr") -> str
         if val is None or str(val).strip() == "":
             continue
         label = f.get(f"label_{lang}") or f.get("label_fr") or key
+        # Pour select, on cherche le label affiché
         if (f.get("type") or "") == "select":
             opts = f.get("options") or []
             opt = next((o for o in opts if o.get("value") == val), None)
@@ -451,12 +482,16 @@ def serialize_product(product, rates, brand=None, category=None, full=False):
         "colors": product.colors or [],
         "customizable": product.customizable,
         "customization_price_eur": float(product.customization_price_eur or 0),
+        # ⭐ Champs de personnalisation configurables
         "customization_fields": product.customization_fields or [],
+        # ⭐ NOUVEAU : texte du bouton sur la home (vide = auto)
         "cta_label": product.cta_label or "",
+        # ⭐ NOUVEAU : paiement à la livraison autorisé
         "cod_allowed": bool(getattr(product, "cod_allowed", True)),
         "images": [resolve_media(img.url) for img in product.images] if product.images else [],
         "video_url": resolve_media(product.video_url),
         "published": product.published,
+        # ⭐ Liste des tailles/portions pour filtres dynamiques
         "sizes": _sizes_from_variants(product),
     }
     if full:
@@ -469,6 +504,7 @@ def serialize_product(product, rates, brand=None, category=None, full=False):
         data["sale_price_eur"] = float(product.sale_price_eur) if product.sale_price_eur is not None else None
         data["sales_count"] = product.sales_count or 0
         data["created_at"] = product.created_at.isoformat() if product.created_at else None
+        # ⭐ Prix max de personnalisation (base + tous les champs)
         data["customization_total_price_eur"] = float(product.customization_price_eur or 0) + sum(
             float(f.get("price_eur") or 0) for f in (product.customization_fields or [])
         )
@@ -503,17 +539,21 @@ async def get_rates(db):
     return DEFAULT_RATES
 
 
+# ---------------- Transporteurs connus (liens de suivi auto) ----------------
 CARRIER_URL_TEMPLATES = {
     "bpost": "https://tracking.bpost.be/{num}",
     "dhl": "https://www.dhl.com/global-en/home/tracking.html?tracking-id={num}",
+    "dhl mali": "https://www.dhl.com/global-en/home/tracking.html?tracking-id={num}",
     "ups": "https://www.ups.com/track?tracknum={num}",
     "fedex": "https://www.fedex.com/fedextrack/?trknbr={num}",
     "colissimo": "https://www.laposte.fr/outils/suivre-vos-envois?code={num}",
     "chronopost": "https://www.chronopost.fr/tracking-no-cms/suivi-page?listeNumerosLT={num}",
+    "sendbox": "https://sendbox.co/track?code={num}",
 }
 
 
 def carrier_url(carrier: str, tracking_number: str) -> str:
+    """Genere un lien de suivi auto pour un transporteur connu (retourne '' sinon)."""
     if not carrier or not tracking_number:
         return ""
     key = carrier.strip().lower()
@@ -524,12 +564,14 @@ def carrier_url(carrier: str, tracking_number: str) -> str:
 
 
 def get_shipping_origins(settings: dict) -> list:
+    """Retourne la liste des origines d'expedition (avec fallback vide)."""
     if not settings:
         return []
     return (settings.get("shipping", {}) or {}).get("origins", []) or []
 
 
 def find_origin_for_country(settings: dict, country_code: str) -> dict | None:
+    """Trouve l'origine d'expedition par defaut pour un pays."""
     origins = get_shipping_origins(settings)
     country_code = (country_code or "").upper()
     for o in origins:
@@ -544,21 +586,39 @@ def find_origin_for_country(settings: dict, country_code: str) -> dict | None:
     return origins[0] if origins else None
 
 
+# ---------------- Jours de fermeture / créneaux disponibles ----------------
 def get_available_slots_for_date(target_date: date_cls, orders_cfg: dict) -> tuple:
+    """
+    Retourne (available, slots, reason_fr, reason_en) pour une date donnée.
+
+    - available : bool
+    - slots : liste de créneaux dispo (les custom du jour spécial, sinon les défauts)
+    - reason_fr/en : raison du blocage si non disponible
+
+    Ordre de vérification :
+    1. Jour de fermeture hebdomadaire (weekly_closed_days)
+    2. Date fermée spécifique (closed_dates)
+    3. Période de fermeture (closed_ranges)
+    4. Jour spécial (special_days) → créneaux custom ou fermeture
+    5. Sinon : créneaux par défaut (time_slots)
+    """
     if not orders_cfg:
         return True, [], "", ""
 
-    weekday = target_date.weekday()
+    # 1) Vérifier jour de fermeture hebdomadaire
+    weekday = target_date.weekday()  # 0=lundi...6=dimanche
     py_to_custom = {6: 0, 0: 1, 1: 2, 2: 3, 3: 4, 4: 5, 5: 6}
     custom_weekday = py_to_custom[weekday]
 
     if custom_weekday in (orders_cfg.get("weekly_closed_days") or []):
         return False, [], "Fermé ce jour-là (jour de repos hebdomadaire)", "Closed on this day (weekly day off)"
 
+    # 2) Vérifier date fermée spécifique
     date_str = target_date.isoformat()
     if date_str in (orders_cfg.get("closed_dates") or []):
         return False, [], "Fermé à cette date (jour férié)", "Closed on this date (holiday)"
 
+    # 3) Vérifier période de fermeture
     for r in (orders_cfg.get("closed_ranges") or []):
         start = r.get("start", "")
         end = r.get("end", "")
@@ -569,6 +629,7 @@ def get_available_slots_for_date(target_date: date_cls, orders_cfg: dict) -> tup
                 r.get("reason_en") or "Closed (holiday period)"
             )
 
+    # 4) Vérifier jour spécial (horaires custom)
     for sp in (orders_cfg.get("special_days") or []):
         if sp.get("date") == date_str:
             slots = sp.get("time_slots") or []
@@ -580,16 +641,26 @@ def get_available_slots_for_date(target_date: date_cls, orders_cfg: dict) -> tup
                 )
             return True, slots, sp.get("reason_fr", ""), sp.get("reason_en", "")
 
+    # 5) Sinon : créneaux par défaut
     default_slots = orders_cfg.get("time_slots") or []
     return True, default_slots, "", ""
 
 
 def is_date_closed(target_date: date_cls, orders_cfg: dict) -> tuple:
+    """Retourne (is_closed, reason_fr, reason_en)."""
     ok, _, r_fr, r_en = get_available_slots_for_date(target_date, orders_cfg)
     return (not ok), r_fr, r_en
 
 
+# ================================================================
+# ⭐ Versioning global du cache
+# ================================================================
+
 async def bump_cache_version(db) -> str:
+    """
+    Incrémente la version globale du cache.
+    À appeler après CHAQUE modification admin (setting, produit, catégorie).
+    """
     import uuid as _uuid
     new_version = str(_uuid.uuid4())[:8]
     payload = {"v": new_version, "at": datetime.now(timezone.utc).isoformat()}
@@ -606,6 +677,7 @@ async def bump_cache_version(db) -> str:
 
 
 async def get_cache_version(db) -> str:
+    """Retourne la version actuelle du cache (ou '0' si pas encore initialisée)."""
     res = await db.execute(select(Setting).where(Setting.key == "_cache_version"))
     row = res.scalar_one_or_none()
     if not row or not row.value:

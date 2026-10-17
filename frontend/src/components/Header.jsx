@@ -216,8 +216,7 @@ export default function Header() {
 
               <div className="hidden sm:flex items-center gap-3">
                 <Switcher value={lang.toUpperCase()} options={["FR", "EN"]} onChange={(v) => changeLang(v.toLowerCase())} testid="lang-switcher" />
-                {/* ⭐ CORRIGÉ : EUR, GBP, USD au lieu de XOF */}
-                <Switcher value={currency} options={["EUR", "GBP", "USD"]} onChange={setCurrency} testid="currency-switcher" />
+                <Switcher value={currency} options={["XOF"]} onChange={setCurrency} testid="currency-switcher" />
               </div>
 
               <div className="flex items-center gap-3 lg:gap-4">
@@ -311,8 +310,7 @@ export default function Header() {
 
           <div className="p-4 flex gap-4">
             <Switcher value={lang.toUpperCase()} options={["FR", "EN"]} onChange={(v) => changeLang(v.toLowerCase())} testid="mobile-lang" />
-            {/* ⭐ CORRIGÉ : EUR, GBP, USD au lieu de XOF */}
-            <Switcher value={currency} options={["EUR", "GBP", "USD"]} onChange={setCurrency} testid="mobile-currency" />
+            <Switcher value={currency} options={["XOF"]} onChange={setCurrency} testid="mobile-currency" />
           </div>
         </SheetContent>
       </Sheet>

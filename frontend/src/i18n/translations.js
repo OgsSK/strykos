@@ -273,47 +273,28 @@ export const translations = {
 
 // ================================================================
 // Devises supportées
-// ⭐ MODIFIÉ : GBP ajouté + formatage locale-aware via Intl
 // ================================================================
-export const CURRENCY_SYMBOLS = { EUR: "€", USD: "$", GBP: "£", XOF: "FCFA" };
-
-// ⭐ NOUVEAU : locales natives par devise (formatage correct)
-const CURRENCY_LOCALES = {
-  EUR: "fr-FR",   // → "34,90 €"
-  GBP: "en-GB",   // → "£34.90"
-  USD: "en-US",   // → "$34.90"
-  XOF: "fr-FR",   // → "22 900 FCFA"
-};
+export const CURRENCY_SYMBOLS = { EUR: "€", USD: "$", XOF: "FCFA" };
 
 // ================================================================
-// Formatage des prix (EUR, GBP, USD + XOF legacy)
-// - XOF  : pas de décimales, arrondi à la centaine (prix propres : 22 900 FCFA)
-// - EUR  : "34,90 €" (locale-aware)
-// - GBP  : "£34.90" (locale-aware)
-// - USD  : "$34.90" (locale-aware)
+// Formatage des prix (FCFA, EUR, USD)
+// - XOF : pas de décimales, arrondi à la centaine (prix propres : 25 000 FCFA)
+// - EUR / USD : 2 décimales
 // ================================================================
-export function formatMoney(amount, currency = "EUR", locale) {
+export function formatMoney(amount, currency) {
   if (amount === null || amount === undefined || isNaN(amount)) return "";
-  const cur = currency || "EUR";
-  const num = Number(amount);
+  const sym = CURRENCY_SYMBOLS[currency] || currency;
 
-  // ⭐ XOF legacy : arrondi centaine, pas de décimales
-  if (cur === "XOF") {
-    const rounded = Math.round(num / 100) * 100;
-    return `${rounded.toLocaleString("fr-FR")} FCFA`;
+  if (currency === "XOF") {
+    // Arrondi à la centaine la plus proche → 26238 → 26200
+    const rounded = Math.round(Number(amount) / 100) * 100;
+    return `${rounded.toLocaleString("fr-FR")} ${sym}`;
   }
 
-  const loc = locale || CURRENCY_LOCALES[cur] || "fr-FR";
-  try {
-    return new Intl.NumberFormat(loc, {
-      style: "currency",
-      currency: cur,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(num);
-  } catch {
-    // Fallback si devise inconnue d'Intl
-    const sym = CURRENCY_SYMBOLS[cur] || cur;
-    return `${num.toFixed(2)} ${sym}`;
+  if (currency === "USD") {
+    return `${sym}${Number(amount).toFixed(2)}`;
   }
+
+  // EUR
+  return `${Number(amount).toFixed(2)} ${sym}`;
 }

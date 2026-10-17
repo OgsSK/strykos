@@ -39,15 +39,18 @@ function Subscribers() {
   const [appliedQ, setAppliedQ] = useState("");
   const [newEmail, setNewEmail] = useState("");
 
+  // ⭐ États UI
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ⭐ Pagination "Charger plus"
   const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // ⭐ load avec pagination
   const load = useCallback(async (lim = 20, opts = {}) => {
     const { isRefresh = false, silent = false } = opts;
     if (isRefresh) setRefreshing(true);
@@ -84,6 +87,7 @@ function Subscribers() {
     return () => controller.abort();
   }, [appliedQ]);
 
+  // ⭐ Rechargement quand la recherche validée change
   useEffect(() => {
     setLimit(20);
     let cleanup;
@@ -91,6 +95,7 @@ function Subscribers() {
     return () => cleanup?.();
   }, [load]);
 
+  // ⭐ Charger plus
   const loadMore = () => {
     setLoadingMore(true);
     const newLimit = limit + 20;
@@ -130,6 +135,7 @@ function Subscribers() {
     } catch (err) { toast.error(apiError(err)); }
   };
 
+  // ⭐ Skeleton initial
   if (loading && data.subscribers.length === 0) {
     return (
       <div data-testid="newsletter-subscribers-loading">
@@ -145,6 +151,7 @@ function Subscribers() {
     );
   }
 
+  // ⭐ Erreur avec retry
   if (error && data.subscribers.length === 0) {
     return (
       <div data-testid="newsletter-subscribers-error" className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
@@ -243,6 +250,7 @@ function Subscribers() {
         </table>
       </div>
 
+      {/* ⭐ Bouton "Charger plus" */}
       {hasMore && (
         <div className="text-center mt-4 p-4">
           <button
@@ -276,10 +284,12 @@ function Campaigns() {
   const [form, setForm] = useState(EMPTY);
   const [busy, setBusy] = useState(false);
 
+  // ⭐ États UI
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ⭐ load avec AbortController + useCallback
   const load = useCallback(async (opts = {}) => {
     const { isRefresh = false, silent = false } = opts;
     if (isRefresh) setRefreshing(true);
@@ -301,10 +311,12 @@ function Campaigns() {
     return () => controller.abort();
   }, []);
 
+  // ⭐ Chargement initial + produits
   useEffect(() => {
     let cleanup;
     load().then((c) => { cleanup = c; });
 
+    // ⭐ FIX BUG : /admin/products retourne { items, total, ... } (pas un array)
     api.get("/admin/products?limit=200")
       .then((r) => {
         const items = Array.isArray(r.data) ? r.data : (r.data?.items || []);
@@ -315,6 +327,7 @@ function Campaigns() {
     return () => cleanup?.();
   }, [load]);
 
+  // ⭐ Polling CONDITIONNEL : seulement si au moins 1 campagne est en envoi
   const hasSendingCampaigns = list.some((c) => c.status === "sending");
   useEffect(() => {
     if (!hasSendingCampaigns) return;
@@ -348,7 +361,7 @@ function Campaigns() {
     try {
       const { data } = await api.post(`/admin/newsletter/campaigns/${c.id}/send`);
       toast.success(`Envoi lance vers ${data.recipients} abonne(s)`);
-      await load({ silent: true });
+      await load({ silent: true }); // Le polling prendra le relais
     } catch (e) { toast.error(apiError(e)); }
   };
 
@@ -377,6 +390,7 @@ function Campaigns() {
     failed: "bg-red-100 text-red-700",
   };
 
+  // ⭐ Skeleton initial
   if (loading && list.length === 0) {
     return (
       <div data-testid="newsletter-campaigns-loading">
@@ -392,6 +406,7 @@ function Campaigns() {
     );
   }
 
+  // ⭐ Erreur avec retry
   if (error && list.length === 0) {
     return (
       <div data-testid="newsletter-campaigns-error" className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
@@ -411,9 +426,8 @@ function Campaigns() {
     <div data-testid="newsletter-campaigns">
       <div className="flex flex-wrap justify-between items-start gap-3 mb-4">
         <div className="flex-1">
-          {/* ⭐ MODIFIÉ : "maillots" → "créations" */}
           <p className="text-xs text-ink-muted max-w-xl">
-            Annoncez les nouvelles créations : rédigez en FR (et EN), choisissez jusqu'à 6 produits à mettre en avant, testez puis envoyez. Chaque e-mail contient un lien de désabonnement.
+            Annoncez les nouveaux maillots : rédigez en FR (et EN), choisissez jusqu'a 6 produits a mettre en avant, testez puis envoyez. Chaque e-mail contient un lien de desabonnement.
           </p>
           {hasSendingCampaigns && (
             <p className="text-[11px] text-amber-700 mt-2 inline-flex items-center gap-1">
@@ -474,8 +488,7 @@ function Campaigns() {
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-auto">
           <DialogHeader><DialogTitle>{editing ? "Modifier" : "Nouvelle"} campagne</DialogTitle></DialogHeader>
           <div className="space-y-3">
-            {/* ⭐ MODIFIÉ : placeholder "Drop maillots" → "Drop gâteaux" */}
-            <div><Label>Nom interne</Label><Input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="Drop gâteaux saison 2026" /></div>
+            <div><Label>Nom interne</Label><Input value={form.name} onChange={(e) => setF("name", e.target.value)} placeholder="Drop maillots saison 26/27" /></div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div><Label>Sujet FR *</Label><Input value={form.subject_fr} onChange={(e) => setF("subject_fr", e.target.value)} data-testid="campaign-subject-fr" /></div>
               <div><Label>Sujet EN</Label><Input value={form.subject_en} onChange={(e) => setF("subject_en", e.target.value)} /></div>
