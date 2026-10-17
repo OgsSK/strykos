@@ -6,7 +6,7 @@
       "destination": "https://api.cakes.actoos.com/api/sitemap.xml"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!static).*)",
       "destination": "/index.html"
     }
   ]
