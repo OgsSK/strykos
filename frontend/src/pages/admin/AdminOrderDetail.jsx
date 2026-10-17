@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { money, fmtDate, mediaSrc, STATUSES, STATUS_LABELS, STATUS_COLORS } from "@/lib/adminUtils";
 import { toast } from "sonner";
-import { ArrowLeft, Truck, Mail, RotateCcw, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Send, Image as ImageIcon, Film, Loader2, Copy, RefreshCw, KeyRound, Banknote } from "lucide-react";
+import { ArrowLeft, Truck, Mail, RotateCcw, Trash2, Save, AlertTriangle, CheckCircle2, XCircle, MessageSquare, Send, Image as ImageIcon, Film, Loader2, Copy, RefreshCw, KeyRound, Banknote, AlertCircle } from "lucide-react";
 
 // ⭐ Taux fixe FCFA ↔ EUR (parité officielle depuis 1999)
 const XOF_RATE = 655.957;
@@ -22,6 +22,16 @@ const eurToXof = (eur) => {
   return Math.round(parseFloat(eur) * XOF_RATE);
 };
 
+// ⭐ NOUVEAU : skeleton de chargement
+const SkeletonBlock = ({ rows = 3 }) => (
+  <div className="bg-white border border-border p-5 animate-pulse">
+    <div className="h-4 w-40 bg-secondary rounded mb-4" />
+    {Array.from({ length: rows }).map((_, i) => (
+      <div key={i} className="h-4 w-full bg-secondary rounded mb-2" />
+    ))}
+  </div>
+);
+
 export default function AdminOrderDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -32,6 +42,13 @@ export default function AdminOrderDetail() {
   const [busy, setBusy] = useState(false);
   const [refuseReason, setRefuseReason] = useState("");
   const [showRefuse, setShowRefuse] = useState(false);
+
+  // ⭐ États UI (nouveaux)
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
   // Réclamations
   const [returnRefuseReason, setReturnRefuseReason] = useState("");
   const [showReturnRefuse, setShowReturnRefuse] = useState(false);
@@ -68,14 +85,19 @@ export default function AdminOrderDetail() {
     reference: "",
     note: "",
     internal_note: "",
-    from_claim: false,   // ⭐ NOUVEAU : indique si on rembourse une réclamation
+    from_claim: false,
   });
   const [refundMultiBusy, setRefundMultiBusy] = useState(false);
 
-  // ⭐ Charge la commande + conversation
-  const load = async () => {
+  // ⭐ load avec AbortController + gestion d'erreur
+  const load = useCallback(async (isRefresh = false) => {
+    const controller = new AbortController();
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
     try {
-      const { data } = await api.get(`/admin/orders/${id}`);
+      const { data } = await api.get(`/admin/orders/${id}`, { signal: controller.signal });
       setO(data);
       setNotes(data.admin_notes || "");
       setTracking((t) => ({
@@ -86,17 +108,30 @@ export default function AdminOrderDetail() {
       }));
       if (data.return_rma_code) {
         try {
-          const { data: msgs } = await api.get(`/admin/orders/${id}/claim/messages`);
+          const { data: msgs } = await api.get(`/admin/orders/${id}/claim/messages`, { signal: controller.signal });
           setClaimMessages(msgs || []);
-        } catch {
+        } catch (e) {
+          if (e.name === "CanceledError" || e.name === "AbortError" || e.code === "ERR_CANCELED") return;
           setClaimMessages([]);
         }
       }
-    } catch {
-      toast.error("Commande introuvable");
+      setLastUpdated(new Date());
+    } catch (e) {
+      if (e.name === "CanceledError" || e.name === "AbortError" || e.code === "ERR_CANCELED") return;
+      setError(e?.response?.data?.detail || e.message || "Commande introuvable");
+      if (!isRefresh) toast.error("Commande introuvable");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  };
-  useEffect(() => { load(); }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => controller.abort();
+  }, [id]);
+
+  useEffect(() => {
+    let cleanup;
+    load().then((c) => { cleanup = c; });
+    return () => cleanup?.();
+  }, [load]);
 
   useEffect(() => {
     api.get("/settings").then((r) => {
@@ -114,6 +149,12 @@ export default function AdminOrderDetail() {
     setOriginCountry(o.shipping_origin_country || "");
   }, [o?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ⭐ NOUVEAU : refresh manuel
+  const refresh = async () => {
+    await load(true);
+    toast.success("Commande actualisée");
+  };
+
   // ⭐ OTP — copie
   const copyOtp = () => {
     if (!o?.delivery_otp) return;
@@ -128,7 +169,7 @@ export default function AdminOrderDetail() {
     try {
       const { data } = await api.post(`/admin/orders/${o.id}/regenerate-otp`);
       toast.success(`Nouveau code : ${data.otp}`);
-      load();
+      load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -154,7 +195,7 @@ export default function AdminOrderDetail() {
     try {
       await api.post(`/admin/orders/${o.id}/mark-cod-paid`, {});
       toast.success("Commande marquée comme payée");
-      load();
+      load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -175,7 +216,6 @@ export default function AdminOrderDetail() {
 
     setRefundMultiBusy(true);
     try {
-      // ⭐ Si on vient d'une réclamation, approuver d'abord
       if (refundMulti.from_claim && isReturnRequested) {
         await api.post(`/admin/orders/${o.id}/approve-return`);
       }
@@ -188,7 +228,6 @@ export default function AdminOrderDetail() {
         internal_note: "",
       });
 
-      // ⭐ Si la réclamation a été traitée, mettre à jour son statut à "refunded"
       if (refundMulti.from_claim) {
         try {
           await api.post(`/admin/orders/${o.id}/refund-return`, {
@@ -214,28 +253,71 @@ export default function AdminOrderDetail() {
         internal_note: "",
         from_claim: false,
       });
-      load();
+      load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
     setRefundMultiBusy(false);
   };
 
-  if (!o) return <div className="text-ink-muted">Chargement...</div>;
+  // ⭐ Skeleton initial
+  if (loading && !o) {
+    return (
+      <div data-testid="admin-order-detail-loading">
+        <div className="h-4 w-32 bg-secondary rounded mb-3 animate-pulse" />
+        <div className="h-8 w-64 bg-secondary rounded mb-5 animate-pulse" />
+        <div className="grid lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 space-y-4">
+            <SkeletonBlock rows={5} />
+            <SkeletonBlock rows={4} />
+          </div>
+          <div className="space-y-4">
+            <SkeletonBlock rows={3} />
+            <SkeletonBlock rows={3} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ⭐ Erreur avec retry
+  if (error && !o) {
+    return (
+      <div data-testid="admin-order-detail-error">
+        <Link to="/admin/orders" className="inline-flex items-center gap-1 text-sm text-ink-muted hover:text-ink mb-3">
+          <ArrowLeft className="w-4 h-4" /> Commandes
+        </Link>
+        <div className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-semibold text-red-800 mb-1">Erreur de chargement</div>
+            <div className="text-sm text-red-700 mb-3">{error}</div>
+            <button
+              onClick={() => load()}
+              className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-3 py-2"
+            >
+              <RefreshCw className="w-3 h-3" /> Réessayer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!o) return null;
+
   const addr = o.shipping_address || {};
   const isCancelRequest = o.status === "cancellation_requested";
   const isReturnRequested = o.status === "return_requested";
   const isReturnApproved = o.status === "return_approved";
   const isReturnReceived = o.status === "return_received";
 
-  // Réclamation active (à traiter)
   const hasActiveClaim = isReturnRequested || isReturnApproved || isReturnReceived;
-  // ⭐ Déjà remboursée → rien à faire
   const isAlreadyRefunded = o.payment_status === "refunded" || o.payment_status === "partially_refunded";
 
   const run = async (fn, okMsg) => {
     setBusy(true);
-    try { const r = await fn(); toast.success(typeof okMsg === "function" ? okMsg(r?.data) : okMsg); load(); }
+    try { const r = await fn(); toast.success(typeof okMsg === "function" ? okMsg(r?.data) : okMsg); load(true); }
     catch (e) { toast.error(apiError(e)); }
     setBusy(false);
   };
@@ -245,12 +327,11 @@ export default function AdminOrderDetail() {
   const saveNotes = () => run(() => api.put(`/admin/orders/${o.id}/notes`, { admin_notes: notes }), "Notes enregistrées");
   const resend = (template) => run(() => api.post(`/admin/orders/${o.id}/resend-email`, { template }), "E-mail renvoyé");
 
-  // ⭐ Ouvrir la modale réclamation — ⭐ DÉTECTE LE MODE DE PAIEMENT
+  // ⭐ Ouvrir la modale réclamation — détecte le mode de paiement
   const openClaimModal = () => {
     setClaimAmount("");
     setClaimMessage("");
 
-    // ⭐ Si la commande a été payée en COD → ouvrir la modale multi-méthodes (Espèces par défaut)
     if (o.payment_method === "cod") {
       setRefundMulti({
         method: "cash",
@@ -258,13 +339,12 @@ export default function AdminOrderDetail() {
         reference: "",
         note: "",
         internal_note: "",
-        from_claim: true,       // ⭐ Marque qu'on vient d'une réclamation
+        from_claim: true,
       });
       setShowRefundMultiModal(true);
       return;
     }
 
-    // Sinon (Stripe) → modale habituelle
     setShowClaimModal(true);
   };
 
@@ -294,7 +374,7 @@ export default function AdminOrderDetail() {
           : "Remboursement total émis"
       );
       setShowClaimModal(false);
-      load();
+      load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -372,7 +452,7 @@ export default function AdminOrderDetail() {
       setShowClaimInfoModal(false);
       setClaimInfoMessage("");
       setClaimInfoTypes(["photo"]);
-      load();
+      load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -448,11 +528,27 @@ export default function AdminOrderDetail() {
       <div className="flex flex-wrap items-start justify-between gap-3 mb-5">
         <div>
           <h1 className="font-heading text-2xl font-bold uppercase" data-testid="order-detail-number">{o.order_number}</h1>
-          <div className="text-sm text-ink-muted">{fmtDate(o.created_at, true)} · {o.lang?.toUpperCase()} · {o.currency}</div>
+          <div className="text-sm text-ink-muted">
+            {fmtDate(o.created_at, true)} · {o.lang?.toUpperCase()} · {o.currency}
+            {lastUpdated && (
+              <span className="ml-2 text-[11px]">
+                · actualisé à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
+          {/* ⭐ NOUVEAU : bouton refresh */}
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1 border border-border px-3 py-1.5 text-xs font-semibold hover:border-ink disabled:opacity-50 transition-colors"
+            title="Rafraîchir"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "..." : "Rafraîchir"}
+          </button>
           <span className={`text-xs px-2 py-1 font-semibold ${STATUS_COLORS[o.status]}`} data-testid="order-detail-status">{STATUS_LABELS[o.status]}</span>
-          {/* ⭐ Badge livraison */}
           {o.delivered_via === "otp" && (
             <span className="text-xs px-2 py-1 font-semibold bg-purple-100 text-purple-800">
               ✅ Livré par livreur (OTP)
@@ -463,7 +559,6 @@ export default function AdminOrderDetail() {
               👤 Livré manuellement (admin)
             </span>
           )}
-          {/* ⭐ Badge COD */}
           {o.payment_method === "cod" && (
             <span className="text-xs px-2 py-1 font-semibold bg-amber-100 text-amber-800 inline-flex items-center gap-1">
               <Banknote className="w-3.5 h-3.5" /> Paiement livraison
@@ -1029,7 +1124,6 @@ export default function AdminOrderDetail() {
               );
             })}
 
-            {/* Bouton "Marquer payé (COD)" */}
             {o.payment_method === "cod" && o.payment_status !== "paid" && (
               <Button onClick={markCodPaid} disabled={busy}
                 className="mt-3 w-full rounded-none bg-green-600 hover:bg-green-700 text-white">
@@ -1038,7 +1132,6 @@ export default function AdminOrderDetail() {
               </Button>
             )}
 
-            {/* Bouton remboursement multi-méthodes */}
             {o.payment_status === "paid" && !hasActiveClaim && (
               <Button onClick={() => {
                 setRefundMulti({
@@ -1172,7 +1265,7 @@ export default function AdminOrderDetail() {
         </div>
       )}
 
-      {/* Modale remboursement multi-méthodes — ⭐ ADAPTÉE AU CONTEXTE */}
+      {/* Modale remboursement multi-méthodes */}
       {showRefundMultiModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowRefundMultiModal(false)}>
           <div className="bg-white max-w-lg w-full p-6 border border-border" onClick={(e) => e.stopPropagation()}>
@@ -1193,7 +1286,6 @@ export default function AdminOrderDetail() {
               </div>
             </div>
 
-            {/* Info COD */}
             {o.payment_method === "cod" && (
               <div className="mb-4 bg-amber-50 border border-amber-200 p-3 text-xs text-amber-900">
                 💡 <strong>Commande payée en espèces.</strong> Le remboursement doit être effectué manuellement (espèces, mobile money) ou via code promo.
@@ -1202,7 +1294,6 @@ export default function AdminOrderDetail() {
 
             <Label className="text-xs uppercase tracking-wider text-ink-muted">Méthode de remboursement</Label>
             <div className="grid grid-cols-2 gap-2 mt-2 mb-4">
-              {/* ⭐ Ordre des boutons selon le mode de paiement */}
               {(o.payment_method === "cod"
                 ? [
                     { v: "cash", l: "💵 Espèces" },

@@ -139,16 +139,55 @@ async def newsletter_status(user=Depends(get_current_user), db: AsyncSession = D
 admin = APIRouter(prefix="/admin/newsletter", dependencies=[Depends(get_current_admin)])
 
 
+# ⭐ CORRIGÉ : pagination + filtres serveur + rétrocompat
 @admin.get("/subscribers")
-async def list_subscribers(q: Optional[str] = None, active: Optional[bool] = None, db: AsyncSession = Depends(get_db)):
-    query = select(NewsletterSubscriber).order_by(NewsletterSubscriber.created_at.desc()).limit(1000)
+async def list_subscribers(
+    q: Optional[str] = None,
+    active: Optional[bool] = None,
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste paginée des abonnés newsletter + total global actif."""
+    base_q = select(NewsletterSubscriber)
+    count_q = select(func.count(NewsletterSubscriber.id))
+
+    # Filtre recherche
     if q:
-        query = query.where(NewsletterSubscriber.email.ilike(f"%{q.strip()}%"))
+        term = f"%{q.strip()}%"
+        base_q = base_q.where(NewsletterSubscriber.email.ilike(term))
+        count_q = count_q.where(NewsletterSubscriber.email.ilike(term))
+
+    # Filtre état (actif/inactif) — cohérent avec le paramètre existant
     if active is not None:
-        query = query.where(NewsletterSubscriber.active == active)
-    subs = (await db.execute(query)).scalars().all()
-    total_active = (await db.execute(select(func.count(NewsletterSubscriber.id)).where(NewsletterSubscriber.active == True))).scalar() or 0
-    return {"total_active": total_active, "subscribers": [s.to_dict() for s in subs]}
+        base_q = base_q.where(NewsletterSubscriber.active == active)
+        count_q = count_q.where(NewsletterSubscriber.active == active)
+
+    # Total de la requête courante (filtrée par q + active)
+    total = (await db.execute(count_q)).scalar() or 0
+
+    # ⭐ Total actif GLOBAL (jamais filtré par q, toujours vrai)
+    total_active = (await db.execute(
+        select(func.count(NewsletterSubscriber.id)).where(NewsletterSubscriber.active == True)
+    )).scalar() or 0
+
+    base_q = (
+        base_q
+        .order_by(NewsletterSubscriber.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+    res = await db.execute(base_q)
+    items = [s.to_dict() for s in res.scalars().all()]
+
+    return {
+        "items": items,
+        "subscribers": items,          # ⭐ rétrocompat avec l'ancien frontend
+        "total": total,                # nb filtré (q + active)
+        "total_active": total_active,  # nb actif global (compteur header)
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 class AdminSubIn(BaseModel):

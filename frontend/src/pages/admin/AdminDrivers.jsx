@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,62 @@ import { Plus, Mail, Truck, Trash2, AlertCircle, RefreshCw, UserX, CheckCircle2,
 
 const EMPTY = { first_name: "", last_name: "", email: "", phone: "", notes: "" };
 
+// ⭐ Skeleton de chargement
+const SkeletonRow = () => (
+  <tr className="border-t border-border animate-pulse">
+    {Array.from({ length: 5 }).map((_, i) => (
+      <td key={i} className="p-3">
+        <div className="h-4 bg-secondary rounded w-3/4" />
+      </td>
+    ))}
+  </tr>
+);
+
 export default function AdminDrivers() {
   const [drivers, setDrivers] = useState([]);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => api.get("/admin/drivers").then((r) => setDrivers(r.data)).catch(() => {});
-  useEffect(() => { load(); }, []);
+  // ⭐ États UI
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // ⭐ load avec AbortController
+  const load = useCallback(async (isRefresh = false) => {
+    const controller = new AbortController();
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    try {
+      const { data } = await api.get("/admin/drivers", { signal: controller.signal });
+      setDrivers(data || []);
+      setLastUpdated(new Date());
+    } catch (e) {
+      if (e.name === "CanceledError" || e.name === "AbortError" || e.code === "ERR_CANCELED") return;
+      setError(e?.response?.data?.detail || e.message || "Erreur de chargement");
+      toast.error("Impossible de charger les livreurs");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    let cleanup;
+    load().then((c) => { cleanup = c; });
+    return () => cleanup?.();
+  }, [load]);
+
+  // ⭐ Refresh manuel
+  const refresh = async () => {
+    await load(true);
+    toast.success("Livreurs actualisés");
+  };
 
   const openNew = () => { setForm(EMPTY); setOpen(true); };
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -32,7 +80,7 @@ export default function AdminDrivers() {
       await api.post("/admin/drivers/invite", form);
       toast.success("Invitation envoyée !");
       setOpen(false);
-      load();
+      await load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -44,7 +92,7 @@ export default function AdminDrivers() {
     try {
       await api.post(`/admin/drivers/${d.id}/resend-invite`);
       toast.success("Invitation renvoyée");
-      load();
+      await load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -55,7 +103,7 @@ export default function AdminDrivers() {
     try {
       await api.post(`/admin/drivers/${d.id}/deactivate`);
       toast.success("Livreur désactivé");
-      load();
+      await load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
@@ -66,21 +114,85 @@ export default function AdminDrivers() {
     try {
       await api.delete(`/admin/drivers/${d.id}`);
       toast.success("Livreur supprimé");
-      load();
+      await load(true);
     } catch (e) {
       toast.error(apiError(e));
     }
   };
 
+  // ⭐ Skeleton initial
+  if (loading && drivers.length === 0) {
+    return (
+      <div data-testid="admin-drivers-loading">
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="font-heading text-2xl font-bold uppercase">Livreurs</h1>
+        </div>
+        <div className="bg-white border border-border overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-secondary text-left text-xs uppercase tracking-wider">
+              <tr>
+                <th className="p-3">Livreur</th>
+                <th className="p-3 hidden md:table-cell">Contact</th>
+                <th className="p-3">Livraisons</th>
+                <th className="p-3">Statut</th>
+                <th className="p-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // ⭐ Erreur avec retry
+  if (error && drivers.length === 0) {
+    return (
+      <div data-testid="admin-drivers-error" className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <div className="font-semibold text-red-800 mb-1">Erreur de chargement</div>
+          <div className="text-sm text-red-700 mb-3">{error}</div>
+          <button
+            onClick={() => load()}
+            className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-3 py-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div data-testid="admin-drivers">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
-        <h1 className="font-heading text-2xl font-bold uppercase">
-          Livreurs <span className="text-ink-muted text-base font-normal">({drivers.length})</span>
-        </h1>
-        <Button onClick={openNew} className="bg-brand hover:bg-brand-dark rounded-none">
-          <Plus className="w-4 h-4 mr-1" /> Inviter un livreur
-        </Button>
+        <div>
+          <h1 className="font-heading text-2xl font-bold uppercase">
+            Livreurs <span className="text-ink-muted text-base font-normal">({drivers.length})</span>
+          </h1>
+          {lastUpdated && (
+            <p className="text-[11px] text-ink-muted mt-1">
+              Actualisé à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1 border border-border px-3 py-2 text-sm font-semibold hover:border-ink disabled:opacity-50 transition-colors"
+            title="Recharger"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "..." : "Rafraîchir"}
+          </button>
+          <Button onClick={openNew} className="bg-brand hover:bg-brand-dark rounded-none">
+            <Plus className="w-4 h-4 mr-1" /> Inviter un livreur
+          </Button>
+        </div>
       </div>
 
       <p className="text-xs text-ink-muted mb-4">
@@ -159,7 +271,7 @@ export default function AdminDrivers() {
                 </td>
               </tr>
             ))}
-            {drivers.length === 0 && (
+            {drivers.length === 0 && !loading && (
               <tr>
                 <td colSpan={5} className="p-6 text-center text-ink-muted">
                   Aucun livreur. Cliquez sur « Inviter un livreur » pour commencer.

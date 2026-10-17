@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/sitemap.xml",
-      "destination": "https://api.strykos.actoos.com/api/sitemap.xml"
+      "destination": "https://api.cakes.actoos.com/api/sitemap.xml"
     },
     {
       "source": "/(.*)",

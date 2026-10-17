@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional, Any
 from datetime import datetime, timezone, timedelta
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, and_          # ⭐ and_ ajouté
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
@@ -33,13 +33,11 @@ stripe.api_key = os.environ.get("STRIPE_SECRET_KEY") or "sk_test_emergent"
 
 
 # ---------------- Dashboard ----------------
-# ⭐ OPTIMISÉ : agrégations SQL au lieu de charger toutes les commandes en mémoire
 @router.get("/dashboard")
 async def dashboard(db: AsyncSession = Depends(get_db)):
     now = datetime.now(timezone.utc)
     cutoff_30d = now - timedelta(days=30)
 
-    # Compteurs globaux en 1 requête
     stats = (await db.execute(
         select(
             func.count(Order.id).label("total"),
@@ -51,7 +49,6 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
         )
     )).one()
 
-    # Revenus par devise
     rev_res = await db.execute(
         select(Order.currency, func.sum(Order.total))
         .where(Order.payment_status == "paid")
@@ -59,7 +56,6 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     )
     revenue_by_currency = {c: round(float(t or 0), 2) for c, t in rev_res.all()}
 
-    # Revenus 30 derniers jours
     rev30_res = await db.execute(
         select(Order.currency, func.sum(Order.total))
         .where(Order.payment_status == "paid", Order.created_at >= cutoff_30d)
@@ -67,11 +63,9 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
     )
     revenue_30d = {c: round(float(t or 0), 2) for c, t in rev30_res.all()}
 
-    # Par statut
     status_res = await db.execute(select(Order.status, func.count(Order.id)).group_by(Order.status))
     by_status = {s: c for s, c in status_res.all()}
 
-    # Série 14 jours
     from sqlalchemy import cast, Date as SADate
     day_col = cast(Order.created_at, SADate)
     series_res = await db.execute(
@@ -89,11 +83,9 @@ async def dashboard(db: AsyncSession = Depends(get_db)):
         day = (now - timedelta(days=i)).date().isoformat()
         series.append({"date": day, **series_map.get(day, {"orders": 0, "revenue_eur": 0})})
 
-    # 8 dernières commandes seulement
     recent_res = await db.execute(select(Order).order_by(Order.created_at.desc()).limit(8))
     recent_orders = recent_res.scalars().all()
 
-    # Produits & stock
     prod_res = await db.execute(select(Product).options(selectinload(Product.variants)).where(Product.published == True))
     products = prod_res.scalars().unique().all()
     out_of_stock = [{"id": p.id, "name": p.name_fr, "slug": p.slug} for p in products if sum(v.stock for v in p.variants) == 0]
@@ -172,13 +164,75 @@ class ProductIn(BaseModel):
     variants: list[VariantIn] = []
 
 
+# ⭐ NOUVEAU : pagination + filtres serveur (q + stock)
 @router.get("/products")
-async def admin_list_products(db: AsyncSession = Depends(get_db)):
+async def admin_list_products(
+    db: AsyncSession = Depends(get_db),
+    limit: int = 20,
+    offset: int = 0,
+    q: Optional[str] = None,
+    stock: Optional[str] = None,  # "all" | "out" | "low" | "draft"
+):
+    """Liste paginée + filtres serveur (recherche, état du stock)."""
     rates = await get_rates(db)
-    res = await db.execute(select(Product).options(
-        selectinload(Product.brand), selectinload(Product.category),
-        selectinload(Product.images), selectinload(Product.variants)).order_by(Product.created_at.desc()))
-    return [serialize_product(p, rates, full=True) for p in res.scalars().unique().all()]
+
+    base_q = select(Product)
+    count_q = select(func.count(Product.id))
+
+    # Filtre recherche
+    if q:
+        term = f"%{q.strip()}%"
+        cond = or_(
+            Product.name_fr.ilike(term),
+            Product.name_en.ilike(term),
+            Product.sku.ilike(term),
+            Product.slug.ilike(term),
+        )
+        base_q = base_q.where(cond)
+        count_q = count_q.where(cond)
+
+    # Filtres stock via sous-requête agrégée
+    if stock == "draft":
+        base_q = base_q.where(Product.published == False)
+        count_q = count_q.where(Product.published == False)
+    elif stock in ("out", "low"):
+        stock_subq = (
+            select(
+                ProductVariant.product_id,
+                func.coalesce(func.sum(ProductVariant.stock), 0).label("s"),
+            )
+            .group_by(ProductVariant.product_id)
+            .subquery()
+        )
+        if stock == "out":
+            cond = or_(stock_subq.c.s.is_(None), stock_subq.c.s == 0)
+        else:  # low : 0 < stock <= 5
+            cond = and_(stock_subq.c.s > 0, stock_subq.c.s <= 5)
+        base_q = base_q.outerjoin(stock_subq, Product.id == stock_subq.c.product_id).where(cond)
+        count_q = count_q.outerjoin(stock_subq, Product.id == stock_subq.c.product_id).where(cond)
+
+    total = (await db.execute(count_q)).scalar() or 0
+
+    base_q = (
+        base_q
+        .options(
+            selectinload(Product.brand),
+            selectinload(Product.category),
+            selectinload(Product.images),
+            selectinload(Product.variants),
+        )
+        .order_by(Product.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+
+    res = await db.execute(base_q)
+    return {
+        "items": [serialize_product(p, rates, full=True) for p in res.scalars().unique().all()],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def _clean_customization_fields(fields: list) -> list:
@@ -965,19 +1019,63 @@ async def admin_payments(db: AsyncSession = Depends(get_db)):
 
 
 # ---------------- Customers ----------------
+# ⭐ NOUVEAU : pagination + filtre serveur + stats ciblées sur la page courante
 @router.get("/customers")
-async def admin_customers(q: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    query = select(Profile).order_by(Profile.created_at.desc()).limit(500)
+async def admin_customers(
+    q: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste paginée de clients avec stats agrégées sur la page courante."""
+    base_q = select(Profile)
+    count_q = select(func.count(Profile.id))
+
     if q:
         term = f"%{q.strip()}%"
-        query = query.where(or_(Profile.email.ilike(term), Profile.first_name.ilike(term), Profile.last_name.ilike(term)))
-    res = await db.execute(query)
+        cond = or_(
+            Profile.email.ilike(term),
+            Profile.first_name.ilike(term),
+            Profile.last_name.ilike(term),
+        )
+        base_q = base_q.where(cond)
+        count_q = count_q.where(cond)
+
+    total = (await db.execute(count_q)).scalar() or 0
+
+    base_q = (
+        base_q
+        .order_by(Profile.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+    res = await db.execute(base_q)
     users = res.scalars().all()
-    stats = (await db.execute(
-        select(Order.user_id, func.count(Order.id), func.sum(Order.charge_total))
-        .where(Order.payment_status == "paid").group_by(Order.user_id))).all()
-    smap = {uid: (cnt, float(total or 0)) for uid, cnt, total in stats}
-    return [{**u.to_dict(), "orders_count": smap.get(u.id, (0, 0))[0], "spent_eur": round(smap.get(u.id, (0, 0))[1], 2)} for u in users]
+
+    # ⭐ Stats agrégées uniquement pour les users de la page courante
+    user_ids = [u.id for u in users]
+    smap = {}
+    if user_ids:
+        stats = (await db.execute(
+            select(Order.user_id, func.count(Order.id), func.sum(Order.charge_total))
+            .where(Order.user_id.in_(user_ids), Order.payment_status == "paid")
+            .group_by(Order.user_id)
+        )).all()
+        smap = {uid: (cnt, float(s or 0)) for uid, cnt, s in stats}
+
+    return {
+        "items": [
+            {
+                **u.to_dict(),
+                "orders_count": smap.get(u.id, (0, 0))[0],
+                "spent_eur": round(smap.get(u.id, (0, 0))[1], 2),
+            }
+            for u in users
+        ],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @router.get("/customers/{user_id}")
@@ -1049,10 +1147,28 @@ def _validate_promo(data: PromoIn):
 
 
 @router.get("/promos")
-async def list_promos(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(PromoCode).order_by(PromoCode.created_at.desc()))
-    return [p.to_dict() for p in res.scalars().all()]
+async def list_promos(
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste paginée des codes promo."""
+    count_q = select(func.count(PromoCode.id))
+    total = (await db.execute(count_q)).scalar() or 0
 
+    q = (
+        select(PromoCode)
+        .order_by(PromoCode.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+    res = await db.execute(q)
+    return {
+        "items": [p.to_dict() for p in res.scalars().all()],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 @router.post("/promos")
 async def create_promo(data: PromoIn, db: AsyncSession = Depends(get_db)):
@@ -1099,14 +1215,41 @@ async def delete_promo(promo_id: str, db: AsyncSession = Depends(get_db)):
 
 # ---------------- Email logs ----------------
 @router.get("/emails")
-async def list_emails(status: Optional[str] = None, db: AsyncSession = Depends(get_db)):
-    q = select(EmailLog).order_by(EmailLog.created_at.desc()).limit(300)
-    if status:
-        q = q.where(EmailLog.status == status)
-    res = await db.execute(q)
-    return {"enabled": emails_enabled(), "from_name": EMAIL_FROM_NAME, "reply_to": EMAIL_REPLY_TO,
-            "admin_notify": ADMIN_NOTIFY_EMAIL, "logs": [e.to_dict() for e in res.scalars().all()]}
+async def list_emails(
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """Journal des emails — paginé, avec filtre statut."""
+    base_q = select(EmailLog)
+    count_q = select(func.count(EmailLog.id))
 
+    if status:
+        base_q = base_q.where(EmailLog.status == status)
+        count_q = count_q.where(EmailLog.status == status)
+
+    total = (await db.execute(count_q)).scalar() or 0
+
+    base_q = (
+        base_q
+        .order_by(EmailLog.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+    res = await db.execute(base_q)
+    logs = [e.to_dict() for e in res.scalars().all()]
+
+    return {
+        "enabled": emails_enabled(),
+        "from_name": EMAIL_FROM_NAME,
+        "reply_to": EMAIL_REPLY_TO,
+        "admin_notify": ADMIN_NOTIFY_EMAIL,
+        "items": logs,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 @router.delete("/emails/{log_id}")
 async def delete_email(log_id: str, db: AsyncSession = Depends(get_db)):
@@ -1303,19 +1446,46 @@ async def export_stock(db: AsyncSession = Depends(get_db)):
 from models import Review
 
 
+# ⭐ NOUVEAU : pagination + filtre approved côté serveur
 @router.get("/reviews")
-async def admin_reviews(approved: Optional[bool] = None, db: AsyncSession = Depends(get_db)):
-    q = select(Review).order_by(Review.created_at.desc()).limit(500)
+async def admin_reviews(
+    approved: Optional[bool] = None,
+    limit: int = 20,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """Liste paginée des avis, avec filtre approved optionnel."""
+    base_q = select(Review)
+    count_q = select(func.count(Review.id))
+
     if approved is not None:
-        q = q.where(Review.approved == approved)
-    reviews = (await db.execute(q)).scalars().all()
+        base_q = base_q.where(Review.approved == approved)
+        count_q = count_q.where(Review.approved == approved)
+
+    total = (await db.execute(count_q)).scalar() or 0
+
+    base_q = (
+        base_q
+        .order_by(Review.created_at.desc())
+        .offset(max(0, offset))
+        .limit(min(limit, 500))
+    )
+
+    reviews = (await db.execute(base_q)).scalars().all()
+
+    # Enrichissement produit (uniquement la page courante)
     pids = {r.product_id for r in reviews}
     names = {}
     if pids:
         pres = await db.execute(select(Product.id, Product.name_fr, Product.slug).where(Product.id.in_(pids)))
         names = {pid: {"name": n, "slug": sl} for pid, n, sl in pres.all()}
-    return [{**r.to_dict(admin=True), "product": names.get(r.product_id)} for r in reviews]
 
+    return {
+        "items": [{**r.to_dict(admin=True), "product": names.get(r.product_id)} for r in reviews],
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    }
 
 @router.put("/reviews/{review_id}/approve")
 async def approve_review(review_id: str, data: dict, db: AsyncSession = Depends(get_db)):

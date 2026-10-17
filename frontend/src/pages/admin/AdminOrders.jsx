@@ -16,6 +16,9 @@ const QUICK_FILTERS = [
   { key: "completed",    label_fr: "Terminées",   label_en: "Completed",    statuses: "returned,refunded,cancelled,exchange_sent",         icon: PackageCheck, color: "text-gray-600" },
 ];
 
+// ⭐ Taille de page (batch size)
+const PAGE_SIZE = 20;
+
 export default function AdminOrders() {
   const [params, setParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
@@ -23,6 +26,11 @@ export default function AdminOrders() {
   const [q, setQ] = useState(params.get("q") || "");
   // ⭐ Filtre "Créneau programmé" (client-side, appliqué sur les résultats déjà chargés)
   const [schedFilter, setSchedFilter] = useState("all");
+
+  // ⭐ NOUVEAU : pagination "Charger plus"
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const status = params.get("status") || "";
   const paymentStatus = params.get("payment_status") || "";
@@ -33,7 +41,8 @@ export default function AdminOrders() {
   // Detecte si on est sur un acces rapide (comparaison avec les groupes)
   const activeQuick = QUICK_FILTERS.find((f) => f.statuses === status);
 
-  const load = () => {
+  // ⭐ load() accepte maintenant une limite explicite (pour loadMore)
+  const load = (lim = limit) => {
     const sp = new URLSearchParams();
     if (status) sp.set("status", status);
     if (paymentStatus) sp.set("payment_status", paymentStatus);
@@ -41,15 +50,37 @@ export default function AdminOrders() {
     if (period && period !== "all") sp.set("period", period);
     if (sort && sort !== "recent") sp.set("sort", sort);
     if (q) sp.set("q", q);
-    api.get(`/admin/orders?${sp.toString()}`).then((r) => setOrders(r.data)).catch(() => {});
+    sp.set("limit", lim); // ⭐ on dit au backend combien on veut
+
+    api.get(`/admin/orders?${sp.toString()}`)
+      .then((r) => {
+        setOrders(r.data);
+        // ⭐ Si on a reçu moins que demandé → plus rien à charger
+        setHasMore(r.data.length >= lim);
+        setLoadingMore(false);
+      })
+      .catch(() => setLoadingMore(false));
   };
 
   const loadCounts = () => {
     api.get("/admin/orders/counts").then((r) => setCounts(r.data)).catch(() => {});
   };
 
-  useEffect(() => { load(); }, [status, paymentStatus, country, period, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ⭐ Reset pagination + reload quand les filtres changent
+  useEffect(() => {
+    setLimit(PAGE_SIZE);
+    load(PAGE_SIZE);
+  }, [status, paymentStatus, country, period, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => { loadCounts(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ⭐ NOUVEAU : charger 20 de plus
+  const loadMore = () => {
+    setLoadingMore(true);
+    const newLimit = limit + PAGE_SIZE;
+    setLimit(newLimit);
+    load(newLimit);
+  };
 
   const setFilter = (k, v) => {
     const sp = new URLSearchParams(params);
@@ -107,7 +138,10 @@ export default function AdminOrders() {
     <div data-testid="admin-orders">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <h1 className="font-heading text-2xl font-bold uppercase">
-          Commandes <span className="text-ink-muted text-base font-normal">({filteredOrders.length})</span>
+          Commandes{" "}
+          <span className="text-ink-muted text-base font-normal">
+            ({filteredOrders.length}{hasMore ? "+" : ""})
+          </span>
         </h1>
         <div className="flex gap-2 items-center">
           {hasActiveFilters && (
@@ -153,7 +187,7 @@ export default function AdminOrders() {
 
       {/* Filtres avancés */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <form onSubmit={(e) => { e.preventDefault(); load(); }} className="relative flex-1 min-w-[220px]">
+        <form onSubmit={(e) => { e.preventDefault(); load(PAGE_SIZE); setLimit(PAGE_SIZE); }} className="relative flex-1 min-w-[220px]">
           <Search className="w-4 h-4 absolute left-2 top-3 text-ink-muted" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="N° commande, e-mail, nom, n° de suivi..." className="pl-8" data-testid="orders-search" />
         </form>
@@ -190,7 +224,7 @@ export default function AdminOrders() {
           <option value="90d">90 derniers jours</option>
         </select>
 
-        {/* ⭐ NOUVEAU : filtre "Créneau programmé" */}
+        {/* ⭐ Filtre "Créneau programmé" */}
         <select
           value={schedFilter}
           onChange={(e) => setSchedFilter(e.target.value)}
@@ -235,6 +269,7 @@ export default function AdminOrders() {
             {schedFilter === "week" && "📅 Cette semaine"}
             {schedFilter === "overdue" && "⚠️ En retard"}
             {" "}· {filteredOrders.length} commande{filteredOrders.length > 1 ? "s" : ""}
+            {hasMore && <span className="text-blue-600"> (sur les {orders.length} chargées)</span>}
           </span>
           <button onClick={() => setSchedFilter("all")} className="text-blue-700 font-semibold hover:underline">
             Retirer
@@ -249,7 +284,6 @@ export default function AdminOrders() {
               <th className="p-3">N°</th>
               <th className="p-3">Client</th>
               <th className="p-3">Total</th>
-              {/* ⭐ NOUVEAU : colonne "Prévu" */}
               <th className="p-3 hidden md:table-cell">Prévu</th>
               <th className="p-3">Paiement</th>
               <th className="p-3">Statut</th>
@@ -269,7 +303,6 @@ export default function AdminOrders() {
                     <Link to={`/admin/orders/${o.id}`} className="font-semibold hover:text-brand" data-testid={`order-link-${o.order_number}`}>
                       {o.order_number}
                     </Link>
-                    {/* ⭐ NOUVEAU : pastille OTP actif */}
                     {o.delivery_otp && ["shipped", "in_transit"].includes(o.status) && (
                       <span className="ml-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider bg-purple-100 text-purple-800 px-1.5 py-0.5">
                         <KeyRound className="w-3 h-3" /> OTP
@@ -299,7 +332,6 @@ export default function AdminOrders() {
                     {o.charge_currency !== o.currency && <div className="text-[10px] text-ink-muted">{money(o.charge_total, o.charge_currency)}</div>}
                   </td>
 
-                  {/* ⭐ NOUVEAU : cellule "Prévu" */}
                   <td className="p-3 hidden md:table-cell text-sm whitespace-nowrap">
                     {o.scheduled_date ? (
                       (() => {
@@ -350,6 +382,25 @@ export default function AdminOrders() {
           </tbody>
         </table>
       </div>
+
+      {/* ⭐ NOUVEAU : bouton "Charger plus" */}
+      {hasMore && (
+        <div className="text-center mt-4 p-4" data-testid="load-more-container">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="bg-ink text-white px-6 py-2 text-xs font-bold uppercase hover:bg-ink/90 disabled:opacity-50 transition-colors"
+            data-testid="load-more-orders"
+          >
+            {loadingMore ? "Chargement…" : `Charger plus de commandes (${orders.length} affichées)`}
+          </button>
+        </div>
+      )}
+      {!hasMore && orders.length >= PAGE_SIZE && (
+        <div className="text-center mt-4 p-4 text-xs text-ink-muted">
+          Toutes les commandes sont chargées ({orders.length})
+        </div>
+      )}
     </div>
   );
 }

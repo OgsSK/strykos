@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { api, apiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,7 @@ import {
 } from "@/components/admin/HomeMediaEditors";
 import { SingleMediaUploader } from "@/components/admin/MediaUploader";
 import { toast } from "sonner";
-import { Plus, Trash2, Calendar, Truck } from "lucide-react";
+import { Plus, Trash2, Calendar, Truck, RefreshCw, AlertCircle } from "lucide-react";
 // ⭐ NOUVEAU : forcer le check de version après chaque save admin
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
@@ -55,33 +55,120 @@ const Card = ({ title, children, onSave, testid, description }) => (
 
 const COUNTRIES = [["ML", "Mali"], ["BE", "Belgique"], ["FR", "France"], ["SN", "Senegal"], ["CI", "Cote d'Ivoire"], ["BF", "Burkina Faso"], ["GN", "Guinee"], ["NE", "Niger"], ["DE", "Allemagne"], ["NL", "Pays-Bas"], ["ES", "Espagne"], ["IT", "Italie"], ["GB", "Royaume-Uni"], ["US", "Etats-Unis"], ["CA", "Canada"], ["MA", "Maroc"]];
 
+// ⭐ NOUVEAU : skeleton de chargement
+const SkeletonCard = ({ rows = 3 }) => (
+  <div className="bg-white border border-border p-5 animate-pulse">
+    <div className="h-4 w-40 bg-secondary rounded mb-4" />
+    {Array.from({ length: rows }).map((_, i) => (
+      <div key={i} className="h-10 bg-secondary rounded mb-2" />
+    ))}
+  </div>
+);
+
 export default function AdminSettings() {
   const [s, setS] = useState(null);
   const [tab, setTab] = useState("site");
-  // ⭐ NOUVEAU : paiement à la livraison
+
+  // ⭐ NOUVEAU : états de chargement / erreur / refresh
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // ⭐ Paiement à la livraison
   const [paymentMethods, setPaymentMethods] = useState(null);
   const [pmBusy, setPmBusy] = useState(false);
 
-  useEffect(() => { api.get("/admin/settings").then((r) => {
-    setS(r.data);
-    setPaymentMethods(r.data?.payment_methods || {
-      cod: {
-        enabled: false,
-        label_fr: "Payer à la livraison",
-        label_en: "Pay on delivery",
-        instructions_fr: "",
-        instructions_en: "",
-        countries: ["ML"],
-        min_amount_xof: 0,
-        max_amount_xof: 500000,
-        extra_fee_xof: 0,
-        mode: "all",
-        refund_methods: ["cash", "mobile_money", "promo"],
-        promo_validity_days: 180,
-      },
-    });
-  }).catch(() => {}); }, []);
-  if (!s) return <div className="text-ink-muted">Chargement...</div>;
+  // ⭐ NOUVEAU : load avec AbortController + gestion d'erreur
+  const load = useCallback(async (isRefresh = false) => {
+    const controller = new AbortController();
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    try {
+      const { data } = await api.get("/admin/settings", { signal: controller.signal });
+      setS(data);
+      setPaymentMethods(data?.payment_methods || {
+        cod: {
+          enabled: false,
+          label_fr: "Payer à la livraison",
+          label_en: "Pay on delivery",
+          instructions_fr: "",
+          instructions_en: "",
+          countries: ["ML"],
+          min_amount_xof: 0,
+          max_amount_xof: 500000,
+          extra_fee_xof: 0,
+          mode: "all",
+          refund_methods: ["cash", "mobile_money", "promo"],
+          promo_validity_days: 180,
+        },
+      });
+      setLastUpdated(new Date());
+    } catch (e) {
+      if (e.name === "CanceledError" || e.name === "AbortError" || e.code === "ERR_CANCELED") return;
+      setError(e?.response?.data?.detail || e.message || "Erreur de chargement");
+      toast.error("Impossible de charger les paramètres");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    let cleanup;
+    load().then((c) => { cleanup = c; });
+    return () => cleanup?.();
+  }, [load]);
+
+  // ⭐ NOUVEAU : bouton refresh
+  const refresh = async () => {
+    await forceCheckVersion();
+    await load(true);
+    toast.success("Paramètres actualisés");
+  };
+
+  // ⭐ Loading skeleton
+  if (loading && !s) {
+    return (
+      <div className="max-w-4xl">
+        <div className="flex items-center justify-between mb-5">
+          <h1 className="font-heading text-2xl font-bold uppercase">Parametres</h1>
+        </div>
+        <div className="flex gap-1 mb-5 border-b border-border">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-9 w-24 bg-secondary rounded animate-pulse" />
+          ))}
+        </div>
+        <SkeletonCard rows={5} />
+      </div>
+    );
+  }
+
+  // ⭐ Erreur avec retry
+  if (error && !s) {
+    return (
+      <div className="max-w-4xl">
+        <div className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <div className="font-semibold text-red-800 mb-1">Erreur de chargement</div>
+            <div className="text-sm text-red-700 mb-3">{error}</div>
+            <button
+              onClick={() => load()}
+              className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-3 py-2"
+            >
+              <RefreshCw className="w-3 h-3" /> Réessayer
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!s) return null;
 
   const upd = (key, patch) => setS({ ...s, [key]: { ...s[key], ...patch } });
 
@@ -90,12 +177,11 @@ export default function AdminSettings() {
     try {
       await api.put("/admin/settings", { key, value: value ?? s[key] });
       toast.success("Parametres enregistres");
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ NOUVEAU : helpers COD
+  // ⭐ helpers COD
   const updatePaymentMethods = (k, field, value) => {
     setPaymentMethods((prev) => ({
       ...prev,
@@ -109,7 +195,6 @@ export default function AdminSettings() {
     try {
       await api.put("/admin/settings", { key: "payment_methods", value: paymentMethods });
       toast.success("Paramètres COD enregistrés");
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
     setPmBusy(false);
@@ -119,7 +204,6 @@ export default function AdminSettings() {
   const setMethod = (i, patch) => upd("shipping", { methods: methods.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
   const setOrigin = (i, patch) => upd("shipping", { origins: origins.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) });
 
-  // ⭐ Ajout de l'onglet COD
   const tabs = [
     ["site", "Coordonnees"],
     ["hero", "Accueil & videos"],
@@ -133,7 +217,27 @@ export default function AdminSettings() {
 
   return (
     <div data-testid="admin-settings" className="max-w-4xl">
-      <h1 className="font-heading text-2xl font-bold uppercase mb-5">Parametres</h1>
+      {/* ⭐ NOUVEAU : header avec bouton refresh + timestamp */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div>
+          <h1 className="font-heading text-2xl font-bold uppercase">Parametres</h1>
+          {lastUpdated && (
+            <p className="text-[11px] text-ink-muted mt-1">
+              Actualisé à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={refresh}
+          disabled={refreshing}
+          className="inline-flex items-center gap-1 border border-border px-3 py-2 text-sm font-semibold hover:border-ink disabled:opacity-50 transition-colors"
+          title="Recharger depuis le serveur"
+        >
+          <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+          {refreshing ? "..." : "Rafraîchir"}
+        </button>
+      </div>
+
       <div className="flex flex-wrap gap-1 mb-5 border-b border-border">
         {tabs.map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} data-testid={`settings-tab-${k}`}
@@ -997,7 +1101,7 @@ export default function AdminSettings() {
         </Card>
       )}
 
-      {/* ⭐ NOUVEAU : Onglet Paiement à la livraison */}
+      {/* ⭐ Onglet Paiement à la livraison */}
       {tab === "payment_methods" && (
         <Card title="Paiement à la livraison (COD)" testid="settings-payment-methods">
           <p className="text-xs text-ink-muted mb-4">

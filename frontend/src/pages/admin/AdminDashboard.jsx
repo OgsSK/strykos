@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { api } from "@/lib/api";
 import { money, fmtDate, STATUS_LABELS, STATUS_COLORS } from "@/lib/adminUtils";
-import { Package, ShoppingCart, AlertTriangle, Clock, Truck, Users, Mail, Tag, ArrowRight, Plus, XCircle } from "lucide-react";
+import { forceCheckVersion } from "@/lib/cacheVersion";  // ⭐ nouveau
+import { Package, ShoppingCart, AlertTriangle, Clock, Truck, Users, Mail, Tag, ArrowRight, Plus, XCircle, RefreshCw, AlertCircle } from "lucide-react";
+import { toast } from "sonner";  // ⭐ nouveau
 
 const Kpi = ({ icon: Icon, label, value, color, to, testid }) => (
   <Link to={to || "#"} className="bg-white border border-border p-4 hover:border-ink transition-colors block">
@@ -14,17 +16,116 @@ const Kpi = ({ icon: Icon, label, value, color, to, testid }) => (
   </Link>
 );
 
+// ⭐ NOUVEAU : skeleton de chargement
+const SkeletonKpi = () => (
+  <div className="bg-white border border-border p-4 animate-pulse">
+    <div className="h-3 w-20 bg-secondary rounded mb-2" />
+    <div className="h-7 w-12 bg-secondary rounded" />
+  </div>
+);
+
 export default function AdminDashboard() {
   const [d, setD] = useState(null);
-  useEffect(() => { api.get("/admin/dashboard").then((r) => setD(r.data)).catch(() => {}); }, []);
-  if (!d) return <div className="text-ink-muted">Chargement...</div>;
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  // ⭐ load avec AbortController + gestion d'erreur
+  const load = useCallback(async (isRefresh = false) => {
+    const controller = new AbortController();
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError(null);
+
+    try {
+      const { data } = await api.get("/admin/dashboard", { signal: controller.signal });
+      setD(data);
+      setLastUpdated(new Date());
+    } catch (e) {
+      // Ignore les aborts volontaires
+      if (e.name === "CanceledError" || e.name === "AbortError" || e.code === "ERR_CANCELED") return;
+      setError(e?.response?.data?.detail || e.message || "Erreur de chargement");
+      toast.error("Impossible de charger le tableau de bord");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    let cleanup;
+    load().then((c) => { cleanup = c; });
+    return () => cleanup?.();
+  }, [load]);
+
+  // ⭐ NOUVEAU : bouton refresh
+  const refresh = async () => {
+    await forceCheckVersion();  // ⭐ force l'invalidation du cache client
+    await load(true);
+    toast.success("Tableau de bord actualisé");
+  };
+
+  // ⭐ État de chargement initial (skeleton)
+  if (loading && !d) {
+    return (
+      <div data-testid="admin-dashboard-loading">
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="font-heading text-2xl font-bold uppercase">Tableau de bord</h1>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 8 }).map((_, i) => <SkeletonKpi key={i} />)}
+        </div>
+        <div className="mt-6 bg-white border border-border p-5 h-40 animate-pulse" />
+      </div>
+    );
+  }
+
+  // ⭐ État d'erreur avec retry
+  if (error && !d) {
+    return (
+      <div data-testid="admin-dashboard-error" className="bg-red-50 border border-red-200 p-6 flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+        <div className="flex-1">
+          <div className="font-semibold text-red-800 mb-1">Erreur de chargement</div>
+          <div className="text-sm text-red-700 mb-3">{error}</div>
+          <button
+            onClick={() => load()}
+            className="inline-flex items-center gap-1 bg-red-600 hover:bg-red-700 text-white text-xs font-bold uppercase px-3 py-2"
+          >
+            <RefreshCw className="w-3 h-3" /> Réessayer
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!d) return null;
+
   const maxOrders = Math.max(1, ...d.series.map((s) => s.orders));
 
   return (
     <div data-testid="admin-dashboard">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <h1 className="font-heading text-2xl font-bold uppercase">Tableau de bord</h1>
-        <div className="flex gap-2">
+        <div>
+          <h1 className="font-heading text-2xl font-bold uppercase">Tableau de bord</h1>
+          {lastUpdated && (
+            <p className="text-[11px] text-ink-muted mt-1">
+              Actualisé à {lastUpdated.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="inline-flex items-center gap-1 border border-border px-3 py-2 text-sm font-semibold hover:border-ink disabled:opacity-50 transition-colors"
+            title="Rafraîchir"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "..." : "Rafraîchir"}
+          </button>
           <Link to="/admin/products?new=1" className="inline-flex items-center gap-1 bg-brand text-white px-3 py-2 text-sm font-semibold hover:bg-brand-dark" data-testid="quick-new-product"><Plus className="w-4 h-4" /> Produit</Link>
           <Link to="/admin/promos?new=1" className="inline-flex items-center gap-1 bg-ink text-white px-3 py-2 text-sm font-semibold hover:bg-ink/90" data-testid="quick-new-promo"><Tag className="w-4 h-4" /> Code promo</Link>
         </div>

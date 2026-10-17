@@ -13,10 +13,11 @@ import {
   Plus, Trash2, Pencil, Copy, Eye, EyeOff, Search, Download,
   ArrowUp, ArrowDown, Wand2, ChevronDown, Banknote
 } from "lucide-react";
-// ⭐ NOUVEAU : forcer le check de version après chaque save produit
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
-// ⭐ Devise principale = FCFA. L'EUR est calculé automatiquement pour Stripe.
+// ⭐ Taille de page (batch size)
+const PAGE_SIZE = 20;
+
 const XOF_RATE = 655.957;
 
 const xofToEur = (xof) => {
@@ -37,17 +38,16 @@ const EMPTY = {
   slug: "", sku: "", brand_id: "", category_id: "", name_fr: "", name_en: "",
   description_fr: "", description_en: "",
   price_eur: "", price_usd: "", price_xof: "",
-  sale_price_eur: "", sale_price_xof: "",   // ⭐ nouveau champ
+  sale_price_eur: "", sale_price_xof: "",
   is_new: false, is_featured: false, is_best_seller: false,
   gender: "", sport: "",
   product_type: "", colors: "",
   customizable: false, customization_price_eur: 0, customization_fields: [],
-  cta_label: "",   // ⭐ NOUVEAU : texte du bouton sur la home
-  cod_allowed: true,   // ⭐ NOUVEAU : paiement à la livraison autorisé
+  cta_label: "",
+  cod_allowed: true,
   video_url: "", published: true, images: [], variants: [],
 };
 
-// Presets de portions
 const SIZE_PRESETS = {
   cake: ["4 parts", "6 parts", "8 parts", "10 parts", "12 parts", "20 parts"],
   cupcake: ["x6", "x12", "x24", "x48"],
@@ -56,7 +56,6 @@ const SIZE_PRESETS = {
   cookie: ["x6", "x12", "x24"],
 };
 
-// ⭐ Presets de personnalisation
 const CUSTOM_PRESETS = {
   birthday: {
     label_fr: "🎂 Anniversaire",
@@ -146,23 +145,63 @@ export default function AdminProducts() {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState("");                     // input
+  const [appliedQ, setAppliedQ] = useState("");       // ⭐ valeur réellement envoyée au serveur
   const [stockFilter, setStockFilter] = useState(params.get("stock") || "all");
   const [taxonomies, setTaxonomies] = useState({ genders: [], sports: [] });
   const [showPresets, setShowPresets] = useState(false);
 
-  const load = () => api.get("/admin/products").then((r) => setProducts(r.data)).catch(() => {});
+  // ⭐ NOUVEAU : pagination "Charger plus"
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [total, setTotal] = useState(0);
+
+  // ⭐ load() accepte une limite explicite + utilise les filtres serveur
+  const load = (lim = limit) => {
+    const sp = new URLSearchParams();
+    if (appliedQ) sp.set("q", appliedQ);
+    if (stockFilter && stockFilter !== "all") sp.set("stock", stockFilter);
+    sp.set("limit", lim);
+    sp.set("offset", 0);
+
+    api.get(`/admin/products?${sp.toString()}`)
+      .then((r) => {
+        setProducts(r.data.items || []);
+        setTotal(r.data.total || 0);
+        setHasMore((r.data.items || []).length >= lim && (r.data.items || []).length < (r.data.total || 0));
+        setLoadingMore(false);
+      })
+      .catch(() => setLoadingMore(false));
+  };
+
+  // ⭐ Rechargement quand un filtre serveur change (recherche validée / stock)
   useEffect(() => {
-    load();
+    setLimit(PAGE_SIZE);
+    load(PAGE_SIZE);
+  }, [appliedQ, stockFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Chargements annexes (marques, catégories, taxonomies) — une seule fois
+  useEffect(() => {
     api.get("/admin/brands").then((r) => setBrands(r.data)).catch(() => {});
     api.get("/admin/categories").then((r) => setCats(r.data)).catch(() => {});
+    api.get("/taxonomies").then((r) => setTaxonomies(r.data)).catch(() => {});
     if (params.get("new")) { openNew(); setParams({}); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    api.get("/taxonomies").then((r) => setTaxonomies(r.data)).catch(() => {});
-  }, []);
+  // ⭐ NOUVEAU : charger 20 de plus
+  const loadMore = () => {
+    setLoadingMore(true);
+    const newLimit = limit + PAGE_SIZE;
+    setLimit(newLimit);
+    load(newLimit);
+  };
+
+  const submitSearch = (e) => {
+    e.preventDefault();
+    setAppliedQ(q.trim());
+  };
 
   const openNew = () => { setEditing(null); setForm(EMPTY); setOpen(true); };
   const openEdit = (p) => {
@@ -180,8 +219,8 @@ export default function AdminProducts() {
       product_type: p.product_type || "", colors: (p.colors || []).join(", "), customizable: p.customizable,
       customization_price_eur: p.customization_price_eur || 0,
       customization_fields: p.customization_fields || [],
-      cta_label: p.cta_label || "",   // ⭐ NOUVEAU : mappe le libellé du bouton
-      cod_allowed: p.cod_allowed !== false,   // ⭐ NOUVEAU : paiement à la livraison
+      cta_label: p.cta_label || "",
+      cod_allowed: p.cod_allowed !== false,
       video_url: p.video_url || "", published: p.published,
       images: p.images || [],
       variants: (p.variants || []).map((v) => ({ id: v.id, size: v.size, color: v.color, sku: v.sku, stock: v.stock, extra_price_eur: v.extra_price_eur })),
@@ -200,12 +239,8 @@ export default function AdminProducts() {
     ...(form.customization_fields || []),
     {
       key: `field_${Date.now()}`,
-      type: "text",
-      required: false,
-      max_length: 30,
-      price_eur: 0,
-      label_fr: "", label_en: "",
-      placeholder_fr: "", placeholder_en: "",
+      type: "text", required: false, max_length: 30, price_eur: 0,
+      label_fr: "", label_en: "", placeholder_fr: "", placeholder_en: "",
       default_value: "", options: [],
     },
   ]);
@@ -229,7 +264,6 @@ export default function AdminProducts() {
     toast.success(`Preset « ${preset.label_fr} » appliqué`);
   };
 
-  // ⭐ Options d'un champ "select"
   const addOption = (fieldIdx) => {
     const fields = [...(form.customization_fields || [])];
     const opts = [...(fields[fieldIdx].options || []), { value: "", label_fr: "", label_en: "" }];
@@ -249,7 +283,6 @@ export default function AdminProducts() {
     setF("customization_fields", fields);
   };
 
-  // ⭐ MODIFIÉ : force le check de version après save produit
   const save = async () => {
     if (!form.name_fr || !form.name_en || form.price_eur === "") return toast.error("Nom FR/EN et prix EUR requis");
     setSaving(true);
@@ -261,16 +294,14 @@ export default function AdminProducts() {
       price_usd: numOrNull(form.price_usd),
       price_xof: numOrNull(form.price_xof),
       sale_price_eur: numOrNull(form.sale_price_eur),
-      sale_price_xof: numOrNull(form.sale_price_xof),   // ⭐ nouveau
+      sale_price_xof: numOrNull(form.sale_price_xof),
       customization_price_eur: parseFloat(form.customization_price_eur) || 0,
       customization_fields: (form.customization_fields || []).map((f) => ({
         ...f,
         price_eur: parseFloat(f.price_eur) || 0,
         max_length: parseInt(f.max_length) || 0,
       })),
-      // ⭐ NOUVEAU : normalisation cta_label (lowercase, trim, max 40 chars)
       cta_label: (form.cta_label || "").trim().toLowerCase().slice(0, 40),
-      // ⭐ NOUVEAU : paiement à la livraison
       cod_allowed: form.cod_allowed !== false,
       brand_id: form.brand_id || null, category_id: form.category_id || null,
       colors: String(form.colors).split(",").map((s) => s.trim()).filter(Boolean),
@@ -282,59 +313,49 @@ export default function AdminProducts() {
       toast.success("Produit enregistré");
       setOpen(false);
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
     setSaving(false);
   };
 
-  // ⭐ MODIFIÉ : force le check de version après toggle publish
   const togglePublish = async (p) => {
     try {
       await api.put(`/admin/products/${p.id}/publish`, { published: !p.published });
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ MODIFIÉ : force le check de version après duplicate
   const duplicate = async (p) => {
     try {
       await api.post(`/admin/products/${p.id}/duplicate`);
       toast.success("Produit dupliqué (brouillon)");
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  // ⭐ MODIFIÉ : force le check de version après delete
   const remove = async (p) => {
     if (!window.confirm(`Supprimer définitivement "${p.name_fr}" ? Cette action est irréversible.`)) return;
     try {
       await api.delete(`/admin/products/${p.id}?hard=true`);
       toast.success("Produit supprimé");
       load();
-      // ⭐ NOUVEAU : force le check de version immédiatement
       await forceCheckVersion();
     } catch (e) { toast.error(apiError(e)); }
   };
 
-  const filtered = products.filter((p) => {
-    const stock = (p.variants || []).reduce((s, v) => s + v.stock, 0);
-    if (stockFilter === "out" && stock > 0) return false;
-    if (stockFilter === "low" && (stock === 0 || stock > 5)) return false;
-    if (stockFilter === "draft" && p.published) return false;
-    if (q && !`${p.name_fr} ${p.name_en} ${p.sku} ${p.brand?.name}`.toLowerCase().includes(q.toLowerCase())) return false;
-    return true;
-  });
+  // ⭐ Filtrage désormais serveur → on affiche directement `products`
+  const filtered = products;
 
   return (
     <div data-testid="admin-products">
       <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <h1 className="font-heading text-2xl font-bold uppercase">
-          Produits <span className="text-ink-muted text-base font-normal">({filtered.length})</span>
+          Produits{" "}
+          <span className="text-ink-muted text-base font-normal">
+            ({filtered.length}{hasMore ? "+" : ""}{total > 0 && !hasMore ? ` / ${total}` : ""})
+          </span>
         </h1>
         <div className="flex gap-2">
           <button onClick={() => downloadCsv("/admin/export/stock.csv", "cakes-stock.csv").catch(() => toast.error("Export impossible"))} className="inline-flex items-center gap-1 border border-ink px-3 py-2 text-sm font-semibold hover:bg-ink hover:text-white transition-colors" data-testid="export-stock-csv">
@@ -347,16 +368,21 @@ export default function AdminProducts() {
       </div>
 
       <div className="flex flex-wrap gap-2 mb-4">
-        <div className="relative flex-1 min-w-[200px]">
+        <form onSubmit={submitSearch} className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 absolute left-2 top-3 text-ink-muted" />
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher nom, SKU, création, catégorie..." className="pl-8" data-testid="product-search" />
-        </div>
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Rechercher nom, SKU... (Entrée)" className="pl-8" data-testid="product-search" />
+        </form>
         <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)} className="border border-border h-10 px-2 text-sm bg-white" data-testid="product-stock-filter">
           <option value="all">Tous</option>
           <option value="out">Ruptures</option>
           <option value="low">Stock faible (≤5)</option>
           <option value="draft">Non publiés</option>
         </select>
+        {(appliedQ || stockFilter !== "all") && (
+          <button onClick={() => { setQ(""); setAppliedQ(""); setStockFilter("all"); }} className="text-xs text-ink-muted hover:text-brand border border-border px-2 py-1">
+            Effacer filtres
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-border overflow-x-auto">
@@ -385,7 +411,6 @@ export default function AdminProducts() {
                       <div>
                         <div className="font-medium flex items-center gap-2">
                           {p.name_fr}
-                          {/* ⭐ NOUVEAU : indicateur COD */}
                           {p.cod_allowed === false && (
                             <span className="text-[10px] uppercase tracking-wider bg-gray-100 text-gray-600 px-1.5 py-0.5 inline-flex items-center gap-1">
                               <Banknote className="w-2.5 h-2.5" /> Non-COD
@@ -449,6 +474,21 @@ export default function AdminProducts() {
         </table>
       </div>
 
+      {/* ⭐ NOUVEAU : bouton "Charger plus" */}
+      {hasMore && (
+        <div className="text-center mt-4 p-4">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="bg-ink text-white px-6 py-2 text-xs font-bold uppercase hover:bg-ink/90 disabled:opacity-50 transition-colors"
+            data-testid="load-more-products"
+          >
+            {loadingMore ? "Chargement…" : `Charger plus de produits (${products.length} / ${total})`}
+          </button>
+        </div>
+      )}
+
+      {/* === DIALOG (inchangé) === */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-4xl max-h-[92vh] overflow-auto">
           <DialogHeader>
@@ -568,7 +608,6 @@ export default function AdminProducts() {
               </div>
               <p className="text-[11px] text-ink-muted mt-2">
                 💡 Le prix FCFA est saisi manuellement. Il est converti automatiquement en EUR (pour Stripe) avec le taux actuel.
-                Pour Stripe, le montant sera facturé dans la devise de charge (EUR) équivalente.
               </p>
             </section>
 
@@ -631,7 +670,6 @@ export default function AdminProducts() {
                 ))}
               </div>
 
-              {/* ⭐ NOUVEAU : Paiement à la livraison */}
               <div className="mt-4">
                 <label className="flex items-center gap-3 p-3 border border-border bg-secondary/30 cursor-pointer">
                   <input
@@ -654,7 +692,6 @@ export default function AdminProducts() {
                 </label>
               </div>
 
-              {/* ⭐ NOUVEAU : Texte du bouton (accueil) */}
               <div className="mt-4 max-w-md">
                 <Label className="text-xs">
                   Texte du bouton sur l'accueil
@@ -673,10 +710,6 @@ export default function AdminProducts() {
                   <option value="order">📝 Commander</option>
                   <option value="view">🔍 Voir le produit</option>
                 </select>
-                <p className="text-[11px] text-ink-muted mt-1">
-                  <strong>Auto</strong> : affiche « Ajouter au panier » si le produit a 1 seule portion et pas de personnalisation,
-                  sinon « Choisir » (redirige vers la fiche produit).
-                </p>
               </div>
             </section>
 
@@ -801,7 +834,6 @@ export default function AdminProducts() {
                         </div>
                       </div>
 
-                      {/* Options (uniquement pour type "select") */}
                       {f.type === "select" && (
                         <div className="border-t border-border pt-2">
                           <div className="flex items-center justify-between mb-1">
