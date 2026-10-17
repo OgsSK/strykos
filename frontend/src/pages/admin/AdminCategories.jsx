@@ -5,20 +5,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { 
+  Plus, Pencil, Trash2, ChevronDown, ChevronRight, ExternalLink, Link as LinkIcon, Info, Package, AlertTriangle 
+} from "lucide-react";
 import { forceCheckVersion } from "@/lib/cacheVersion";
 
 const EMPTY = { slug: "", name_fr: "", name_en: "", type: "", parent_id: "", position: 0, published: true };
 
-// ⭐ Nettoie un slug : minuscules, accents retirés, pas de / ni espaces
-const cleanSlug = (s) =>
-  (s || "")
-    .toLowerCase()
+// ⭐ FONCTION DE NETTOYAGE ULTRA-SÉCURISÉE
+const cleanSlug = (input) => {
+  let s = (input || "").trim().toLowerCase();
+  
+  // Si l'utilisateur a collé une URL complète, on extrait juste le paramètre
+  if (s.includes("category=")) {
+    s = s.split("category=")[1].split("&")[0];
+  }
+  
+  return s
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+    .replace(/[\u0300-\u036f]/g, "") // Enlève les accents
+    .replace(/[^a-z0-9-]/g, "-")     // Remplace tout ce qui n'est pas lettre/chiffre par un tiret
+    .replace(/-+/g, "-")             // Évite les tirets multiples
+    .replace(/^-|-$/g, "");          // Enlève les tirets au début et à la fin
+};
 
 export default function AdminCategories() {
   const [cats, setCats] = useState([]);
@@ -32,6 +41,7 @@ export default function AdminCategories() {
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const parents = useMemo(() => cats.filter((c) => !c.parent_id).sort((a, b) => a.position - b.position), [cats]);
+  
   const childrenOf = useMemo(() => {
     const map = {};
     cats.filter((c) => c.parent_id).forEach((c) => {
@@ -41,6 +51,13 @@ export default function AdminCategories() {
     Object.values(map).forEach((arr) => arr.sort((a, b) => a.position - b.position));
     return map;
   }, [cats]);
+
+  const availableParents = useMemo(() => {
+    if (!editing) return parents;
+    return parents.filter((p) => p.id !== editing);
+  }, [parents, editing]);
+
+  const hasChildren = editing && cats.some((c) => c.parent_id === editing);
 
   const openNew = (parentId = "") => {
     setEditing(null);
@@ -65,11 +82,15 @@ export default function AdminCategories() {
   const save = async () => {
     if (!form.name_fr || !form.name_en) return toast.error("Noms FR et EN requis");
 
-    // ⭐ Nettoie le slug avant envoi
     const finalSlug = cleanSlug(form.slug || form.name_fr);
 
+    // ⭐ SÉCURITÉ : Empêcher de mettre un SKU de produit
+    if (finalSlug.endsWith("-std") || finalSlug.includes("sku")) {
+      return toast.error("Ce slug ressemble à une référence produit (SKU). Utilisez un nom simple (ex: 'anniversaires').");
+    }
+
     if (!finalSlug) {
-      return toast.error("Le slug (lien) est invalide. Utilisez des lettres, chiffres ou tirets.");
+      return toast.error("Le slug est invalide. Utilisez des lettres et des tirets.");
     }
 
     const payload = {
@@ -82,7 +103,7 @@ export default function AdminCategories() {
     try {
       if (editing) await api.put(`/admin/categories/${editing}`, payload);
       else await api.post("/admin/categories", payload);
-      toast.success("Categorie enregistree");
+      toast.success("Catégorie enregistrée");
       setOpen(false);
       load();
       await forceCheckVersion();
@@ -92,14 +113,17 @@ export default function AdminCategories() {
   };
 
   const remove = async (c) => {
-    const hasChildren = childrenOf[c.id]?.length > 0;
-    const msg = hasChildren
-      ? `La categorie "${c.name_fr}" contient ${childrenOf[c.id].length} sous-categorie(s). Supprimer quand meme ?`
-      : `Supprimer la categorie "${c.name_fr}" ?`;
+    const children = childrenOf[c.id] || [];
+    let msg = `Supprimer la catégorie "${c.name_fr}" ?`;
+    
+    if (children.length > 0) {
+      msg = `⚠️ Attention : La catégorie "${c.name_fr}" contient ${children.length} sous-catégorie(s).\n\nSi vous la supprimez, les sous-catégories deviendront des catégories principales.\n\nContinuer ?`;
+    }
+    
     if (!window.confirm(msg)) return;
     try {
       await api.delete(`/admin/categories/${c.id}`);
-      toast.success("Supprimee");
+      toast.success("Catégorie supprimée");
       load();
       await forceCheckVersion();
     } catch (e) {
@@ -109,79 +133,114 @@ export default function AdminCategories() {
 
   const toggleExpand = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
 
+  const copyLink = (slug) => {
+    const url = `${window.location.origin}/catalog?category=${slug}`;
+    navigator.clipboard.writeText(url);
+    toast.success("Lien copié !");
+  };
+
   return (
-    <div data-testid="admin-categories">
-      <div className="flex items-center justify-between mb-5">
+    <div data-testid="admin-categories" className="max-w-5xl">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="font-heading text-2xl font-bold uppercase">Categories</h1>
+          <h1 className="font-heading text-2xl font-bold uppercase">Catégories</h1>
           <p className="text-xs text-ink-muted mt-1">
-            {parents.length} categorie(s) principale(s) · {cats.length - parents.length} sous-categorie(s)
+            {parents.length} catégorie(s) principale(s) · {cats.length - parents.length} sous-catégorie(s)
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={() => openNew("")} className="bg-brand hover:bg-brand-dark rounded-none">
-            <Plus className="w-4 h-4 mr-1" /> Nouvelle principale
-          </Button>
-        </div>
+        <Button onClick={() => openNew("")} className="bg-brand hover:bg-brand-dark rounded-none">
+          <Plus className="w-4 h-4 mr-2" /> Nouvelle catégorie
+        </Button>
       </div>
 
-      <div className="bg-white border border-border">
+      <div className="bg-white border border-border rounded-sm shadow-sm overflow-hidden">
         {parents.length === 0 && (
-          <p className="p-6 text-center text-ink-muted text-sm">Aucune categorie principale.</p>
+          <p className="p-8 text-center text-ink-muted text-sm italic">Aucune catégorie pour le moment.</p>
         )}
 
         {parents.map((parent) => {
           const children = childrenOf[parent.id] || [];
           const isExp = expanded[parent.id] !== false;
+          
           return (
             <div key={parent.id} className="border-b border-border last:border-b-0">
-              <div className="flex items-center justify-between p-3 bg-secondary/40 hover:bg-secondary/60">
+              <div className="flex items-center justify-between p-4 bg-secondary/20 hover:bg-secondary/40 transition-colors group">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <button onClick={() => toggleExpand(parent.id)} className="p-1 hover:bg-white rounded shrink-0" disabled={children.length === 0}>
-                    {children.length === 0 ? <span className="w-4 h-4 inline-block" /> : isExp ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  <button 
+                    onClick={() => toggleExpand(parent.id)} 
+                    className={`p-1.5 rounded shrink-0 transition-colors ${children.length === 0 ? 'opacity-30 cursor-default' : 'hover:bg-white'}`} 
+                    disabled={children.length === 0}
+                  >
+                    {children.length === 0 ? <span className="w-5 h-5 inline-block" /> : isExp ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                   </button>
+                  
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-sm">
-                      {parent.name_fr}
-                      <span className="ml-2 text-xs text-ink-muted font-normal">/ {parent.name_en}</span>
-                      {!parent.published && <span className="ml-2 text-[10px] uppercase bg-gray-200 text-gray-600 px-1.5 py-0.5">Masquée</span>}
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-base text-ink">{parent.name_fr}</span>
+                      <span className="text-sm text-ink-muted">/ {parent.name_en}</span>
+                      {!parent.published && (
+                        <span className="text-[10px] uppercase tracking-wider bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">Masquée</span>
+                      )}
                     </div>
-                    <div className="text-xs text-ink-muted mt-0.5">
-                      <span className="font-mono">{parent.slug}</span>
-                      <span className="mx-2">·</span>
-                      {children.length} sous-catégorie(s)
-                      <span className="mx-2">·</span>
-                      {parent.product_count || 0} produit(s)
+                    <div className="flex items-center gap-3 text-xs text-ink-muted mt-1">
+                      <span className="font-mono bg-secondary px-1.5 py-0.5 rounded text-[11px]">{parent.slug}</span>
+                      <span className="inline-flex items-center gap-1"><Info className="w-3 h-3" /> {children.length} sous-catégorie(s)</span>
+                      <span className="inline-flex items-center gap-1"><Package className="w-3 h-3" /> {parent.product_count || 0} produit(s)</span>
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-1 shrink-0">
-                  <button onClick={() => openNew(parent.id)} className="p-1.5 hover:bg-white text-brand rounded" title="Ajouter une sous-catégorie"><Plus className="w-4 h-4" /></button>
-                  <button onClick={() => openEdit(parent)} className="p-1.5 hover:bg-white rounded" title="Modifier"><Pencil className="w-4 h-4" /></button>
-                  <button onClick={() => remove(parent)} className="p-1.5 hover:bg-red-50 text-red-600 rounded" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => openNew(parent.id)} className="p-2 hover:bg-white text-brand rounded" title="Ajouter une sous-catégorie">
+                    <Plus className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => copyLink(parent.slug)} className="p-2 hover:bg-white rounded text-ink-muted hover:text-ink" title="Copier le lien">
+                    <LinkIcon className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => window.open(`/catalog?category=${parent.slug}`, "_blank")} className="p-2 hover:bg-white rounded text-ink-muted hover:text-ink" title="Voir sur la boutique">
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => openEdit(parent)} className="p-2 hover:bg-white rounded text-ink-muted hover:text-ink" title="Modifier">
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => remove(parent)} className="p-2 hover:bg-red-50 text-red-500 rounded" title="Supprimer">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
 
               {isExp && children.length > 0 && (
                 <div className="bg-white">
                   {children.map((child) => (
-                    <div key={child.id} className="flex items-center justify-between p-3 pl-12 border-t border-border hover:bg-cream/50">
+                    <div key={child.id} className="flex items-center justify-between p-3 pl-14 border-t border-border hover:bg-cream/30 transition-colors group">
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm">
-                          <span className="text-ink-muted mr-2">└</span>
-                          {child.name_fr}
-                          <span className="ml-2 text-xs text-ink-muted font-normal">/ {child.name_en}</span>
-                          {!child.published && <span className="ml-2 text-[10px] uppercase bg-gray-200 text-gray-600 px-1.5 py-0.5">Masquée</span>}
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-ink-muted font-mono text-xs">└─</span>
+                          <span className="font-medium text-ink">{child.name_fr}</span>
+                          <span className="text-xs text-ink-muted">/ {child.name_en}</span>
+                          {!child.published && (
+                            <span className="text-[10px] uppercase tracking-wider bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">Masquée</span>
+                          )}
                         </div>
-                        <div className="text-xs text-ink-muted mt-0.5 ml-6">
+                        <div className="text-xs text-ink-muted mt-1 ml-6 flex items-center gap-3">
                           <span className="font-mono">{child.slug}</span>
-                          <span className="mx-2">·</span>
-                          {child.product_count || 0} produit(s)
+                          <span className="inline-flex items-center gap-1"><Package className="w-3 h-3" /> {child.product_count || 0} produit(s)</span>
                         </div>
                       </div>
-                      <div className="flex gap-1 shrink-0">
-                        <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-secondary rounded"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => remove(child)} className="p-1.5 hover:bg-red-50 text-red-600 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                      
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => copyLink(child.slug)} className="p-1.5 hover:bg-secondary rounded text-ink-muted hover:text-ink" title="Copier le lien">
+                          <LinkIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => window.open(`/catalog?category=${child.slug}`, "_blank")} className="p-1.5 hover:bg-secondary rounded text-ink-muted hover:text-ink" title="Voir sur la boutique">
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => openEdit(child)} className="p-1.5 hover:bg-secondary rounded text-ink-muted hover:text-ink" title="Modifier">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => remove(child)} className="p-1.5 hover:bg-red-50 text-red-500 rounded" title="Supprimer">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -189,8 +248,8 @@ export default function AdminCategories() {
               )}
 
               {isExp && children.length === 0 && (
-                <div className="p-3 pl-12 text-xs text-ink-muted italic border-t border-border">
-                  Aucune sous-catégorie.
+                <div className="p-3 pl-14 text-xs text-ink-muted italic border-t border-border bg-cream/20">
+                  Aucune sous-catégorie pour le moment.
                 </div>
               )}
             </div>
@@ -199,65 +258,93 @@ export default function AdminCategories() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-xl">
           <DialogHeader>
-            <DialogTitle>{editing ? "Modifier" : "Nouvelle"} {form.parent_id ? "sous-catégorie" : "catégorie"}</DialogTitle>
+            <DialogTitle>
+              {editing ? "Modifier la catégorie" : "Créer une catégorie"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Nom FR *</Label>
-              <Input value={form.name_fr} onChange={(e) => setF("name_fr", e.target.value)} />
-            </div>
-            <div>
-              <Label>Nom EN *</Label>
-              <Input value={form.name_en} onChange={(e) => setF("name_en", e.target.value)} />
+          
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Nom FR *</Label>
+                <Input value={form.name_fr} onChange={(e) => setF("name_fr", e.target.value)} placeholder="Ex: Gâteaux d'anniversaire" />
+              </div>
+              <div>
+                <Label>Nom EN *</Label>
+                <Input value={form.name_en} onChange={(e) => setF("name_en", e.target.value)} placeholder="Ex: Birthday cakes" />
+              </div>
             </div>
 
-            {/* ⭐ Slug nettoyé automatiquement */}
-            <div className="col-span-2">
-              <Label>Slug (Lien URL) *</Label>
-              <Input
-                value={form.slug}
-                onChange={(e) => setF("slug", cleanSlug(e.target.value))}
-                placeholder="ex: anniversaires"
-                className="font-mono text-xs"
-              />
-              <p className="text-[11px] text-ink-muted mt-1">
-                Lien final : <code className="bg-secondary px-1">/catalog?category=<strong>{form.slug || cleanSlug(form.name_fr) || "..."}</strong></code>
+            <div className="bg-blue-50/50 p-4 border border-blue-100 rounded-md">
+              <Label className="text-blue-900">Lien URL (Slug) *</Label>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-xs text-ink-muted font-mono bg-white px-2 py-2 border border-border rounded">/catalog?category=</span>
+                <Input
+                  value={form.slug}
+                  onChange={(e) => setF("slug", cleanSlug(e.target.value))}
+                  placeholder="gateaux-anniversaire"
+                  className="font-mono text-sm bg-white"
+                />
+              </div>
+              <p className="text-[11px] text-blue-700 mt-2 flex items-center gap-1">
+                <Info className="w-3 h-3" />
+                Générez un mot simple. N'utilisez <strong>pas</strong> de référence produit (SKU).
               </p>
-              <p className="text-[10px] text-ink-muted mt-0.5">
-                Uniquement lettres minuscules, chiffres et tirets. Pas de <code>/</code> ni d'espaces.
-              </p>
+              
+              {/* ⭐ ALERTE EN TEMPS RÉEL */}
+              {form.slug && (form.slug.endsWith("-std") || form.slug.includes("sku") || form.slug.length > 30) && (
+                <div className="mt-3 bg-red-50 border border-red-200 p-3 rounded text-xs text-red-800 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>Attention :</strong> Ce slug semble incorrect. Il ressemble à une référence produit. 
+                    Utilisez un nom simple comme <code>anniversaires</code> ou <code>gateaux-adultes</code>.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
-              <Label>Type (interne, optionnel)</Label>
-              <Input value={form.type} onChange={(e) => setF("type", e.target.value)} placeholder="gateau / cupcake..." />
+              <Label>Catégorie parente</Label>
+              <select 
+                value={form.parent_id} 
+                onChange={(e) => setF("parent_id", e.target.value)} 
+                className="w-full border border-border h-10 px-3 bg-white text-sm mt-1"
+              >
+                <option value="">— Aucune (Catégorie principale) —</option>
+                {availableParents.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name_fr}</option>
+                ))}
+              </select>
             </div>
 
-            <div>
-              <Label>Position (ordre)</Label>
-              <Input type="number" value={form.position} onChange={(e) => setF("position", e.target.value)} />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Type (interne, optionnel)</Label>
+                <Input value={form.type} onChange={(e) => setF("type", e.target.value)} placeholder="Ex: gateau, cupcake..." />
+              </div>
+              <div>
+                <Label>Position (ordre d'affichage)</Label>
+                <Input type="number" value={form.position} onChange={(e) => setF("position", e.target.value)} />
+              </div>
             </div>
 
-            {!form.parent_id && !editing && (
-              <div className="col-span-2">
-                <Label>Catégorie parente (optionnel)</Label>
-                <select value={form.parent_id} onChange={(e) => setF("parent_id", e.target.value)} className="w-full border border-border h-10 px-2 bg-white">
-                  <option value="">Aucune (créer une catégorie principale)</option>
-                  {parents.map((p) => <option key={p.id} value={p.id}>{p.name_fr}</option>)}
-                </select>
+            <div className="flex items-center gap-2 pt-2">
+              <input type="checkbox" id="published" checked={form.published} onChange={(e) => setF("published", e.target.checked)} className="w-4 h-4" />
+              <Label htmlFor="published" className="cursor-pointer font-normal">Visible sur la boutique</Label>
+            </div>
+
+            {hasChildren && form.parent_id && (
+              <div className="bg-amber-50 border border-amber-200 p-3 text-xs text-amber-800 rounded">
+                ⚠️ Cette catégorie a des sous-catégories. Si vous lui assignez un parent, elle deviendra une sous-catégorie de 2ème niveau.
               </div>
             )}
+          </div>
 
-            <label className="flex items-center gap-2 text-sm mt-2 col-span-2">
-              <input type="checkbox" checked={form.published} onChange={(e) => setF("published", e.target.checked)} />
-              Visible sur la boutique
-            </label>
-
-            <Button onClick={save} className="col-span-2 bg-ink hover:bg-ink/90 rounded-none mt-2">
-              Enregistrer
-            </Button>
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
+            <Button variant="outline" onClick={() => setOpen(false)} className="rounded-none">Annuler</Button>
+            <Button onClick={save} className="bg-ink hover:bg-ink/90 rounded-none">Enregistrer</Button>
           </div>
         </DialogContent>
       </Dialog>

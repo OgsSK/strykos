@@ -13,25 +13,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import (Product, ProductImage, ProductVariant, Brand, Category, Order, Payment, Setting,
                     Profile, PromoCode, EmailLog,
-                    # ⭐ NOUVEAU : messagerie réclamation
                     ClaimMessage)
 from auth import get_current_admin, create_driver_invite_token
-# ⭐ AJOUT : get_rates + convert_from_eur pour le fix FCFA + bump_cache_version
 from utils import get_rates, serialize_product, get_settings, normalize_media, convert_from_eur, bump_cache_version
 from emails import (send_order_email, emails_enabled, EMAIL_FROM_NAME, EMAIL_REPLY_TO,
                     ADMIN_NOTIFY_EMAIL, send_templated,
                     tpl_cancellation_approved, tpl_cancellation_refused,
-                    # ⭐ NOUVEAU : templates réclamation
                     tpl_claim_approved, tpl_claim_refused, tpl_claim_refunded,
                     tpl_claim_info_request,
-                    # ⭐ NOUVEAU : template invitation livreur
                     tpl_driver_invitation,
-                    # ⭐ NOUVEAU : template remboursement multi-méthodes
                     tpl_refund_multi)
 from routers.commerce_router import push_history
 from sqlalchemy import select, func, delete
 
-# ⭐ NOUVEAU : logger pour les warnings
 logger = logging.getLogger("cakes.admin")
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
@@ -133,7 +127,6 @@ class ProductIn(BaseModel):
     customization_price_eur: float = 0
     customization_fields: list = []
     cta_label: str = ""
-    # ⭐ NOUVEAU : paiement à la livraison autorisé
     cod_allowed: bool = True
     video_url: str = ""
     published: bool = True
@@ -246,10 +239,7 @@ async def create_product(data: ProductIn, db: AsyncSession = Depends(get_db)):
         db.add(ProductVariant(product_id=p.id, size=v.size, color=v.color, sku=v.sku,
                               stock=v.stock, extra_price_eur=v.extra_price_eur))
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"id": p.id, "ok": True}
 
 
@@ -283,10 +273,7 @@ async def update_product(product_id: str, data: ProductIn, db: AsyncSession = De
             db.add(ProductVariant(product_id=p.id, size=v.size, color=v.color, sku=v.sku,
                                   stock=v.stock, extra_price_eur=v.extra_price_eur))
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -298,10 +285,7 @@ async def toggle_publish(product_id: str, data: dict, db: AsyncSession = Depends
         raise HTTPException(status_code=404, detail="Produit introuvable")
     p.published = bool(data.get("published", True))
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "published": p.published}
 
 
@@ -316,10 +300,7 @@ async def delete_product(product_id: str, hard: bool = False, db: AsyncSession =
     else:
         p.published = False
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "hard": hard}
 
 
@@ -344,10 +325,7 @@ async def duplicate_product(product_id: str, db: AsyncSession = Depends(get_db))
     for v in p.variants:
         db.add(ProductVariant(product_id=np.id, size=v.size, color=v.color, sku=v.sku, stock=0, extra_price_eur=v.extra_price_eur))
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "id": np.id, "slug": slug}
 
 
@@ -364,10 +342,7 @@ async def adjust_stock(data: StockAdjust, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Variante introuvable")
     v.stock = max(0, data.stock)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "stock": v.stock}
 
 
@@ -397,10 +372,7 @@ async def create_brand(data: BrandIn, db: AsyncSession = Depends(get_db)):
     b = Brand(**{**data.model_dump(), "logo_url": normalize_media(data.logo_url)})
     db.add(b)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "id": b.id}
 
 
@@ -413,10 +385,7 @@ async def update_brand(brand_id: str, data: BrandIn, db: AsyncSession = Depends(
     for k, v in data.model_dump().items():
         setattr(b, k, normalize_media(v) if k == "logo_url" else v)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -428,10 +397,7 @@ async def delete_brand(brand_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Marque introuvable")
     await db.delete(b)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -446,12 +412,27 @@ class CategoryIn(BaseModel):
     published: bool = True
 
 
+# ⭐ CORRIGÉ : le product_count inclut désormais les produits des sous-catégories
 @router.get("/categories")
 async def admin_categories(db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Category).order_by(Category.position))
     cats = res.scalars().all()
-    counts = dict((await db.execute(select(Product.category_id, func.count(Product.id)).group_by(Product.category_id))).all())
-    return [{**c.to_dict(), "product_count": counts.get(c.id, 0)} for c in cats]
+
+    # 1. Compte les produits directement liés à chaque catégorie
+    direct_counts = dict((await db.execute(
+        select(Product.category_id, func.count(Product.id)).group_by(Product.category_id)
+    )).all())
+
+    # 2. Calcul du total (catégorie + sous-catégories)
+    total_counts = {}
+    for c in cats:
+        count = direct_counts.get(c.id, 0)
+        for child in cats:
+            if child.parent_id == c.id:
+                count += direct_counts.get(child.id, 0)
+        total_counts[c.id] = count
+
+    return [{**c.to_dict(), "product_count": total_counts.get(c.id, 0)} for c in cats]
 
 
 @router.post("/categories")
@@ -461,10 +442,7 @@ async def create_category(data: CategoryIn, db: AsyncSession = Depends(get_db)):
     c = Category(**data.model_dump())
     db.add(c)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "id": c.id}
 
 
@@ -477,10 +455,7 @@ async def update_category(category_id: str, data: CategoryIn, db: AsyncSession =
     for k, v in data.model_dump().items():
         setattr(c, k, v)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -492,10 +467,7 @@ async def delete_category(category_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Categorie introuvable")
     await db.delete(c)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -617,7 +589,6 @@ async def update_order_status(order_id: str, data: OrderStatusIn, admin=Depends(
     now = datetime.now(timezone.utc)
     if data.status == "shipped" and not o.shipped_at:
         o.shipped_at = now
-        # ⭐ NOUVEAU : génère un code OTP pour la livraison
         if not o.delivery_otp:
             otp = f"{random.randint(0, 999999):06d}"
             o.delivery_otp = otp
@@ -640,7 +611,6 @@ async def update_order_status(order_id: str, data: OrderStatusIn, admin=Depends(
         elif data.status in ("cancelled", "refunded"):
             email_log = await send_order_email(db, o, "order_cancelled", refunded=(data.status == "refunded"))
 
-    # ⭐ Envoi OTP au client si on vient de passer en "expédiée"
     if data.status == "shipped" and o.delivery_otp and o.email:
         try:
             from emails import tpl_delivery_otp_client
@@ -719,7 +689,6 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
     if data.mark_shipped and o.status in ("paid", "preparing"):
         o.status = "shipped"
         o.shipped_at = datetime.now(timezone.utc)
-        # ⭐ NOUVEAU : génère un code OTP pour la livraison
         if not o.delivery_otp:
             otp = f"{random.randint(0, 999999):06d}"
             o.delivery_otp = otp
@@ -734,7 +703,6 @@ async def update_tracking(order_id: str, data: TrackingIn, admin=Depends(get_cur
         await db.commit()
         if data.notify and o.email:
             sent = await send_order_email(db, o, "order_shipped")
-        # ⭐ Envoi OTP au client
         if o.delivery_otp and o.email:
             try:
                 from emails import tpl_delivery_otp_client
@@ -1059,10 +1027,7 @@ async def create_promo(data: PromoIn, db: AsyncSession = Depends(get_db)):
     p = PromoCode(**{**data.model_dump(), "code": code})
     db.add(p)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True, "id": p.id}
 
 
@@ -1080,10 +1045,7 @@ async def update_promo(promo_id: str, data: PromoIn, db: AsyncSession = Depends(
     for k, v in data.model_dump().items():
         setattr(p, k, code if k == "code" else v)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -1095,10 +1057,7 @@ async def delete_promo(promo_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Code introuvable")
     await db.delete(p)
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -1150,7 +1109,7 @@ ALLOWED_SETTING_KEYS = {
     "features", "testimonials",
     "cta_banner", "story", "steps", "gallery",
     "orders",
-    "payment_methods",   # ⭐ NOUVEAU
+    "payment_methods",
 }
 
 
@@ -1198,14 +1157,12 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
                 for it in (value.get("items") or [])
             ],
         }
-    # ⭐ ORDERS : normalisation + nouveaux champs réclamation
     if data.key == "orders" and isinstance(value, dict):
         try:
             value = {
                 **value,
                 "min_lead_hours": max(0, int(value.get("min_lead_hours", 48))),
                 "max_advance_days": max(1, int(value.get("max_advance_days", 180))),
-                # ⭐ NOUVEAU : réclamations
                 "claim_window_hours": max(1, int(value.get("claim_window_hours", 48))),
                 "claim_media_max_photos": max(1, int(value.get("claim_media_max_photos", 3))),
                 "claim_media_max_videos": max(0, int(value.get("claim_media_max_videos", 1))),
@@ -1223,7 +1180,6 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
             }
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Paramètres de commande invalides")
-    # ⭐ PAYMENT_METHODS : normalisation + validation COD
     if data.key == "payment_methods" and isinstance(value, dict):
         cod = value.get("cod") or {}
         try:
@@ -1246,10 +1202,7 @@ async def admin_update_setting(data: SettingIn, db: AsyncSession = Depends(get_d
     else:
         db.add(Setting(key=data.key, value=value))
     await db.commit()
-
-    # ⭐ NOUVEAU : bump la version pour invalider les caches client
     await bump_cache_version(db)
-
     return {"ok": True}
 
 
@@ -1364,12 +1317,11 @@ async def reply_review(review_id: str, data: ReplyIn, db: AsyncSession = Depends
 
 
 # ================================================================
-# ⭐ RÉCLAMATIONS (ex "retours") — avec messagerie
+# ⭐ RÉCLAMATIONS — avec messagerie
 # ================================================================
 
 @router.post("/orders/{order_id}/approve-return")
 async def approve_return(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Accepte une réclamation client. Le remboursement sera fait séparément."""
     o = await _get_order(db, order_id)
     if o.status != "return_requested":
         raise HTTPException(status_code=400, detail="Aucune réclamation en cours.")
@@ -1392,7 +1344,6 @@ async def approve_return(order_id: str, admin=Depends(get_current_admin), db: As
 
 @router.post("/orders/{order_id}/refuse-return")
 async def refuse_return(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Refuse une réclamation. Le statut repasse à delivered."""
     o = await _get_order(db, order_id)
     if o.status not in ("return_requested", "return_approved", "return_received"):
         raise HTTPException(status_code=400, detail="Aucune réclamation active.")
@@ -1415,16 +1366,14 @@ async def refuse_return(order_id: str, data: dict, admin=Depends(get_current_adm
     return {"ok": True, "status": o.status}
 
 
-# ⭐ NOUVELLE ROUTE : Admin demande des infos complémentaires
 class ClaimRequestInfoIn(BaseModel):
     message: str = ""
-    requested_types: list = []  # ["photo","video"]
+    requested_types: list = []
 
 
 @router.post("/orders/{order_id}/claim/request-info")
 async def claim_request_info(order_id: str, data: ClaimRequestInfoIn,
                               admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """⭐ Admin demande au client des informations complémentaires (photos/vidéos)."""
     o = await _get_order(db, order_id)
     if o.status not in ("return_requested", "return_approved"):
         raise HTTPException(status_code=400, detail="Aucune réclamation active.")
@@ -1435,12 +1384,10 @@ async def claim_request_info(order_id: str, data: ClaimRequestInfoIn,
 
     requested = [t for t in (data.requested_types or []) if t in ("photo", "video")] or ["photo"]
 
-    # Stocke la demande sur la commande
     o.claim_info_requested_at = datetime.now(timezone.utc)
     o.claim_info_request_message = text
     o.claim_info_request_types = requested
 
-    # Crée un message admin dans la conversation
     db.add(ClaimMessage(
         order_id=o.id,
         sender="admin",
@@ -1453,7 +1400,6 @@ async def claim_request_info(order_id: str, data: ClaimRequestInfoIn,
     push_history(o, o.status, by=admin.email, note=f"Demande d'infos complémentaires : {text[:80]}")
     await db.commit()
 
-    # ⭐ Envoie le mail au client
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
         subject, html = tpl_claim_info_request(o.to_dict(), lang, text, requested)
@@ -1465,10 +1411,8 @@ async def claim_request_info(order_id: str, data: ClaimRequestInfoIn,
     return {"ok": True, "status": o.status}
 
 
-# ⭐ NOUVELLE ROUTE : Récupère la conversation de la réclamation
 @router.get("/orders/{order_id}/claim/messages")
 async def claim_messages(order_id: str, db: AsyncSession = Depends(get_db)):
-    """⭐ Récupère toute la conversation de la réclamation."""
     o = await _get_order(db, order_id)
     res = await db.execute(
         select(ClaimMessage)
@@ -1480,32 +1424,27 @@ async def claim_messages(order_id: str, db: AsyncSession = Depends(get_db)):
 
 class RefundReturnIn(BaseModel):
     message: str = ""
-    amount: Optional[float] = None   # None = remboursement total (en EUR côté Stripe)
+    amount: Optional[float] = None
 
 
 @router.post("/orders/{order_id}/refund-return")
 async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Rembourse une réclamation (total ou partiel) — accept + refund en un seul appel."""
     o = await _get_order(db, order_id)
     if o.status not in ("return_requested", "return_approved", "return_received"):
         raise HTTPException(status_code=400, detail="Aucune réclamation active pour cette commande.")
 
-    # ⭐ Si la réclamation était juste "requested", on l'approuve au passage
     if o.status == "return_requested":
         o.status = "return_approved"
         o.return_decided_at = datetime.now(timezone.utc)
         push_history(o, "return_approved", by=admin.email, note=f"Réclamation acceptée — {o.return_rma_code}")
 
-    # Stocke le message admin
     if data and data.message:
         o.refund_message = data.message.strip()[:1000]
 
-    # ⭐ Nettoie la demande d'infos (obsolète après remboursement)
     o.claim_info_requested_at = None
     o.claim_info_request_message = ""
     o.claim_info_request_types = []
 
-    # Récupère le Payment Stripe
     pres = await db.execute(
         select(Payment).where(
             Payment.order_id == o.id,
@@ -1527,7 +1466,6 @@ async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depend
                 pi = None
 
         if pi:
-            # ⭐ Détection robuste du partiel par comparaison au montant original
             stripe_kwargs = {"payment_intent": pi}
             if data and data.amount is not None and data.amount > 0:
                 stripe_kwargs["amount"] = int(round(float(data.amount) * 100))
@@ -1537,19 +1475,17 @@ async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depend
 
             try:
                 refund = stripe.Refund.create(**stripe_kwargs)
-                refund_amount_eur = (refund.amount or 0) / 100  # ⭐ en EUR
+                refund_amount_eur = (refund.amount or 0) / 100
                 pay.status = "refunded" if not is_partial else "partially_refunded"
                 pay.payment_intent = pi
                 pay.raw_event = {"refund_id": refund.id, "amount": refund.amount, "status": refund.status}
             except stripe.error.StripeError as e:
                 raise HTTPException(status_code=502, detail=f"Stripe refund: {e.user_message or str(e)}")
 
-    # Statut final
     o.status = "refunded"
     o.payment_status = "partially_refunded" if is_partial else "refunded"
     o.return_decided_at = datetime.now(timezone.utc)
 
-    # ⭐ Historique — affiche EUR + équivalent FCFA si applicable
     xof_equivalent = round(refund_amount_eur * 655.957) if o.currency == "XOF" else None
     amount_label = f"{refund_amount_eur:.2f} {o.charge_currency}"
     if xof_equivalent:
@@ -1562,7 +1498,6 @@ async def refund_return(order_id: str, data: RefundReturnIn = None, admin=Depend
     push_history(o, "refunded", by=admin.email, note=note)
     await db.commit()
 
-    # ⭐ Email client — convertit EUR → devise d'affichage
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
         rates = await get_rates(db)
@@ -1601,19 +1536,17 @@ class DriverInviteIn(BaseModel):
     last_name: str = ""
     email: str
     phone: str = ""
-    notes: str = ""  # interne admin
+    notes: str = ""
 
 
 @router.get("/drivers")
 async def list_drivers(db: AsyncSession = Depends(get_db)):
-    """Liste tous les livreurs (actifs + en attente d'activation)."""
     from models import Profile
     res = await db.execute(
         select(Profile).where(Profile.role == "driver").order_by(Profile.created_at.desc())
     )
     drivers = res.scalars().all()
 
-    # Récupère les stats de livraison par livreur
     stats_res = await db.execute(
         select(Order.delivered_by_driver_id, func.count(Order.id))
         .where(Order.status == "delivered", Order.delivered_via == "otp")
@@ -1633,17 +1566,13 @@ async def list_drivers(db: AsyncSession = Depends(get_db)):
 
 @router.post("/drivers/invite")
 async def invite_driver(data: DriverInviteIn, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Crée un compte livreur + envoie l'email d'invitation."""
     from models import Profile
     email = data.email.lower().strip()
 
-    # Vérifie que l'email n'est pas déjà utilisé
     existing = (await db.execute(select(Profile).where(Profile.email == email))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail="Un compte existe déjà avec cet e-mail")
 
-    # Crée le profil avec role=driver, email_verified=False
-    # password_hash temporaire (le livreur le créera via le lien)
     from auth import hash_password
     temp_hash = hash_password(secrets.token_urlsafe(32))
 
@@ -1660,10 +1589,8 @@ async def invite_driver(data: DriverInviteIn, admin=Depends(get_current_admin), 
     await db.commit()
     await db.refresh(driver)
 
-    # Génère le token d'invitation (7 jours)
     token = create_driver_invite_token(driver.id, driver.email)
 
-    # Envoie l'email
     try:
         subject, html = tpl_driver_invitation(driver.to_dict(), token, lang="fr")
         await send_templated(db, to=driver.email, subject=subject, html=html,
@@ -1677,7 +1604,6 @@ async def invite_driver(data: DriverInviteIn, admin=Depends(get_current_admin), 
 
 @router.post("/drivers/{driver_id}/resend-invite")
 async def resend_driver_invite(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Renvoie une invitation à un livreur qui n'a pas encore activé son compte."""
     from models import Profile
     driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
     if not driver:
@@ -1685,7 +1611,6 @@ async def resend_driver_invite(driver_id: str, admin=Depends(get_current_admin),
     if driver.email_verified:
         raise HTTPException(status_code=400, detail="Ce livreur a déjà activé son compte")
 
-    # Génère un nouveau token
     token = create_driver_invite_token(driver.id, driver.email)
 
     try:
@@ -1700,14 +1625,11 @@ async def resend_driver_invite(driver_id: str, admin=Depends(get_current_admin),
 
 @router.post("/drivers/{driver_id}/deactivate")
 async def deactivate_driver(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Désactive un livreur (empêche la connexion) sans le supprimer."""
     from models import Profile
     driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
     if not driver:
         raise HTTPException(status_code=404, detail="Livreur introuvable")
 
-    # Remplace le password_hash par une valeur aléatoire impossible à deviner
-    # (bloque la connexion tant que l'admin n'a pas réactivé)
     from auth import hash_password
     driver.password_hash = hash_password(secrets.token_urlsafe(48))
 
@@ -1717,28 +1639,23 @@ async def deactivate_driver(driver_id: str, admin=Depends(get_current_admin), db
 
 @router.delete("/drivers/{driver_id}")
 async def delete_driver(driver_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Supprime définitivement un livreur."""
     from models import Profile
     driver = (await db.execute(select(Profile).where(Profile.id == driver_id, Profile.role == "driver"))).scalar_one_or_none()
     if not driver:
         raise HTTPException(status_code=404, detail="Livreur introuvable")
 
-    # Les commandes livrées restent liées (delivered_by_driver_id) mais pointent vers NULL
     await db.delete(driver)
     await db.commit()
     return {"ok": True}
 
 
-# ⭐ OTP : régénérer / renvoyer pour une commande
 @router.post("/orders/{order_id}/regenerate-otp")
 async def regenerate_order_otp(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Génère un nouveau code OTP pour une commande expédiée."""
     o = await _get_order(db, order_id)
 
     if o.status not in ("shipped", "in_transit"):
         raise HTTPException(status_code=400, detail="La commande doit être expédiée pour générer un OTP")
 
-    # ⭐ Nouveau code à 6 chiffres
     otp = f"{random.randint(0, 999999):06d}"
     o.delivery_otp = otp
     o.delivery_otp_expires_at = datetime.now(timezone.utc) + timedelta(days=7)
@@ -1752,7 +1669,6 @@ async def regenerate_order_otp(order_id: str, admin=Depends(get_current_admin), 
 
 @router.post("/orders/{order_id}/resend-otp-email")
 async def resend_otp_email(order_id: str, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Renvoie l'email avec le code OTP au client."""
     from emails import tpl_delivery_otp_client
     o = await _get_order(db, order_id)
 
@@ -1780,7 +1696,6 @@ async def resend_otp_email(order_id: str, admin=Depends(get_current_admin), db: 
 
 @router.post("/orders/{order_id}/mark-cod-paid")
 async def mark_cod_paid(order_id: str, data: dict, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """L'admin marque manuellement une commande COD comme payée."""
     o = await _get_order(db, order_id)
 
     if o.payment_method != "cod":
@@ -1791,7 +1706,7 @@ async def mark_cod_paid(order_id: str, data: dict, admin=Depends(get_current_adm
     o.payment_status = "paid"
     o.cod_collected_at = datetime.now(timezone.utc)
     if not o.cod_collected_by_id:
-        o.cod_collected_by_id = None  # Marqué par admin (pas de driver)
+        o.cod_collected_by_id = None
 
     push_history(o, o.status, by=admin.email, note="Paiement COD reçu (saisie manuelle admin)")
     await db.commit()
@@ -1804,16 +1719,15 @@ async def mark_cod_paid(order_id: str, data: dict, admin=Depends(get_current_adm
 # ================================================================
 
 class RefundMultiIn(BaseModel):
-    method: str          # "cash" | "mobile_money" | "promo" | "stripe"
-    amount: Optional[float] = None      # en devise commande (XOF)
-    reference: str = ""                 # pour mobile_money
-    note: str = ""                      # visible client
-    internal_note: str = ""             # admin seulement
+    method: str
+    amount: Optional[float] = None
+    reference: str = ""
+    note: str = ""
+    internal_note: str = ""
 
 
 @router.post("/orders/{order_id}/refund-multi")
 async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_current_admin), db: AsyncSession = Depends(get_db)):
-    """Remboursement multi-méthodes : cash, mobile money, code promo, ou Stripe."""
     o = await _get_order(db, order_id)
 
     if o.payment_status not in ("paid", "partially_refunded"):
@@ -1823,21 +1737,16 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
     if method not in ("cash", "mobile_money", "promo", "stripe"):
         raise HTTPException(status_code=400, detail="Méthode de remboursement invalide")
 
-    # Montant en devise commande (XOF par défaut)
     refund_amount = data.amount if data.amount is not None else float(o.total or 0)
     if refund_amount <= 0:
         raise HTTPException(status_code=400, detail="Montant invalide")
 
-    # ⭐ Référence obligatoire pour mobile money
     if method == "mobile_money" and not (data.reference or "").strip():
         raise HTTPException(status_code=400, detail="Numéro ou référence de transaction requis pour Mobile Money")
 
     promo_code_generated = ""
     stripe_refund_id = ""
 
-    # ============================================================
-    # ⭐ CAS 1 — Stripe
-    # ============================================================
     if method == "stripe":
         pres = await db.execute(
             select(Payment).where(
@@ -1860,7 +1769,6 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
         if not pi:
             raise HTTPException(status_code=400, detail="Impossible de récupérer le paiement Stripe")
 
-        # Conversion XOF → EUR pour l'API Stripe
         rates = await get_rates(db)
         amount_eur = refund_amount / (rates.get("XOF", 655.957) or 655.957) if o.currency == "XOF" else refund_amount
 
@@ -1875,14 +1783,10 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
         except stripe.error.StripeError as e:
             raise HTTPException(status_code=502, detail=f"Stripe: {e.user_message or str(e)}")
 
-    # ============================================================
-    # ⭐ CAS 2 — Code promo
-    # ============================================================
     elif method == "promo":
         settings = await get_settings(db)
         validity_days = int((settings.get("payment_methods", {}).get("cod", {}) or {}).get("promo_validity_days", 180))
 
-        # Génère un code unique
         base_code = f"REFUND-{o.order_number.replace('STK-', '')[:12]}"
         code = base_code
         i = 1
@@ -1893,7 +1797,6 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
             code = f"{base_code}-{i}"
             i += 1
 
-        # Crée le code promo (montant fixe en devise commande → EUR pour stockage)
         rates = await get_rates(db)
         amount_eur = refund_amount / (rates.get("XOF", 655.957) or 655.957) if o.currency == "XOF" else refund_amount
 
@@ -1913,14 +1816,6 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
         db.add(promo)
         promo_code_generated = code
 
-    # ============================================================
-    # ⭐ CAS 3 & 4 — Cash / Mobile Money (juste un log)
-    # ============================================================
-    # Rien de spécial, juste une note dans l'historique
-
-    # ============================================================
-    # Mise à jour de la commande
-    # ============================================================
     is_full = abs(refund_amount - float(o.total or 0)) < 1
     o.refund_method = method
     o.refund_reference = (data.reference or "").strip()[:120]
@@ -1944,7 +1839,6 @@ async def refund_multi(order_id: str, data: RefundMultiIn, admin=Depends(get_cur
     await db.commit()
     await db.refresh(o)
 
-    # ⭐ Email au client (avec le bon template selon la méthode)
     try:
         lang = o.lang if o.lang in ("fr", "en") else "fr"
         subject, html = tpl_refund_multi(o.to_dict(), lang, refund_amount, method, promo_code_generated)

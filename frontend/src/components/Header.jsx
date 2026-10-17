@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/context/StoreProvider";
 import { api } from "@/lib/api";
 import { swrGetShared } from "@/lib/cache";
-import { Search, Heart, ShoppingBag, User, Menu, ChevronRight, ChevronDown } from "lucide-react";
+import { Search, Heart, ShoppingBag, User, Menu, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import Brand from "@/components/Brand";
 import { mediaSrc } from "@/lib/adminUtils";
@@ -22,8 +22,8 @@ function Switcher({ value, options, onChange, testid }) {
   );
 }
 
-/* --- Mega-menu desktop : 4 colonnes avec sous-catégories --- */
-function MegaMenu({ categories, lang }) {
+/* --- Mega-menu desktop : dynamique depuis l'admin + liens fixes --- */
+function MegaMenu({ categories, lang, t }) {
   const [openSlug, setOpenSlug] = useState(null);
   const timerRef = useRef(null);
 
@@ -40,6 +40,7 @@ function MegaMenu({ categories, lang }) {
       className="hidden lg:flex items-center gap-6 xl:gap-8 text-[13px] xl:text-sm font-medium"
       onMouseLeave={closeMenu}
     >
+      {/* ⭐ 1. CATÉGORIES DYNAMIQUES (viennent de la BDD) */}
       {categories.map((cat) => {
         const label = lang === "fr" ? cat.name_fr : cat.name_en;
         const hasChildren = cat.children && cat.children.length > 0;
@@ -62,14 +63,16 @@ function MegaMenu({ categories, lang }) {
         );
       })}
 
-      <Link to="/catalog?on_sale=true" className="py-3 text-brand hover:text-brand-dark transition-colors" data-testid="nav-promotions">
-        {lang === "fr" ? "Promotions" : "Sale"}
+      {/* ⭐ 2. LIENS FIXES (Système - non modifiables depuis l'admin) */}
+      <Link to="/catalog?on_sale=true" className="py-3 text-brand hover:text-brand-dark transition-colors font-bold" data-testid="nav-promotions">
+        {t("promotions")}
       </Link>
 
       <Link to="/brands" className="py-3 hover:text-brand transition-colors" data-testid="nav-brands">
         {lang === "fr" ? "Nos créations" : "Our creations"}
       </Link>
 
+      {/* 3. SOUS-MENU (Mega Menu au survol) */}
       {openSlug && (() => {
         const cat = categories.find((c) => c.slug === openSlug);
         if (!cat || !cat.children?.length) return null;
@@ -118,7 +121,6 @@ function MegaMenu({ categories, lang }) {
 }
 
 export default function Header() {
-  // ⭐ MODIFIÉ : cacheVersion ajouté
   const { t, lang, changeLang, currency, setCurrency, cartCount, wishlist, user, settings, cacheVersion } = useStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -127,7 +129,6 @@ export default function Header() {
   const [mobileExpanded, setMobileExpanded] = useState(null);
   const routerNav = useNavigate();
 
-  // ⭐ MODIFIÉ : dépend de cacheVersion → re-fetch à chaque changement admin
   useEffect(() => {
     swrGetShared("/nav", (d) => setNav(d), { ttl: 5 * 60 * 1000 }).catch(() => {});
   }, [cacheVersion]);
@@ -180,7 +181,7 @@ export default function Header() {
 
             <div className="flex-1 flex justify-center">
               {nav?.categories?.length > 0 && (
-                <MegaMenu categories={nav.categories} lang={lang} />
+                <MegaMenu categories={nav.categories} lang={lang} t={t} />
               )}
             </div>
 
@@ -194,11 +195,7 @@ export default function Header() {
                     placeholder={t("searchPlaceholder")}
                     className="w-44 lg:w-56 xl:w-64 h-9"
                     rightIcon={
-                      <button
-                        type="submit"
-                        className="p-1 text-ink-muted hover:text-ink"
-                        aria-label="search"
-                      >
+                      <button type="submit" className="p-1 text-ink-muted hover:text-ink" aria-label="search">
                         <Search className="w-4 h-4" />
                       </button>
                     }
@@ -255,7 +252,6 @@ export default function Header() {
             <Brand size="sm" />
           </div>
 
-          {/* ⭐ Recherche mobile avec le même composant tronqué */}
           <form onSubmit={doSearch} className="p-4 border-b">
             <AnimatedSearchInput
               data-testid="mobile-search-input"
@@ -264,11 +260,7 @@ export default function Header() {
               placeholder={t("searchPlaceholder")}
               className="w-full h-10"
               rightIcon={
-                <button
-                  type="submit"
-                  className="p-1 text-ink-muted hover:text-ink"
-                  aria-label="search"
-                >
+                <button type="submit" className="p-1 text-ink-muted hover:text-ink" aria-label="search">
                   <Search className="w-4 h-4" />
                 </button>
               }
@@ -276,6 +268,7 @@ export default function Header() {
           </form>
 
           <div className="flex flex-col">
+            {/* ⭐ CATÉGORIES DYNAMIQUES */}
             {(nav?.categories || []).map((c) => {
               const label = lang === "fr" ? c.name_fr : c.name_en;
               const isExp = mobileExpanded === c.slug;
@@ -283,11 +276,7 @@ export default function Header() {
               return (
                 <div key={c.slug} className="border-b">
                   <div className="flex items-center justify-between px-4 py-3">
-                    <Link
-                      to={`/catalog?category=${c.slug}`}
-                      onClick={() => setMobileOpen(false)}
-                      className="text-sm font-semibold uppercase flex-1"
-                    >
+                    <Link to={`/catalog?category=${c.slug}`} onClick={() => setMobileOpen(false)} className="text-sm font-semibold uppercase flex-1">
                       {label}
                     </Link>
                     {hasChildren && (
@@ -299,12 +288,7 @@ export default function Header() {
                   {isExp && hasChildren && (
                     <div className="bg-cream">
                       {c.children.map((child) => (
-                        <Link
-                          key={child.slug}
-                          to={`/catalog?category=${child.slug}`}
-                          onClick={() => setMobileOpen(false)}
-                          className="block px-6 py-2 text-sm hover:text-brand"
-                        >
+                        <Link key={child.slug} to={`/catalog?category=${child.slug}`} onClick={() => setMobileOpen(false)} className="block px-6 py-2 text-sm hover:text-brand">
                           {lang === "fr" ? child.name_fr : child.name_en}
                         </Link>
                       ))}
@@ -314,6 +298,7 @@ export default function Header() {
               );
             })}
 
+            {/* ⭐ LIENS FIXES MOBILE */}
             <Link to="/catalog?on_sale=true" onClick={() => setMobileOpen(false)} className="px-4 py-3 border-b text-sm font-semibold uppercase text-brand">
               {t("promotions")}
             </Link>

@@ -77,9 +77,28 @@ async def list_products(
     rates = await get_rates(db)
     q = await _base_product_query()
     conds = []
+
+    # ⭐ Filtre catégorie : parent + sous-catégories
     if category:
-        q = q.join(Category, Product.category_id == Category.id)
-        conds.append(or_(Category.slug == category, Category.type == category))
+        cat_res = await db.execute(
+            select(Category).where(or_(Category.slug == category, Category.type == category))
+        )
+        matched_cats = cat_res.scalars().all()
+
+        if matched_cats:
+            parent_ids = [c.id for c in matched_cats]
+
+            child_res = await db.execute(
+                select(Category.id).where(Category.parent_id.in_(parent_ids))
+            )
+            child_ids = [row[0] for row in child_res.all()]
+
+            all_valid_ids = parent_ids + child_ids
+            conds.append(Product.category_id.in_(all_valid_ids))
+        else:
+            # Slug/type inconnu → aucun résultat (évite de renvoyer tout le catalogue)
+            conds.append(Product.category_id == -1)
+
     if brand:
         q = q.join(Brand, Product.brand_id == Brand.id)
         conds.append(Brand.slug == brand)
@@ -276,7 +295,7 @@ async def nav_menu(db: AsyncSession = Depends(get_db)):
               for sp in tx.get("sports", []) if sport_counts[sp["value"]] > 0]
 
     return {
-        "categories": categories_tree,   # ← NOUVEAU : hiérarchie
+        "categories": categories_tree,   # ← hiérarchie parent + enfants
         "brands": brands,
         "genders": genders,
         "sports": sports,
@@ -288,6 +307,7 @@ async def nav_menu(db: AsyncSession = Depends(get_db)):
             "customizable": customizable_count,
         },
     }
+
 
 @router.get("/home")
 async def homepage(db: AsyncSession = Depends(get_db)):
